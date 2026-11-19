@@ -7,10 +7,10 @@ auto-accept rule; change by editing this file before the phase that uses it), **
 
 | # | Question | Answer | Status |
 |---|---|---|---|
-| A1 | GitHub owner | `vicaberger` (personal account) | answered |
-| A2 | Repository name | `hermes-switchyard`. The operator gave the owner only, so the name is a proposal. To use another name: create it, then `git remote set-url origin <url>` and pass `--repo` to the token script | default accepted |
+| A1 | GitHub owner | Organization `vicberger-com` (moved from the personal account `vicaberger` on 2026-11-19 so that branch protection and security features can be applied) | answered |
+| A2 | Repository name | `hermes-switchyard` | answered |
 | A3 | Who creates the repository | Operator, empty (no README, license or .gitignore), because a token scoped to one repository cannot exist before the repository does | operator action |
-| A4 | Persistent connection method | Fine-grained personal access token limited to this one repository, stored in Windows Credential Manager through Git Credential Manager, entered only by the operator | answered; operator action |
+| A4 | Persistent connection method | Fine-grained personal access token with the organization as resource owner, limited to this one repository, stored in Windows Credential Manager through Git Credential Manager, entered only by the operator | answered; operator action |
 | A5 | Token permissions | Repository: Contents RW, Pull requests RW, Issues RW, Workflows RW, Actions R, Commit statuses R, Metadata R. Add Administration RW only if the agent should set branch protection; otherwise the operator sets it once | default accepted |
 | A6 | Token lifetime | 90 days; the marker file records expiry and the check command warns 14 days ahead | default accepted |
 | A7 | Visibility | Private until the M0 security gate passes, then public (open source is priority 3; CodeQL, Scorecard and attestations need a public repository on a personal account) | default accepted |

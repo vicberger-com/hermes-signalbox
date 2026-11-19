@@ -23,7 +23,7 @@ dependencies = []
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.11", "pre-commit>=3.8"]
 
 [project.urls]
-Repository = "https://github.com/vicaberger/hermes-switchyard"
+Repository = "https://github.com/vicberger-com/hermes-switchyard"
 
 # No runtime package exists before M0; the wheel is intentionally empty of code until then.
 [tool.hatch.build.targets.wheel]
