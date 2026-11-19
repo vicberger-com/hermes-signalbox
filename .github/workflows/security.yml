@@ -53,6 +53,19 @@ jobs:
           name: sbom
           path: sbom.cdx.json
 
+  # Single stable check to require in the branch ruleset; matrix job names change, this one does not.
+  security-required:
+    if: always()
+    needs: [secrets, python]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All required jobs succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do [ "$r" = "success" ] || exit 1; done
+
   # CodeQL and Scorecard need a public repository on a personal account.
   codeql:
     if: ${{ !github.event.repository.private }}
