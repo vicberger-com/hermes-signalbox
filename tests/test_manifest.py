@@ -101,3 +101,8 @@ def test_invalid_toml_reports_one_error(tmp_path: Path) -> None:
     bad.write_text("schema = = 1", encoding="utf-8")
     errors = vm.validate_file(bad)
     assert len(errors) == 1 and "cannot read manifest" in errors[0]
+
+
+def test_cli_searches_directories_and_fails_on_empty_ones(tmp_path: Path) -> None:
+    assert vm.main([str(ROOT / "templates")]) == 0
+    assert vm.main([str(tmp_path)]) == 1
