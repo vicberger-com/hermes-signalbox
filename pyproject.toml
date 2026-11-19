@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hermes-switchyard"
+version = "0.0.0"
+description = "Security-first, modular control plane for Hermes Agent."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Vic Berger" }]
+keywords = ["hermes-agent", "control-plane", "model-routing", "plugins"]
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.11", "pre-commit>=3.8"]
+
+[project.urls]
+Repository = "https://github.com/vicaberger/hermes-switchyard"
+
+# No runtime package exists before M0; the wheel is intentionally empty of code until then.
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "templates/module/tests"]
+pythonpath = ["tools", "templates/module"]
+addopts = "-q --strict-markers --import-mode=importlib"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["tools", "templates/module/example.py"]

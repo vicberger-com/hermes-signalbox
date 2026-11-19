@@ -1,0 +1,18 @@
+# P0 task: confirm current revisions, then run `pre-commit autoupdate --freeze`.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+      - id: ruff-format
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+  - repo: local
+    hooks:
+      - id: validate-manifests
+        name: validate module manifests
+        entry: python tools/validate_manifest.py
+        language: system
+        files: module\.toml$

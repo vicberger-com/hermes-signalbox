@@ -1,0 +1,36 @@
+# Switchyard module manifest. Schema: schemas/module.schema.json
+# Validate: python tools/validate_manifest.py <this file>
+schema = 1
+
+[module]
+id = "example"
+name = "Example module"
+version = "0.1.0"
+license = "Apache-2.0"
+license_class = "open"            # open | proprietary-connector
+summary = "Template module that shows the full contract and does nothing else."
+requires_core = ">=0.1,<1"
+isolation = "in-process"          # in-process (this repository only) | subprocess
+entry = "example:ExampleModule"
+
+[capabilities]
+# Request the minimum. Each entry must be justified in the module README.
+request = ["ui.panel"]
+net_hosts = []                    # required when "net.outbound" is requested
+secrets = []                      # secret names (never values); required with "secrets.read"
+
+[contributes]
+hooks = []                        # Hermes hook names
+tools = []                        # Hermes tool names, prefixed switchyard_
+commands = []                     # slash and CLI commands
+panels = ["example.status"]
+policies = []                     # rules that tighten this module's own grant
+triggers = []
+log_streams = ["example"]
+
+[lifecycle]
+activation = "manual"             # manual | auto | disabled
+idle_stop_seconds = 0             # > 0 only with activation = "auto"
+
+[update]
+source = "bundled"                # bundled | git (git needs url and a 40-character commit SHA in ref)
