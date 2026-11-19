@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/vicaberger/hermes-switchyard/schemas/module.schema.json",
+  "$id": "https://github.com/vicberger-com/hermes-switchyard/schemas/module.schema.json",
   "title": "Switchyard module manifest (module.toml)",
   "description": "Normative. tools/validate_manifest.py supports exactly the keywords used here and adds the cross-field rules listed in its docstring.",
   "type": "object",
