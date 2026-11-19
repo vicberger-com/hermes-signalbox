@@ -11,7 +11,8 @@ Cross-field rules enforced in addition to the schema:
 * ``update.source = "git"`` requires ``update.url`` and a full commit SHA in ``update.ref``.
 * ``lifecycle.idle_stop_seconds`` above zero requires ``activation = "auto"``.
 
-Usage: ``python tools/validate_manifest.py path/to/module.toml [...]``. Exit code 0 when all are valid.
+Usage: ``python tools/validate_manifest.py PATH [...]`` where PATH is a ``module.toml`` or a directory that is
+searched recursively. Exit code 0 when every manifest is valid and every directory holds at least one.
 """
 
 from __future__ import annotations
@@ -119,8 +120,17 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 2
     failed = False
+    files: list[Path] = []
     for name in argv:
-        errors = validate_file(Path(name))
+        target = Path(name)
+        found = sorted(target.rglob("module.toml")) if target.is_dir() else [target]
+        if not found:
+            failed = True
+            print(f"INVALID {name}: no module.toml found")
+        files.extend(found)
+    for path in files:
+        name = path.as_posix()
+        errors = validate_file(path)
         if errors:
             failed = True
             print(f"INVALID {name}")

@@ -37,7 +37,7 @@ jobs:
       - name: License allow-list
         run: >
           pip-licenses --partial-match --allow-only
-          "MIT;BSD;ISC;Apache;Python Software Foundation;PSF;CC0;Mozilla Public License 2.0;Unlicense"
+          "MIT;BSD;ISC;Apache;Python Software Foundation;PSF;CC0;Mozilla Public License 2.0;MPL-2.0;Unlicense"
       - name: SBOM (CycloneDX)
         run: cyclonedx-py environment --output-format JSON --output-file sbom.cdx.json
       - uses: actions/upload-artifact@v4
