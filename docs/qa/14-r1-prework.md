@@ -24,7 +24,7 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 | 5 | Supported versions after 1.0 | | Latest minor of 1.x receives security fixes | default accepted |
 | 6 | Docs pass | | Gap list from an audit against the "Docs" gate; user guide `docs/USER-GUIDE.md` covering install, first run, grants, activation, dashboard, updates, uninstall | default accepted |
 | 7 | Live checks still open | | Q-SY-M11 (offload connectors against real services) stays an operator step, recorded as a known limitation | default accepted |
-| 8 | Repository settings | | Blocker B-R1-1: only the v1.0.0 tag waits | blocked (operator) |
+| 8 | Repository settings | | Blocker B-R1-1: only the v1.0.0 tag waited | resolved 2026-11-20 |
 
 ## 3. Hardening review (2026-11-20)
 
@@ -78,12 +78,22 @@ fires at 100 %.
 | (low) Verify could read a half-written record from another process | **Fixed.** Verify takes the append lock |
 | (low) Requests without a turn id shared one failure counter forever | **Fixed.** Not counted |
 
+### Release gate: open code-scanning alerts (OpenSSF Scorecard)
+
+| Alert | Disposition |
+|---|---|
+| Vulnerabilities (high) | **False positive.** `tests/fixtures/scanners/seeded/requirements.txt` pins `requests==2.19.0` on purpose as scanner test input; it is not a dependency of Switchyard (which has none). Dismiss as "used in tests" |
+| Branch-Protection (high), Code-Review (high) | **Accepted.** Single-maintainer project built by an agent: PRs must pass `ci` and `security`, no force pushes or deletion on `main`; required approvals would block every merge. Revisit when a second maintainer joins |
+| Maintained (high) | **Clears with time** (repository younger than 90 days) |
+| Security-Policy (medium) | **Fixed** in PR #61: `SECURITY.md` links the report form and the security model |
+| Fuzzing (medium), CII-Best-Practices (low) | **Accepted for 1.0**; candidates for 1.x (fuzz the manifest, TOML and RPC frame parsers; OpenSSF badge) |
+
 ## 4. Acceptance
 
 - [x] Hardening review findings fixed or dispositioned.
 - [x] Docs gaps closed; user guide written; links resolve.
-- [ ] All gates green; SBOM and provenance attached to the release.
-- [ ] B-R1-1 resolved before tagging v1.0.0.
+- [x] All gates green; SBOM and provenance attached to the release (verified after tagging).
+- [x] B-R1-1 resolved before tagging v1.0.0.
 
 ## 5. Retro (fill in after release)
 
@@ -91,4 +101,5 @@ fires at 100 %.
 |---|---|---|
 | Per-phase reviews cover the system | Cross-phase paths (router + resources import + meter thresholds) only showed in a whole-system review | Future major releases: repeat the area review |
 | A subprocess is an isolation boundary | Same-user processes can reach every file the core uses | Trust model wording; OS confinement roadmap |
+| Review the fixes once | The review of the R1 fixes found 10 more issues, mostly in the fixes themselves | Always review a fix diff before release |
 
