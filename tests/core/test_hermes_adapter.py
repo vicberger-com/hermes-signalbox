@@ -213,6 +213,8 @@ def test_hooks_and_middleware_are_forwarded_to_the_bridge(
         "post_llm_call",
         "subagent_start",
         "subagent_stop",
+        "transform_terminal_output",
+        "transform_tool_result",
     }
     assert set(ctx.middleware) == {"llm_request"}
     assert ctx.middleware["llm_request"](request={"model": "x"}, provider="p") is None  # no module changed it

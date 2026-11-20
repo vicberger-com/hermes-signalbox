@@ -1,0 +1,28 @@
+# Bundled module M8: output trimmer. Spec: README.md in this directory.
+schema = 1
+
+[module]
+id = "trimmer"
+name = "Trimmer"
+version = "0.9.0"
+license = "Apache-2.0"
+license_class = "open"
+summary = "Shortens long terminal and tool output before it reaches the model: repeated lines, noisy middles; errors, exit codes and paths are always kept."
+requires_core = ">=0.1,<1"
+isolation = "in-process"
+entry = "trimmer_module:TrimmerModule"
+
+[capabilities]
+request = ["hermes.output", "ui.panel"]
+
+[contributes]
+hooks = ["transform:terminal_output", "transform:tool_result"]
+commands = ["report", "preview"]
+panels = ["trimmer.status"]
+log_streams = ["trimmer"]
+
+[lifecycle]
+activation = "manual"
+
+[update]
+source = "bundled"

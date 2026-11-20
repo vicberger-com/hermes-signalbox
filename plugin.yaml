@@ -20,6 +20,8 @@ provides_hooks:
   - pre_llm_call
   - subagent_start
   - subagent_stop
+  - transform_terminal_output
+  - transform_tool_result
 provides_middleware:
   - llm_request
 config_schema:

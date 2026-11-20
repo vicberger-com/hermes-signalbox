@@ -4,6 +4,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- ADR-0008: `hermes.output` capability and deletion-only output transforms (`ctx.hermes_transform`): modules choose
+  lines, the core rebuilds output and always keeps errors, exit codes and paths.
+- Bundled `trimmer` module (M8): shortens long terminal and tool output; reduction measured on recorded fixtures.
+
 ## [0.8.0] - 2026-11-20
 
 Phase M7: workers, personas and teams.

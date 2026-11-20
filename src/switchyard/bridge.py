@@ -73,6 +73,10 @@ _SCALAR_KEYS = frozenset(
         "child_role",
         "child_status",
         "child_subagent_id",
+        "returncode",
+        "env_type",
+        "tool_name",
+        "status",
         "parent_subagent_id",
         "duration_ms",
     }
@@ -233,7 +237,7 @@ class HermesBridge:
         with self._lock:
             hooks = [n for n, entries in self._hooks.items() if any(m == module_id for m, _ in entries)]
             mids = [
-                k if k.startswith("gate:") else f"middleware:{k}"
+                k if k.startswith(("gate:", "transform:")) else f"middleware:{k}"
                 for k, entries in self._middleware.items()
                 if any(m == module_id for m, _ in entries)
             ]
@@ -370,6 +374,33 @@ class HermesBridge:
             entries = list(self._hooks.get(name, ()))
         for module_id, fn in entries:
             self._run(module_id, name, fn, metadata_only(kwargs))
+
+    def add_transform(self, module_id: str, kind: str, fn: Callable[..., Any]) -> None:
+        with self._lock:
+            self._middleware.setdefault(f"transform:{kind}", []).append((module_id, fn))
+
+    def dispatch_transform(self, kind: str, text: object, meta: Mapping[str, Any]) -> str | None:
+        """Shorten tool or terminal output (ADR-0008). Each module returns kept line ranges for the current
+        text; ``trim.rebuild`` applies them, adds must-keep lines and writes the omission markers. Returns
+        the new text, or ``None`` when nothing changed (Hermes keeps the original). Fails open."""
+        from switchyard import trim
+
+        with self._lock:
+            entries = list(self._middleware.get(f"transform:{kind}", ()))
+        if not entries or not isinstance(text, str) or len(text) > trim.MAX_INPUT_CHARS:
+            return None
+        info = metadata_only(meta)
+        current = trim.normalise(text)
+        for module_id, fn in entries:
+            lines = current.split("\n")
+            ok, ranges = self._run(module_id, f"transform:{kind}", fn, tuple(lines), dict(info))
+            if not ok or ranges is None or not isinstance(ranges, list | tuple):
+                continue
+            rebuilt = trim.rebuild(lines, ranges)
+            if rebuilt is None:
+                continue
+            current = rebuilt
+        return current if current != text else None
 
     def dispatch_gate(self, kwargs: Mapping[str, Any]) -> str | None:
         """Run ``pre_llm_call`` gates (ADR-0006) on metadata. A gate returns ``None`` or a reason **code**

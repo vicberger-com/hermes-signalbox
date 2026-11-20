@@ -243,6 +243,23 @@ class ModuleContext:
         ``contributes.hooks``."""
         self._bridge_check("gate:pre_llm_call").add_gate(self.module_id, fn)
 
+    def hermes_transform(self, kind: str, fn: Callable[[tuple[str, ...], dict[str, Any]], Any]) -> None:
+        """Shorten Hermes output (ADR-0008): ``kind`` is ``terminal_output`` or ``tool_result``;
+        ``fn(lines, meta) -> [[start, end), ...] | None`` names the lines to keep; the core rebuilds the text.
+        Needs ``hermes.output`` (the module reads tool output) and ``transform:<kind>`` in
+        ``contributes.hooks``."""
+        if kind not in ("terminal_output", "tool_result"):
+            raise SwitchyardError(f"unsupported transform {kind!r}")
+        self._open()
+        self._services.policy.require(self.module_id, "hermes.output", transform=kind)
+        if f"transform:{kind}" not in self._manifest.contributes["hooks"]:
+            raise SwitchyardError(
+                f"hook 'transform:{kind}' is not declared in contributes.hooks of {self.module_id!r}"
+            )
+        if self._services.bridge is None:
+            raise SwitchyardError("the Hermes bridge is not available in this host")
+        self._services.bridge.add_transform(self.module_id, kind, fn)
+
     def hermes_delegation(self, route: Callable[[dict[str, Any]], Any], roles: Callable[[], Any]) -> None:
         """Route Hermes ``delegate_task`` tasks (ADR-0007). ``roles() -> [(name, description)]`` feeds the
         ``worker_role`` schema enum;
