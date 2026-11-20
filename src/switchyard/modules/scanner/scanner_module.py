@@ -26,7 +26,7 @@ from typing import Any
 
 from switchyard.errors import SwitchyardError
 
-from .parsers import MAX_FINDINGS, SCANNERS, SEVERITIES, ParseError
+from .parsers import MAX_FINDINGS, MAX_OUTPUT, SCANNERS, SEVERITIES, ParseError, clean
 
 KEEP_RESOLVED = 5000
 KEEP_RUNS = 500
@@ -45,6 +45,7 @@ class ScannerModule:
         self.clock = clock
         self.settings: dict[str, Any] = {}
         self._lock = threading.Lock()
+        self._scanning = threading.Lock()
 
     def activate(self, ctx: Any) -> None:
         cfg = dict(ctx.config)
@@ -135,33 +136,63 @@ class ScannerModule:
     # scanning -----------------------------------------------------------------------------------------
 
     def scan_all(self) -> dict[str, Any]:
-        """Run every configured scanner against every target. Returns counts."""
+        """Run every configured scanner against every target. One scan at a time: a scheduled run and
+        ``run_now`` never overlap (M10 review). Returns counts."""
         if self.ctx is None:
             return {}
-        summary = {"runs": 0, "failures": 0, "new": 0}
-        for target in self.settings["targets"]:
-            for name in self.settings["scanners"]:
-                ok, new = self._scan(name, target)
-                summary["runs"] += 1
-                summary["failures"] += 0 if ok else 1
-                summary["new"] += new
-        return summary
+        if not self._scanning.acquire(blocking=False):
+            return {"skipped": "a scan is already running"}
+        try:
+            self._forget_unconfigured()
+            summary = {"runs": 0, "failures": 0, "new": 0}
+            for target in self.settings["targets"]:
+                for name in self.settings["scanners"]:
+                    if self.ctx is None:  # deactivated mid-scan
+                        return summary
+                    ok, new = self._scan(name, target)
+                    summary["runs"] += 1
+                    summary["failures"] += 0 if ok else 1
+                    summary["new"] += new
+            return summary
+        finally:
+            self._scanning.release()
+
+    def _forget_unconfigured(self) -> None:
+        """Resolve findings and failures of scanners or targets no longer configured (M10 review)."""
+        t = self._t("findings")
+        configured = {(n, tg) for n in self.settings["scanners"] for tg in self.settings["targets"]}
+        with self._lock:
+            rows = self._q(f"SELECT key, scanner, rule, target FROM {t} WHERE state != 'resolved'")  # nosec B608
+            for key, scanner, rule, target in rows:
+                name = rule.rsplit(":failed", 1)[0] if scanner == "scanner" else scanner
+                if (name, target) not in configured:
+                    self._q(f"UPDATE {t} SET state = 'resolved' WHERE key = ?", (key,))  # nosec B608
 
     def _scan(self, name: str, target: str) -> tuple[bool, int]:
         build, parse, ok_codes = SCANNERS[name]
         started = self.clock()
         outcome, findings = "ok", []
         try:
-            done = self.ctx.spawn.run(build(target, self.settings), timeout=self.settings["timeout_seconds"])
-            if done.returncode not in ok_codes:
+            done = self.ctx.spawn.run(
+                build(target, self.settings), timeout=self.settings["timeout_seconds"], max_output=MAX_OUTPUT
+            )
+            if getattr(done, "truncated", False):
+                outcome = "output too large"
+            elif done.returncode not in ok_codes:
                 outcome = f"exit {done.returncode}"
             else:
-                findings = parse(done.stdout)[:MAX_FINDINGS]
+                findings = parse(done.stdout)
+                if len(findings) > MAX_FINDINGS:  # partial results must not resolve anything (M10 review)
+                    outcome, findings = f"truncated: more than {MAX_FINDINGS} findings", []
         except SwitchyardError as exc:  # missing program, timeout, could not start, not granted
             outcome = " ".join(str(exc).split())[:120]
         except ParseError as exc:
             outcome = str(exc)[:120]
+        except Exception as exc:  # anything else is a failure too, and the other scanners still run
+            outcome = f"error: {type(exc).__name__}"
         with self._lock:
+            if self.ctx is None:
+                return False, 0
             new = self._store(name, target, outcome, findings, started)
         return outcome == "ok", new
 
@@ -253,7 +284,8 @@ class ScannerModule:
         return len(new_alerts)
 
     def _announce(self, severity: str, title: str) -> None:
-        self.ctx.emit("scanner.finding", {"severity": severity, "title": title[:200]})
+        title = clean(title, 200)  # repository text: no control characters (M10 review)
+        self.ctx.emit("scanner.finding", {"severity": severity, "title": title})
         if self.ctx.has("notify"):
             self.ctx.notify.send(severity, title[:120])
 

@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
 import subprocess  # nosec B404
+import sys
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -25,6 +28,33 @@ BASE_ENV = (
 )  # fmt: skip
 DEFAULT_TIMEOUT_S = 30.0
 MAX_TIMEOUT_S = 600.0
+DEFAULT_MAX_OUTPUT = 10_000_000
+MAX_OUTPUT_BYTES = 50_000_000
+
+
+def _read_capped(handle: Any, limit: int) -> tuple[str, bool]:
+    handle.seek(0)
+    data = handle.read(limit + 1)
+    return data[:limit].decode("utf-8", errors="replace"), len(data) > limit
+
+
+def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
+    """Kill the child and everything it started."""
+    try:
+        if sys.platform == "win32":
+            killer = find_program("taskkill")
+            if killer is not None:
+                argv = [killer, "/T", "/F", "/PID", str(proc.pid)]
+                subprocess.run(argv, capture_output=True, timeout=10, check=False)  # noqa: S603 # nosec B603
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        proc.kill()
+        proc.wait(timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def find_program(name: str) -> str | None:
@@ -58,6 +88,7 @@ class ProcessBroker:
         env: Mapping[str, str] | None = None,
         input: str | None = None,
         timeout: float = DEFAULT_TIMEOUT_S,
+        max_output: int = DEFAULT_MAX_OUTPUT,
     ) -> subprocess.CompletedProcess[str]:
         if not argv or not all(isinstance(a, str) for a in argv):
             raise SwitchyardError("argv must be a non-empty list of strings")
@@ -69,25 +100,42 @@ class ProcessBroker:
         child_env = {k: v for k in BASE_ENV if (v := os.environ.get(k)) is not None}
         child_env.update(env or {})
         child_env["NO_COLOR"] = "1"
-        try:
-            # An argv list and no shell.
-            done = subprocess.run(  # noqa: S603 # nosec B603
-                [exe, *argv[1:]],
-                env=child_env,
-                input=input,
-                stdin=None if input is not None else subprocess.DEVNULL,
-                capture_output=True,
-                text=True,
-                timeout=min(max(timeout, 0.1), MAX_TIMEOUT_S),
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            self._record(module_id, program, "timeout")
-            raise SwitchyardError(f"{program} timed out") from None
-        except OSError as exc:
-            self._record(module_id, program, type(exc).__name__)
-            raise SwitchyardError(f"{program} could not start: {type(exc).__name__}") from None
-        self._record(module_id, program, str(done.returncode))
+        limit = min(max(int(max_output), 1), MAX_OUTPUT_BYTES)
+        # Output goes to temporary files, not pipes (M10 review): on Windows a grandchild holding a pipe kept
+        # ``subprocess.run`` from returning long after its timeout, and pipes are read whole into memory. On
+        # timeout the whole process tree is killed. Output is decoded leniently and capped at ``max_output``.
+        with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+            try:
+                proc = subprocess.Popen(  # noqa: S603 # nosec B603 - an argv list and no shell
+                    [exe, *argv[1:]],
+                    env=child_env,
+                    stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+                    stdout=out,
+                    stderr=err,
+                    start_new_session=os.name != "nt",
+                    creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                    if os.name == "nt"
+                    else 0,
+                )
+            except OSError as exc:
+                self._record(module_id, program, type(exc).__name__)
+                raise SwitchyardError(f"{program} could not start: {type(exc).__name__}") from None
+            try:
+                if input is not None and proc.stdin is not None:
+                    try:
+                        proc.stdin.write(input.encode("utf-8"))
+                    finally:
+                        proc.stdin.close()
+                code = proc.wait(timeout=min(max(timeout, 0.1), MAX_TIMEOUT_S))
+            except subprocess.TimeoutExpired:
+                _kill_tree(proc)
+                self._record(module_id, program, "timeout")
+                raise SwitchyardError(f"{program} timed out") from None
+            stdout, truncated = _read_capped(out, limit)
+            stderr, _ = _read_capped(err, min(limit, 1_000_000))
+        self._record(module_id, program, str(code))
+        done = subprocess.CompletedProcess([exe, *argv[1:]], code, stdout, stderr)
+        done.truncated = truncated  # type: ignore[attr-defined]
         return done
 
     def _record(self, module_id: str, program: str, result: str) -> None:
