@@ -2,7 +2,7 @@
 # `hermes_agent.plugins` entry point declared in pyproject.toml. Implementation: src/switchyard/hermes/__init__.py
 manifest_version: 2
 name: switchyard
-version: 0.4.0
+version: 0.5.0
 description: "Security-first, modular control plane for Hermes: modules, capability grants, audit, secrets by reference."
 author: Vic Berger
 license: Apache-2.0

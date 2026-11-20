@@ -357,7 +357,7 @@ def test_router_cools_down_an_exhausted_quota_scope(core: Core, tmp_path: Path, 
         res("set_state", id=rid, state="auto")
         res("pool_add", pool="main", id=rid, priority=i)
     res("bind", consumer="main", pool="main")
-    for cap in ("hermes.hooks", "ui.panel"):
+    for cap in ("hermes.hooks", "ui.panel", "llm.free"):
         core.run("module", "grant", {"id": "router", "capability": cap}, actor="t")
     core.run("module", "activate", {"id": "router"}, actor="t")
     core.manager._entry("router").instance.clock = clock
@@ -391,6 +391,23 @@ def test_router_cools_down_an_exhausted_quota_scope(core: Core, tmp_path: Path, 
         thresholds="100",
     )
     response(core, "free/b:free", usage())
-    assert route() == "x/default"  # whole provider exhausted: pass through
+    assert route() == "x/default"  # whole provider exhausted: pass through, audited once
+    assert route() == "x/default"
+    passthrough = [r for r in core.run("audit", "tail", {"n": 200}, actor="t")
+                   if r["action"] == "module.router.quota_passthrough"]  # fmt: skip
+    assert len(passthrough) == 1
+    configured_free = {"model": "free/a:free", "messages": [{"role": "user", "content": "hi"}]}
+    out = core.bridge.dispatch_llm_request(
+        configured_free, {"provider": OR, "turn_id": "t", "api_request_id": "r2"}
+    )
+    assert out is None  # configured model also inside the exhausted scope: nothing else to send, audited
     clock.now += 86_400
     assert route() == "free/a:free"  # cool-downs end with the quota period
+
+
+def test_summary_totals_cover_every_row(core: Core) -> None:
+    for i in range(205):
+        response(core, f"m/{i}", usage(1, 1))
+    s = mt(core, "summary", days=1)
+    assert s["truncated"] is True and len(s["models"]) == 200
+    assert s["totals"]["requests"] == 205 and s["totals"]["tokens"] == 410

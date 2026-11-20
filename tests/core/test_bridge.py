@@ -239,3 +239,10 @@ def test_observer_payloads_hold_no_text() -> None:
     assert (
         out["error"] == {"type": "RateLimitError"} and len(out["turn_id"]) == 300 and out["retryable"] is True
     )
+    later = metadata_only(
+        {"side_question_token": "lease-abc", "prompt": "text", "sender_id": "u1", "status_code": 429,
+         "base_url": "https://user:pw@api.example.com:8443/v1?key=SECRET#x"}
+    )  # fmt: skip
+    assert later == {"status_code": 429, "base_url": "https://api.example.com:8443"}
+    assert metadata_only({"base_url": "not a url"}) == {"base_url": ""}
+    assert metadata_only({"base_url": "http://[bad"}) == {}

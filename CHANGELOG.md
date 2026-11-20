@@ -4,6 +4,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-20
+
+Phase M4: metering, quotas and budgets.
+
 ### Added
 - Bundled `meter` module (M4): counts every Hermes API response by day, hour, provider and model (tokens
   exactly as reported, errors, subagent runs, estimated cost from models.dev prices); opt-in quotas on
@@ -15,6 +19,12 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 ### Changed
 - Bridge (ADR-0004 decision 6): observer hooks hand modules metadata only (no message text, conversation,
   tool traces or raw SDK objects); `subagent_stop` is forwarded.
+- CI: CodeQL runs through GitHub's default setup; the conflicting advanced job was removed.
+
+### Security
+- M4 security review (`src/switchyard/modules/meter/README.md`): observer payloads use an allow-list (a
+  Hermes lease token was forwarded); the router applies exhausted quota scopes on every path and audits
+  pass-through; `llm.free` is checked on every request; quota changes are serialized with threshold checks.
 
 ## [0.4.0] - 2026-11-20
 

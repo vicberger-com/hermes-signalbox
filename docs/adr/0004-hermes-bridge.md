@@ -30,9 +30,11 @@ registry's candidate list (M2) without reading another module's tables.
    possible. No capability is needed, so **read-only actions must return no secret or sensitive data**
    (they are also visible to the Hermes model).
 
-6. **Metadata only** (amended in M4, Q&A 05 question 10). Observer hooks hand modules scalar fields, the
-   numeric `usage` buckets and model names from `request`, `response` and `error`; message text, conversation
-   history, tool traces and raw SDK objects never reach a module. `subagent_stop` is also forwarded.
+6. **Metadata only** (amended in M4, Q&A 05 question 10). Observer hooks hand modules an **allow-list** of
+   scalar fields (ids, model, provider, counts, timings, status), the numeric `usage` buckets, `base_url` as
+   scheme and host only, and model names from `request`, `response` and `error`. Every other key is dropped,
+   including keys Hermes adds later; message text, conversation history, tool traces, lease tokens
+   (`side_question_token`) and raw SDK objects never reach a module. `subagent_stop` is also forwarded.
 
 ## Consequences
 

@@ -65,3 +65,8 @@ prices (stated as such); responses with no usage are counted as requests with `u
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| A denylist of text keys keeps text out | Hermes payloads carry text and tokens under keys nobody listed (`side_question_token`); forward an allow-list only | Bridge; any filter on third-party payloads |
+| "Optional" capabilities only change start-up | Once optional, nothing checked them; every optional capability needs a run-time `ctx.has` check | Every manifest with `optional` |
+| Cooling a quota scope stops traffic | Middleware can only steer; the pass-through path needs the same rules and an audit trail, and a hard stop needs a blocking hook | Router, M6 policies |
+| GitHub CodeQL can run as a workflow job | With default setup on (enabled when the repository went public) advanced uploads are rejected | CI |
+

@@ -10,8 +10,10 @@ only). An ``llm_request`` middleware can only change the request's ``model``: no
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import copy
 import threading
+import urllib.parse
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -27,24 +29,73 @@ OBSERVER_HOOKS = frozenset(
         "subagent_stop",
     }
 )
-_TEXT_KEYS = frozenset(
-    {"user_message", "assistant_response", "child_summary", "system_prompt", "final_response"}
+# Allowlist of metadata keys forwarded to observer modules (ADR-0004 decision 6). Anything else, including
+# keys Hermes adds later, is dropped: message text, tokens (``side_question_token``), sender ids, prompts.
+_SCALAR_KEYS = frozenset(
+    {
+        "task_id",
+        "turn_id",
+        "api_request_id",
+        "session_id",
+        "parent_session_id",
+        "parent_turn_id",
+        "child_session_id",
+        "platform",
+        "model",
+        "provider",
+        "api_mode",
+        "api_call_count",
+        "retry_count",
+        "max_retries",
+        "retryable",
+        "status_code",
+        "reason",
+        "finish_reason",
+        "response_model",
+        "upstream_provider",
+        "api_duration",
+        "started_at",
+        "ended_at",
+        "first_chunk_at",
+        "message_count",
+        "tool_count",
+        "approx_input_tokens",
+        "request_char_count",
+        "max_tokens",
+        "context_length",
+        "assistant_content_chars",
+        "is_first_turn",
+        "child_role",
+        "child_status",
+        "duration_ms",
+    }
 )
 _MAX_STR = 300
 
 
+def _host_only(url: str) -> str:
+    """``scheme://host[:port]`` of a URL: no user info, path, query or fragment (they can carry keys)."""
+    parts = urllib.parse.urlsplit(url)
+    host = parts.hostname or ""
+    port = f":{parts.port}" if parts.port else ""
+    return f"{parts.scheme}://{host}{port}"[:_MAX_STR] if parts.scheme and host else ""
+
+
 def metadata_only(kwargs: Mapping[str, Any]) -> dict[str, Any]:
-    """Reduce an observer hook payload to metadata (ADR-0004 decision 6): scalar fields, the numeric ``usage``
-    buckets, and the model names inside ``request``/``response``/``error``. Message text, conversation
-    history, tool traces and raw SDK objects are dropped."""
+    """Reduce an observer hook payload to metadata (ADR-0004 decision 6): allow-listed scalar fields, the
+    numeric ``usage`` buckets, ``base_url`` as scheme and host, and model names inside
+    ``request``/``response``/``error``. Everything else is dropped."""
     out: dict[str, Any] = {}
-    for key, value in kwargs.items():
-        if not isinstance(key, str) or key in _TEXT_KEYS:
-            continue
+    for key in _SCALAR_KEYS & set(kwargs):
+        value = kwargs[key]
         if value is None or isinstance(value, bool | int | float):
             out[key] = value
         elif isinstance(value, str):
             out[key] = value[:_MAX_STR]
+    base_url = kwargs.get("base_url")
+    if isinstance(base_url, str):
+        with contextlib.suppress(ValueError):  # unparseable URL: leave it out
+            out["base_url"] = _host_only(base_url)
     usage = kwargs.get("usage")
     if isinstance(usage, Mapping):
         out["usage"] = {k: v for k, v in usage.items() if isinstance(k, str) and isinstance(v, int | float)}

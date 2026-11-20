@@ -24,13 +24,13 @@ Hourly rows are kept 7 days, daily rows `retention_days` (default 90).
 
 `quota_add {name, scope, metric, period, limit, thresholds}`:
 
-- `scope`: `all`, `provider:<id>`, or one resource `<provider>/<model>`
+- `scope`: `all`, `provider:<id>`, or one resource `<provider>/<model>` (provider part is lower-cased)
 - `metric`: `requests`, `tokens`, `cost_usd`; `period`: `day` or `month` (UTC)
 - `limit`: a decimal string; `thresholds`: percentages, default `"80,100"`
 
 Each threshold fires once per quota and period: `meter.threshold` (audited as `module.meter.threshold`), and
 at 100 % also `meter.exhausted`. The router (M3) cools the quota's scope down until the period ends.
-`forecast {name}` projects the period total and the exhaustion time from the average rate over the last 24
+`summary` totals cover every row (the model list is capped at 200, with `truncated`). `forecast {name}` projects the period total and the exhaustion time from the average rate over the last 24
 hours (or since the period start).
 
 ## Control surface
@@ -47,3 +47,18 @@ Capabilities: `hermes.hooks`, `ui.panel` (required); `fs.read` (optional, for pr
 ## State and removal
 
 Tables `daily`, `hourly`, `subagents`, `quotas`, `fired`. Removed with the module unless `keep_data`.
+
+## Security review (M4 gate)
+
+Reviewed 2026-11-20 by a fresh subagent with the M4 diff, the threat table and the Hermes v0.23.2 sources.
+
+| Finding | Disposition |
+|---|---|
+| (high) An exhausted `all` / `provider:` quota was not applied on the router's pass-through and paid-fallback paths | **Fixed.** One effective-cooling helper for every path; when nothing is left the request passes through and `quota_passthrough` is audited. Documented as steering (middleware cannot refuse a request) |
+| (high) `post_llm_call` carries `side_question_token`, a lease redeemable for an answer over the turn's messages; the denylist forwarded it | **Fixed.** Observer payloads use an allow-list of metadata keys |
+| (medium) `llm.free` became optional and was then not checked at all | **Fixed.** The router checks `llm.free` on every request (free and self-hosted candidates need it) |
+| (medium) Denylist forwarded unknown text keys and `base_url` with credentials in the query | **Fixed.** Allow-list; `base_url` reduced to scheme and host |
+| (low) Quota changes could interleave with a threshold check | **Fixed.** Same lock |
+| (low) Mixed-case provider scopes never matched | **Fixed.** Provider part lower-cased |
+| (low) `summary`/`usage` totals undercounted past the row limit; subagent query unbounded | **Fixed.** Totals in SQL, `truncated` flag, subagent rows capped at 200 |
+
