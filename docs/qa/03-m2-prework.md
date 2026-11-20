@@ -64,3 +64,9 @@ Automated in `tests/modules/test_resources.py` and `tests/core/test_fsread.py`.
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| A path parameter is harmless if the read needs a grant | The grant is module-wide; a model-supplied path turns a read-only action into arbitrary file reads. Model-runnable actions take no paths | Every module with file inputs |
+| `Path.is_absolute()` means "local file" | On Windows UNC paths are absolute and resolving them contacts the remote host (NTLM). Paths are checked syntactically before any I/O | `ctx.fs`, any path handling on Windows |
+| A depth check after `json.loads` bounds cost | Parsing already built the structure; screen the text first | Any JSON input |
+| A catalog cap can exceed the state store's row cap | Module limits must stay at or below the store's 10 000-row query cap, or page | Every module that stores catalogs |
+| An import preview is a pure read | It stores a pending row; one per source prevents slot exhaustion and stale applies | Any preview/apply flow |
+

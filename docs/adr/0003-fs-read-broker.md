@@ -11,12 +11,15 @@ models.dev cache, operator-supplied JSON); M5 and M10 will read skill and scan t
 
 `ctx.fs` (needs `fs.read`) offers `read_text(path, *, max_bytes)` and `read_json(path, *, max_bytes)`:
 
-- the path must be absolute and name a regular file (no directories, devices, FIFOs); symlinks are resolved
-  first and the resolved target must also be a regular file;
+- the path must be absolute and local: on Windows it must start with a drive letter (no UNC paths, which
+  would contact a remote host and send NTLM credentials; no `\\.\` or `\\?\` device paths or device names).
+  The grant is checked before any file-system call. The file is opened (non-blocking on POSIX) and `fstat`
+  on the handle must show a regular file;
 - the file size is checked against `max_bytes` (default 1 MiB, ceiling 32 MiB) before reading, and the read
   itself is bounded;
-- text is UTF-8; JSON is parsed with a nesting limit (depth 64);
-- each read is audited as `fs.read` with the resolved path and byte count, never the content.
+- text is UTF-8; JSON is screened on the text before parsing (depth 64, at most 1 000 000 values);
+- each read is audited as `fs.read` with the resolved path and byte count, and each refusal after the grant
+  as `fs.read_failed` with a reason; never the content.
 
 No path allow-list in the manifest yet: the grant is the decision, the audit is the record. A per-module
 allow-list can tighten this later without changing the call.

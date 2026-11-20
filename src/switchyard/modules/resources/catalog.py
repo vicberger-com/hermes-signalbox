@@ -14,7 +14,8 @@ TAG = re.compile(r"[a-z0-9][a-z0-9._-]{0,31}\Z")
 KINDS = ("model", "endpoint", "agent", "tool")
 COST_CLASSES = ("free", "paid", "self-hosted")
 STATES = ("manual", "auto", "disabled")
-MAX_ROWS = 20_000
+MAX_ROWS = 10_000  # also the state store's per-query row cap
+MAX_TAGS = 32
 SELF_HOSTED_PROVIDERS = frozenset({"ollama", "lmstudio", "llama.cpp", "llamacpp", "vllm", "local", "jan"})
 DESCRIPTIVE = ("kind", "provider", "name", "cost_class", "tags", "limits")
 
@@ -56,6 +57,8 @@ def resource(
     if kind not in KINDS or cost_class not in COST_CLASSES:
         raise SwitchyardError(f"resource {rid!r}: invalid kind or cost class")
     clean_tags = sorted({t for t in tags if isinstance(t, str) and TAG.match(t)})
+    if len(clean_tags) > MAX_TAGS:
+        raise SwitchyardError(f"resource {rid!r}: more than {MAX_TAGS} tags")
     clean_limits = {k: v for k in ("context", "output") if (v := _int(limits.get(k))) is not None}
     return {
         "id": rid,

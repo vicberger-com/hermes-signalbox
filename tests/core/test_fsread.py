@@ -78,3 +78,51 @@ def test_device_files_are_refused(fs: tuple[FsBroker, PolicyEngine]) -> None:
     policy.grant("demo", "fs.read", actor="t")
     with pytest.raises(SwitchyardError, match="regular file"):
         broker.read_text("demo", os.devnull)
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["\\\\attacker-host\\share\\x.json", "//attacker-host/share/x.json", "\\\\.\\C:\\x", "\\\\?\\C:\\x",
+     "C:relative.json", "C:\\Users\\NUL", "C:\\x\\con.txt", "C:\\a\x00b"],
+)  # fmt: skip
+def test_windows_paths_that_are_not_local_files_are_refused_without_io(path: str) -> None:
+    from switchyard.fsread import check_local_path
+
+    with pytest.raises(SwitchyardError):
+        check_local_path(path, windows=True)
+    assert check_local_path("C:\\Users\\vic\\models.json", windows=True)
+
+
+def test_posix_rules_and_failures_are_audited(
+    fs: tuple[FsBroker, PolicyEngine], tmp_path: Path, audit: RecordingAudit
+) -> None:
+    from switchyard.fsread import check_local_path
+
+    with pytest.raises(SwitchyardError, match="absolute"):
+        check_local_path("relative/x", windows=False)
+    assert check_local_path("/etc/hosts", windows=False)
+    broker, policy = fs
+    policy.grant("demo", "fs.read", actor="t")
+    with pytest.raises(SwitchyardError):
+        broker.read_text("demo", tmp_path / "missing.json")
+    assert (
+        audit.records[-1]["action"] == "fs.read_failed"
+        and audit.records[-1]["detail"]["reason"] == "not_found"
+    )
+
+
+def test_json_screen_bounds_size_before_parsing(
+    fs: tuple[FsBroker, PolicyEngine], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from switchyard import fsread
+
+    broker, policy = fs
+    policy.grant("demo", "fs.read", actor="t")
+    monkeypatch.setattr(fsread, "MAX_JSON_ITEMS", 100)
+    wide = tmp_path / "wide.json"
+    wide.write_text(json.dumps([0] * 500), encoding="utf-8")
+    with pytest.raises(SwitchyardError, match="values"):
+        broker.read_json("demo", wide)
+    commas_in_strings = tmp_path / "strings.json"
+    commas_in_strings.write_text(json.dumps(["a,b[{" * 100]), encoding="utf-8")
+    assert broker.read_json("demo", commas_in_strings) == ["a,b[{" * 100]

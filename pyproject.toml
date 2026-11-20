@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hermes-switchyard"
-version = "0.2.0"
+version = "0.3.0"
 description = "Security-first, modular control plane for Hermes Agent."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -56,7 +56,8 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
 "tests/**" = ["S101"]
 # Bundled modules build SQL only from constants and ctx.state.table() names; values are always bound.
 # Bandit's B608 is still marked per line with "nosec B608".
-"src/switchyard/modules/*/*_module.py" = ["S608"]
+"src/switchyard/modules/secrets/secrets_module.py" = ["S608"]
+"src/switchyard/modules/resources/resources_module.py" = ["S608"]
 
 [tool.mypy]
 python_version = "3.11"

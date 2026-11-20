@@ -5,9 +5,11 @@ Resources are catalog entries (models, endpoints, agents, tools) with a state (`
 per-pool priority; consumers (``main``, ``subagent:<name>``, ``function:<name>``) are bound to one pool.
 ``resolve`` returns a consumer's usable resources in order.
 
-Imports are reviewed: ``import_preview`` reads a source and stores a diff; nothing changes until a human runs
-``import_apply``. New resources arrive ``disabled``; an import never changes state, priority or tags of
-existing rows (except adding the ``stale`` tag to rows the source no longer lists).
+Imports are reviewed: ``import_preview`` (configured models.dev cache, no path; the model may run it) and
+``import_file`` (operator-chosen path, human-only) store a diff; nothing changes until a human runs
+``import_apply``. One pending import per source. New resources arrive ``disabled``; an import replaces only
+catalog fields and catalog tags (a ``stale`` catalog tag marks rows the source no longer lists); state,
+priority and user tags never change.
 
 Settings, ``[modules.resources]``::
 
@@ -17,6 +19,7 @@ Settings, ``[modules.resources]``::
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -125,7 +128,8 @@ class ResourcesModule:
             "show": {"id": str},
             "pools": {},
             "resolve": {"consumer": str},
-            "import_preview": {"source": str, "path": str, "providers": str, "free_only": bool},
+            "import_preview": {"providers": str, "free_only": bool},
+            "import_file": {"path": str},
             "set_state": {"id": str, "state": str},
             "set_priority": {"id": str, "priority": int},
             "tag": {"id": str, "tag": str},
@@ -225,8 +229,9 @@ class ResourcesModule:
             like = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
             args += [like, like]
         if tag:
-            where.append("(r.tags LIKE ? OR r.source_tags LIKE ?)")
-            needle = f'%"{_check(TAG, tag, "tag")}"%'
+            where.append("(r.tags LIKE ? ESCAPE '\\' OR r.source_tags LIKE ? ESCAPE '\\')")
+            escaped = _check(TAG, tag, "tag").replace("_", "\\_")
+            needle = f'%"{escaped}"%'
             args += [needle, needle]
         join = ""
         if pool:
@@ -269,7 +274,7 @@ class ResourcesModule:
         sql = (
             f"SELECT {cols} FROM {self._t('resources')} r JOIN {self._t('pool_members')} m "  # nosec B608
             "ON m.resource = r.id WHERE m.pool = ? AND r.state != 'disabled' "
-            "ORDER BY m.priority, r.priority, r.id"
+            "ORDER BY m.priority, r.priority, r.id LIMIT 1000"
         )
         return {
             "consumer": consumer,
@@ -277,44 +282,46 @@ class ResourcesModule:
             "resources": [self._row(r) for r in self._q(sql, (pool,))],
         }
 
-    def import_preview(
-        self, source: str, path: str = "", providers: str = "", free_only: bool = False
-    ) -> dict[str, Any]:
-        """Read a catalog and store the diff for review. Changes nothing in the registry."""
-        if source == "models.dev":
-            doc = self.ctx.fs.read_json(
-                path or self.settings["models_dev_cache"], max_bytes=self.settings["max_bytes"]
-            )
-            wanted = {p.strip() for p in providers.split(",") if p.strip()}
-            incoming = from_models_dev(doc, providers=wanted, free_only=free_only)
-            label = "models.dev"
-        elif source == "file":
-            if not path:
-                raise SwitchyardError("source 'file' needs an absolute path")
-            incoming = from_file(self.ctx.fs.read_json(path, max_bytes=self.settings["max_bytes"]))
-            label = "file:" + Path(path).name[:80]
-        else:
-            raise SwitchyardError("source must be 'models.dev' or 'file'")
+    def import_preview(self, providers: str = "", free_only: bool = False) -> dict[str, Any]:
+        """Preview an import from the configured models.dev cache. Takes no path, so the model may run it."""
+        doc = self.ctx.fs.read_json(self.settings["models_dev_cache"], max_bytes=self.settings["max_bytes"])
+        wanted = {p.strip() for p in providers.split(",") if p.strip()}
+        return self._stage("models.dev", from_models_dev(doc, providers=wanted, free_only=free_only))
+
+    def import_file(self, path: str) -> dict[str, Any]:
+        """Preview an import from a catalog file. Human-only: the path is chosen by the operator."""
+        incoming = from_file(self.ctx.fs.read_json(path, max_bytes=self.settings["max_bytes"]))
+        digest = hashlib.sha256(str(Path(path).resolve()).encode("utf-8")).hexdigest()[:12]
+        return self._stage(f"file:{digest}:{Path(path).name[:60]}", incoming)
+
+    def _stage(self, label: str, incoming: list[dict[str, Any]]) -> dict[str, Any]:
+        """Store the diff against rows from the same source. One pending import per source: a new preview
+        replaces the previous one, so an old snapshot can never be applied over a newer one."""
         t = self._t("resources")
-        sql = f"SELECT {_COLS} FROM {t} WHERE source = ?"  # nosec B608
-        existing = {r["id"]: {**r, "tags": r["source_tags"]} for r in map(self._row, self._q(sql, (label,)))}
+        existing: dict[str, dict[str, Any]] = {}
+        offset = 0
+        while True:
+            sql = f"SELECT {_COLS} FROM {t} WHERE source = ? ORDER BY id LIMIT ? OFFSET ?"  # nosec B608
+            page = self._q(sql, (label, 1000, offset))
+            existing.update({r["id"]: {**r, "tags": r["source_tags"]} for r in map(self._row, page)})
+            if len(page) < 1000:
+                break
+            offset += 1000
         changes = diff(existing, incoming)
         imports = self._t("imports")
+        self._q(f"DELETE FROM {imports} WHERE source = ?", (label,))  # nosec B608
         if self._q(f"SELECT count(*) FROM {imports}")[0][0] >= MAX_PENDING:  # nosec B608
             raise SwitchyardError(f"{MAX_PENDING} imports are pending; apply or discard one first")
         import_id = _random.token_hex(6)
-        self._q(
-            f"INSERT INTO {imports} VALUES (?, ?, ?, ?)",  # nosec B608
-            (import_id, label, _now(), json.dumps(changes)),
-        )
-        return {
-            "import_id": import_id,
-            "source": label,
-            "added": len(changes["added"]),
-            "changed": len(changes["changed"]),
-            "removed": len(changes["removed"]),
-            "sample": {k: changes[k][:10] for k in ("added", "changed", "removed")},
+        row = (import_id, label, _now(), json.dumps(changes))
+        self._q(f"INSERT INTO {imports} VALUES (?, ?, ?, ?)", row)  # nosec B608
+        counts = {k: len(changes[k]) for k in ("added", "changed", "removed")}
+        sample = {
+            "added": [r["id"] for r in changes["added"][:10]],
+            "changed": [c["id"] for c in changes["changed"][:10]],
+            "removed": changes["removed"][:10],
         }
+        return {"import_id": import_id, "source": label, **counts, "sample_ids": sample}
 
     # human-only actions -------------------------------------------------------------------------------
 
@@ -437,10 +444,12 @@ class ResourcesModule:
                     source,
                 ),
             )
-        for rid in changes["removed"]:
-            row = self._q(f"SELECT tags FROM {t} WHERE id = ? AND source = ?", (rid, source))  # nosec B608
+        for rid in changes["removed"]:  # catalog-side marker; cleared when the source lists the row again
+            row = self._q(f"SELECT source_tags FROM {t} WHERE id = ? AND source = ?", (rid, source))  # nosec B608
             if row:
-                self._set_tags(rid, [*json.loads(row[0][0] or "[]"), "stale"])
+                tags = json.dumps(sorted({*json.loads(row[0][0] or "[]"), "stale"}))
+                sql = f"UPDATE {t} SET source_tags = ?, updated_at = ? WHERE id = ?"  # nosec B608
+                self._q(sql, (tags, now, rid))
         self._q(f"DELETE FROM {self._t('imports')} WHERE id = ?", (import_id,))  # nosec B608
         counts = {k: len(changes[k]) for k in ("added", "changed", "removed")}
         self._record(

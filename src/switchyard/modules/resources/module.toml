@@ -20,7 +20,7 @@ commands = [
   "list", "show", "pools", "resolve", "import_preview",
   "set_state", "set_priority", "tag", "untag",
   "pool_create", "pool_delete", "pool_add", "pool_remove",
-  "bind", "unbind", "import_apply", "import_discard",
+  "bind", "unbind", "import_file", "import_apply", "import_discard",
 ]
 panels = ["resources.status"]
 log_streams = ["resources"]
