@@ -42,7 +42,8 @@ Source, verification, health check used after update.
 ## Contract tests
 
 `tests/test_contract.py` keeps the module's own unit tests and calls `switchyard.contract.run_contract` on
-the module directory. A module ships only when the full contract passes (see `docs/modules/m0-core.md`).
+the module directory. It passes `bundled=True` because the template is in-process, which only a module inside this
+repository may be; a module shipped on its own sets `isolation = "subprocess"` and drops the flag. A module ships only when the full contract passes (see `docs/modules/m0-core.md`).
 
 ## Third-party code
 

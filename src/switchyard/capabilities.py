@@ -112,6 +112,19 @@ class PolicyEngine:
         )
         with self._lock:
             self._modules[manifest.id] = reg
+            # H1 A-6: consent belongs to the capabilities this code asks for. A stored grant the manifest
+            # no longer requests (or now denies) is removed; a later version asking again needs a new grant.
+            for capability in sorted(self._store.load(manifest.id) - (reg.requested - reg.denied)):
+                self._store.remove(manifest.id, capability)
+                detail = {"capability": capability, "reason": "no longer requested"}
+                self._audit.append(
+                    actor=CORE_ACTOR, action="policy.revoked", module=manifest.id, detail=detail
+                )
+
+    def stored_grants(self, module_id: str) -> frozenset[str]:
+        """Grants in the store, whether or not the module is registered (the contract checks removal)."""
+        with self._lock:
+            return frozenset(self._store.load(module_id))
 
     def unregister(self, module_id: str, *, actor: str, keep_grants: bool = False) -> None:
         with self._lock:
@@ -183,8 +196,14 @@ class PolicyEngine:
         """``net.outbound`` plus the manifest's host allow-list (case-insensitive, exact match)."""
         self.require(module_id, "net.outbound", host=host)
         with self._lock:
-            reg = self._modules[module_id]
+            reg = self._modules.get(module_id)
         host = host.lower()
+        if reg is None:  # unregistered between the two checks (H1 A-15)
+            raise self._deny(
+                module_id,
+                {"capability": "net.outbound", "host": host},
+                f"module {module_id!r} is not registered",
+            )
         bare = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
         if host not in reg.net_hosts and bare not in reg.net_hosts:  # a bare entry allows any port
             raise self._deny(
@@ -197,8 +216,8 @@ class PolicyEngine:
         """``secrets.read`` plus the manifest's secret-name allow-list."""
         self.require(module_id, "secrets.read", secret=name)
         with self._lock:
-            reg = self._modules[module_id]
-        if name not in reg.secrets:
+            reg = self._modules.get(module_id)
+        if reg is None or name not in reg.secrets:  # None: unregistered between the two checks (H1 A-15)
             raise self._deny(
                 module_id,
                 {"capability": "secrets.read", "secret": name},

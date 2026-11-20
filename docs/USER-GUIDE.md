@@ -29,7 +29,7 @@ under `switchyard/_plugin/` for when Hermes supports that.
 **Which data directory.** Switchyard keeps its state, grants, audit log and `config.toml` in one data directory.
 A Hermes session uses the profile's plugin data directory; the `switchyard` command uses a platform default
 (`%LOCALAPPDATA%\switchyard`, `~/Library/Application Support/switchyard` or `~/.local/share/switchyard`). These
-are **two different stores** unless you point both at one: set `SWITCHYARD_DATA_DIR` (or pass `--data-dir`) to
+are **two different stores** unless you point both at one: set `SWITCHYARD_DATA_DIR` (or pass `--data-dir`, which wins over the variable) to
 the same absolute path everywhere. `switchyard config show` prints the directory in use and why it was chosen
 (`data_dir_source`).
 

@@ -158,7 +158,8 @@ def _run(operation: Operation, params: dict[str, Any], data_dir: Path | None) ->
             raise SwitchyardError(
                 f"'{name}' needs the running daemon: start it with 'switchyard api serve'"
             ) from None
-    with Core(data_dir=resolved, hosting=False) as core:
+    # data_dir None: Core resolves the same directory itself, so config show reports the right source
+    with Core(data_dir=data_dir, hosting=False) as core:
         return core.run(operation.noun, operation.verb, params, actor="cli")
 
 

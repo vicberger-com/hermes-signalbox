@@ -22,10 +22,11 @@ def _names(report: object) -> dict[str, bool]:
 
 
 def test_template_module_passes_the_full_contract() -> None:
-    report = run_contract(TEMPLATE)
+    report = run_contract(TEMPLATE, bundled=True)
     assert report.ok, report.summary()
     assert list(_names(report)) == [
         "manifest",
+        "trust",
         "discover",
         "deny_ungranted",
         "activate",
@@ -35,7 +36,7 @@ def test_template_module_passes_the_full_contract() -> None:
         "remove",
         "audit",
     ]
-    assert "net.outbound" in report.checks[2].detail
+    assert "net.outbound" in report.checks[3].detail
     assert "PASS" in report.summary()
     assert not list(TEMPLATE.glob("data")), "the contract must not write into the module directory"
 
@@ -64,7 +65,7 @@ def test_invalid_manifest_fails_first_check(tmp_path: Path) -> None:
 def test_unhealthy_module_fails_and_later_checks_are_skipped(tmp_path: Path) -> None:
     code = GOOD.replace('return (self.ctx is not None, "ok")', 'return (False, "broken")')
     d = write_module(tmp_path, "sick", code, request=("ui.panel",))
-    report = run_contract(d)
+    report = run_contract(d, bundled=True)
     names = _names(report)
     assert names["activate"] and not names["health"] and "panels" not in names and names["audit"]
     assert "broken" in report.summary()
@@ -72,13 +73,13 @@ def test_unhealthy_module_fails_and_later_checks_are_skipped(tmp_path: Path) -> 
 
 def test_module_that_fails_to_activate(tmp_path: Path) -> None:
     code = GOOD.replace('ctx.log("{id}", "activated")', 'raise RuntimeError("boom")')
-    report = run_contract(write_module(tmp_path, "crash", code))
+    report = run_contract(write_module(tmp_path, "crash", code), bundled=True)
     assert _names(report)["activate"] is False and "failed" in report.summary()
 
 
 def test_declared_panel_that_is_never_registered_fails(tmp_path: Path) -> None:
     # GOOD declares "<id>.status" (write_module) but never registers it.
-    report = run_contract(write_module(tmp_path, "nopanel", request=("ui.panel",)))
+    report = run_contract(write_module(tmp_path, "nopanel", request=("ui.panel",)), bundled=True)
     names = _names(report)
     assert names["health"] and names["panels"] is False, report.summary()
     assert "declared ['nopanel.status']" in report.summary()
@@ -91,12 +92,12 @@ def test_denial_probe_switches_when_module_requests_net(tmp_path: Path) -> None:
     text = text.replace('request = ["ui.panel"]', 'request = ["ui.panel", "net.outbound"]')
     text = text.replace("[contributes]", 'net_hosts = ["example.invalid"]\n[contributes]')
     toml.write_text(text, encoding="utf-8")
-    report = run_contract(d)
-    assert report.checks[2].detail == "process.spawn", report.summary()
+    report = run_contract(d, bundled=True)
+    assert report.checks[3].detail == "process.spawn", report.summary()
     assert _names(report)["audit"]
 
 
 @pytest.mark.parametrize("settings", [{"bad key": 1}, {"k\n[x]": 1}, {"k": None}, {"k": [None]}, {"k": 1.5}])
 def test_contract_settings_are_validated(settings: dict[str, object]) -> None:
     with pytest.raises(ValueError):
-        run_contract(TEMPLATE, settings=settings)
+        run_contract(TEMPLATE, settings=settings, bundled=True)

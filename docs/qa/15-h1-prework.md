@@ -130,12 +130,23 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 | D-12 | Fixed | #80 | Per-OS skip allow-list enforced in CI; FileLock timeout test runs on every OS |
 | D-23 | Fixed | #80 | CI matrix 3.11 to 3.14; leaking SQLite connections in tests closed |
 | D-24 | Fixed | #80 | `tools/release_notes.py` feeds `--notes-file`; compare links in the CHANGELOG; post-tag changes under `[Unreleased]` |
-| A-5 | Fixed | WP5 | Activation refuses while required grants are missing, before importing module code; no `granted` state added, DESIGN and m0-core lifecycle text corrected |
-| C-6 | Fixed | WP5 | `module activate` refuses the model actor unless the mode is `auto` (`policy.denied`, reason `mode manual`) |
-| C-7 | Fixed | WP5 | Reproduced: an unregistered persona model went out uncharged. Delegated requests now treat unknown models as paid (steer to free, else counted pass-through); main session unchanged (M6 rule) |
+| A-5 | Fixed | #82 | Activation refuses while required grants are missing, before importing module code; no `granted` state added, DESIGN and m0-core lifecycle text corrected |
+| C-6 | Fixed | #82 | `module activate` refuses the model actor unless the mode is `auto` (`policy.denied`, reason `mode manual`) |
+| C-7 | Fixed | #82 | Reproduced: an unregistered persona model went out uncharged. Delegated requests now treat unknown models as paid (steer to free, else counted pass-through); main session unchanged (M6 rule) |
+| A-1 | Fixed | WP6 | Explicit data directory beats `SWITCHYARD_DATA_DIR`; the contract cannot touch the real store |
+| A-3 | Fixed | WP6 | Reproduced with a junction. `X.py` beside `X/` rejected at load; module file checked after import (T1 and T2) |
+| A-4 | Fixed | WP6 | Contract `trust` check; `bundled=True` opt-in for this repository's modules and the template |
+| A-6 | Fixed | WP6 | `register` removes stored grants no longer requested (audited `policy.revoked`) |
+| A-7 | Fixed | WP6 | `Core.run` passes every result through `Redactor.redact_obj` |
+| A-15 | Fixed | WP6 | `require_host` / `require_secret` deny when the module was unregistered mid-check |
+| A-18 | Fixed | WP6 | Backend exceptions become `SecretUnavailable` with the class name; `secret.backend_error` audited |
+| A-19 | Fixed | WP6 | `cross_field` checks the `policies` grammar |
+| A-21 | Fixed | WP6 | Contract reads the grant store (`PolicyEngine.stored_grants`) |
+| A-22 | Fixed | WP6 | `ModuleContext.close` runs every cleanup step and re-raises the first error |
+| C-15 | Fixed | WP6 | One trailing newline stripped from `bw get` |
 | D-25 | Fixed | #80 | `hatchling>=1.27,<2` in `[build-system]` |
-| D-2 | Fixed | WP4 | `find_runnable` tries each `PATH` candidate with `--version`; `[tools] git` override; `config show` names it; git tests run on this workstation |
-| D-15 | Fixed | WP4 | Test forces an absolute working-directory hit on every OS; shared `_outside_cwd` check also guards `program_candidates` |
+| D-2 | Fixed | #81 | `find_runnable` tries each `PATH` candidate with `--version`; `[tools] git` override; `config show` names it; git tests run on this workstation |
+| D-15 | Fixed | #81 | Test forces an absolute working-directory hit on every OS; shared `_outside_cwd` check also guards `program_candidates` |
 
 Changes visible to existing users (complete this list; it becomes the `### Changed` section):
 

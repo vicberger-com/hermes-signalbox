@@ -36,7 +36,8 @@ CLI entry point `[project.scripts] switchyard = "switchyard.cli:main"`.
 
 ## 2. Data directory
 
-Resolution order: `SWITCHYARD_DATA_DIR` env, `CoreConfig.data_dir`, then inside Hermes `ctx.state.data_dir`, else
+Resolution order: an explicit directory (`--data-dir`, or `Core(data_dir=...)`; H1 A-1), then `SWITCHYARD_DATA_DIR`,
+then inside Hermes `ctx.state.data_dir`, else
 platform default: Windows `%LOCALAPPDATA%\switchyard`, macOS `~/Library/Application Support/switchyard`, other
 `$XDG_DATA_HOME/switchyard` or `~/.local/share/switchyard`. Created with mode 0700 where POSIX applies.
 
@@ -239,11 +240,13 @@ reactivate if it was running, health check; any failure restores the previous di
 
 ## 5. Acceptance tests
 
-**Contract suite.** `switchyard.contract.run_contract(module_dir) -> ContractReport` (stdlib only, usable from
-third-party module repositories). Copies the module into a temporary data directory and runs it through a real
-hosting core: `manifest`, `discover`, `deny_ungranted` (probe `net.outbound`, or `process.spawn` if the module asks
+**Contract suite.** `switchyard.contract.run_contract(module_dir, *, settings=None, bundled=False) ->
+ContractReport` (stdlib only, usable from third-party module repositories). Copies the module into a temporary data
+directory and runs it through a real hosting core: `manifest`, `trust` (H1 A-4: an `in-process` module outside the
+bundled `switchyard/modules` fails unless the caller passes `bundled=True`, because a default install would not
+load it), `discover`, `deny_ungranted` (probe `net.outbound`, or `process.spawn` if the module asks
 for net), `activate` (all requested capabilities granted; second activate is a no-op), `health`, `panels` (exactly
-the declared panels, JSON-serialisable), `deactivate` (twice; panels removed), `remove` (grants gone), `audit` (chain
+the declared panels, JSON-serialisable), `deactivate` (twice; panels removed), `remove` (grants gone from the store, H1 A-21), `audit` (chain
 verifies; grant/activation/denial/removal recorded). Later checks are skipped after a failure. Checks raise
 `ContractFailure`, not `assert`, so they hold under `python -O`. The template passes in-process and in the T2 host.
 

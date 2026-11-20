@@ -90,14 +90,27 @@ class ContractReport:
         return "\n".join(lines)
 
 
-def run_contract(module_dir: Path, *, settings: Mapping[str, Any] | None = None) -> ContractReport:
-    """Run the contract. ``settings`` become the module's ``[modules.<id>]`` table for the run."""
+def run_contract(
+    module_dir: Path, *, settings: Mapping[str, Any] | None = None, bundled: bool = False
+) -> ContractReport:
+    """Run the contract. ``settings`` become the module's ``[modules.<id>]`` table for the run.
+
+    ``bundled=True`` says the module ships inside this repository's ``switchyard/modules`` (or is the
+    template for one). Without it, the production trust rule applies (H1 A-4): an ``in-process`` module
+    outside the bundled modules fails the ``trust`` check, because a default install would not load it."""
+    from switchyard.core import BUILTIN_MODULES
+
     module_dir = Path(module_dir).resolve()
     try:
         manifest = load_manifest(module_dir)
     except ManifestError as exc:
         return ContractReport("", [Check("manifest", False, "; ".join(exc.errors)[:500])])
     report = ContractReport(manifest.id, [Check("manifest", True)])
+    if manifest.isolation == "in-process" and not (bundled or module_dir.is_relative_to(BUILTIN_MODULES)):
+        why = "an in-process module loads only from the bundled modules; declare isolation = 'subprocess'"
+        report.checks.append(Check("trust", False, why + " (or pass bundled=True for this repository)"))
+        return report
+    report.checks.append(Check("trust", True, manifest.isolation))
     with tempfile.TemporaryDirectory(prefix="switchyard-contract-") as tmp:
         _run(manifest, module_dir, Path(tmp), report, dict(settings or {}))
     return report
@@ -181,7 +194,7 @@ def _run(
         def remove() -> str:
             core.run("module", "remove", {"id": mid}, actor=ACTOR)
             _expect(mid not in core.manager.ids(), "module still listed")
-            _expect(not core.policy.granted(mid), "grants kept")
+            _expect(not core.policy.stored_grants(mid), "grants kept in the store")  # H1 A-21
             return ""
 
         ok = check("discover", discover)

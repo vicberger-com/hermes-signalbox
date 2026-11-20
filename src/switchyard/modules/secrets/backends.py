@@ -190,7 +190,8 @@ class BitwardenBackend(_CliBackend):
             if "not found" in str(done.stderr).lower():
                 raise KeyError(name)
             raise SecretLocked(f"bw get failed (exit {done.returncode})")
-        return str(done.stdout)
+        out = str(done.stdout)
+        return out[:-1] if out.endswith("\n") else out  # one trailing newline from the CLI (H1 C-15)
 
 
 # Windows Credential Manager --------------------------------------------------------------------------------
