@@ -149,7 +149,8 @@ class ModuleContext:
         broker = self._services.brokers.get(capability)
         if broker is None:
             raise SwitchyardError(f"{capability!r} is not available in this host")
-        return broker
+        for_module = getattr(broker, "for_module", None)
+        return for_module(self.module_id) if callable(for_module) else broker
 
     @property
     def secrets(self) -> object:

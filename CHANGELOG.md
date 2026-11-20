@@ -22,6 +22,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - T2 subprocess host: length-prefixed JSON-RPC over stdio (1 MiB frames), scrubbed child environment,
   per-call timeouts, child killed on any protocol violation; module context proxied through the same
   policy and confinement checks as in-process modules.
+- Secrets broker interface: `secret://` references, policy-checked use with fail-closed backends, leak
+  blocking on results, no value in exception context or traceback locals, redactor with default token
+  patterns; test-only memory backend.
 - Coverage gate (90%) on `src/switchyard`; mypy strict and bandit now include `src/`.
 
 ### Changed
