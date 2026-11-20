@@ -50,7 +50,12 @@ This is **steering, not a hard stop**: Hermes middleware can change a request's 
 request. If the configured model is inside an exhausted scope (or paid while paid is not allowed), the router
 sends the request to any free or self-hosted resource outside the scope; if there is none, the request goes
 out unchanged and `module.router.quota_passthrough` (or `paid_passthrough`) is audited once per resource and
-day. A hard stop needs a blocking hook and is a later decision.
+day.
+
+**Hard stop (M6, opt-in).** With `[modules.router] hard_stop = true` the router also registers a turn gate
+(ADR-0006): before each Hermes turn, if no routed choice exists and the configured model is over an exhausted
+quota or is paid while paid is not allowed, the turn is blocked with a message telling the user why
+(`module.router.hard_stop` audited). A configured model the registry does not know is never blocked.
 
 ## Control surface
 
@@ -59,7 +64,7 @@ day. A hard stop needs a blocking hook and is a later decision.
 | Action | `status`, `explain {tokens, tools, vision}` | yes |
 | Action | `pin {consumer, id}`, `auto {consumer}`, `rule_add {consumer, min_tier}`, `rule_remove {consumer}`, `budget {paid_requests_per_day}`, `cooldown_clear {id}` | no |
 | Panel | `router.status` | |
-| Config | `[modules.router]` `consumer` (`main`), `providers` (`["openrouter"]`), `max_attempts` (3, 1-10), `cooldown_seconds` (60, 5-86400) | |
+| Config | `[modules.router]` `consumer` (`main`), `providers` (`["openrouter"]`), `max_attempts` (3, 1-10), `cooldown_seconds` (60, 5-86400), `hard_stop` (false) | |
 
 Capabilities: `hermes.hooks` and `ui.panel` (required to start); `llm.free`, `llm.paid` (optional in the
 manifest, so auto-start does not wait for them, and checked on every request: without `llm.free` no free or

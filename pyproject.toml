@@ -61,6 +61,7 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
 "src/switchyard/modules/router/router_module.py" = ["S608"]
 "src/switchyard/modules/meter/meter_module.py" = ["S608"]
 "src/switchyard/modules/activation/activation_module.py" = ["S608"]
+"src/switchyard/modules/supervisor/supervisor_module.py" = ["S608"]
 
 [tool.mypy]
 python_version = "3.11"

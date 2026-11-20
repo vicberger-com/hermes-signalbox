@@ -288,4 +288,6 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
 - Observer hooks deliver metadata only (`switchyard.bridge.metadata_only`).
 - `ctx.hermes_config` (ADR-0005): `hermes.config.write`; allow-listed keys, backup, audit, read-back, rollback,
   `revert`. Provided only when the Hermes adapter supplies a config port.
+- ADR-0006: `ctx.schedule.every(name, seconds, fn)` (`schedule`), `ctx.core` (`core.read`), `ctx.hermes_gate(fn)`
+  (`gate:pre_llm_call` declared; blocks a turn with a prefixed reason; fails open).
 

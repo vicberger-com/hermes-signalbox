@@ -68,7 +68,7 @@ class RouterModule:
 
     def activate(self, ctx: Any) -> None:
         cfg = dict(ctx.config)
-        unknown = set(cfg) - {"consumer", "providers", "max_attempts", "cooldown_seconds"}
+        unknown = set(cfg) - {"consumer", "providers", "max_attempts", "cooldown_seconds", "hard_stop"}
         if unknown:
             raise SwitchyardError(f"unknown [modules.router] setting(s) {sorted(unknown)}")
         providers = cfg.get("providers", ["openrouter"])
@@ -79,7 +79,10 @@ class RouterModule:
             "providers": [_check(_PROVIDER, p, "provider") for p in providers],
             "max_attempts": _int_setting(cfg, "max_attempts", 3, 1, 10),
             "cooldown_seconds": _int_setting(cfg, "cooldown_seconds", 60, 5, 86_400),
+            "hard_stop": cfg.get("hard_stop", False),
         }
+        if not isinstance(self.settings["hard_stop"], bool):
+            raise SwitchyardError("[modules.router] hard_stop must be true or false")
         state, text, num = ctx.state, "TEXT", "INTEGER"
         state.create_table("rules", [("consumer", text), ("min_tier", text)], primary_key=["consumer"])
         state.create_table("pins", [("consumer", text), ("resource", text)], primary_key=["consumer"])
@@ -110,6 +113,8 @@ class RouterModule:
         ctx.hermes_middleware("llm_request", self.route)
         ctx.hermes_hook("api_request_error", self.on_error)
         ctx.subscribe("meter.exhausted", self.on_exhausted)
+        if self.settings["hard_stop"]:
+            ctx.hermes_gate(self.gate)
         self.ctx = ctx
 
     def deactivate(self) -> None:
@@ -249,9 +254,23 @@ class RouterModule:
         resource that is not cooling down instead (size and tag checks ignored). Middleware cannot refuse a
         request, so if there is no such resource the configured model is passed through and that is audited
         once per resource and day (``paid_passthrough`` / ``quota_passthrough``)."""
+        fallback, why, rid = self._guard_eval(str(request.get("model") or ""), need, provider)
+        if not why:
+            return None, reason
+        if fallback is not None:
+            return fallback, f"{reason}; {why}"
+        quota_hit = why == "quota exhausted"
+        event = "quota_passthrough" if quota_hit else "paid_passthrough"
+        day = _day(self.clock())
+        if self._warned.get(f"{event}:{rid}") != day:
+            self._warned[f"{event}:{rid}"] = day
+            self.ctx.audit(event, consumer=self.settings["consumer"], resource=rid[:200])
+        return None, f"{reason}; {why}, passed through"
+
+    def _guard_eval(self, model: str, need: Need, provider: str) -> tuple[Candidate | None, str, str]:
+        """(fallback, why, resource id) for the configured ``model``: ``why`` is empty when it may go out."""
         candidates = self._candidates(provider)
         cooling = self._effective_cooling(provider, candidates)
-        model = str(request.get("model") or "")
         current = next((c for c in candidates if c.model == model), None)
         rid = current.id if current else f"{provider}/{model}"
         raw = self._cooling()
@@ -262,18 +281,33 @@ class RouterModule:
             and not self._paid_ok(self.settings["consumer"], need.tier)
         )
         if not (paid_blocked or quota_hit):
-            return None, reason
+            return None, "", rid
         why = "quota exhausted" if quota_hit else "configured model is paid"
         fallback = next((c for c in candidates if c.cost_class != "paid" and c.state == "auto"
                          and c.id not in cooling), None)  # fmt: skip
-        if fallback is not None:
-            return fallback, f"{reason}; {why}"
-        event = "quota_passthrough" if quota_hit else "paid_passthrough"
-        day = _day(self.clock())
-        if self._warned.get(f"{event}:{rid}") != day:
-            self._warned[f"{event}:{rid}"] = day
-            self.ctx.audit(event, consumer=self.settings["consumer"], resource=rid[:200])
-        return None, f"{reason}; {why}, passed through"
+        return fallback, why, rid
+
+    def gate(self, meta: dict[str, Any]) -> str | None:
+        """``hard_stop`` (ADR-0006): block the turn when no routed choice is possible and the configured model
+        is over an exhausted quota or is paid while paid is not allowed. Sized as the smallest tier."""
+        provider = meta.get("provider") or (
+            self.settings["providers"][0] if self.settings["providers"] else ""
+        )
+        if self.ctx is None or provider not in self.settings["providers"]:
+            return None
+        need = Need(tokens=1, tools=False, vision=False, tier="T1")
+        with self._lock:
+            chosen, _, _ = self.choose(need, provider)
+            if chosen is not None:
+                return None
+            fallback, why, rid = self._guard_eval(str(meta.get("model") or ""), need, provider)
+        if not why or fallback is not None:
+            return None
+        self.ctx.audit("hard_stop", consumer=self.settings["consumer"], resource=rid[:200], reason=why)
+        return (
+            f"Request blocked: {why} for {rid} and no free model is available. "
+            "Ask the operator to raise the quota or allow paid use."
+        )
 
     def _sent_model(self, kwargs: dict[str, Any]) -> str | None:
         """The resource a failed request actually used: what ``route`` sent for this request id, else the

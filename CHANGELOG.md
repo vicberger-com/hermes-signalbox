@@ -4,6 +4,13 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- ADR-0006: `schedule` capability (`ctx.schedule.every`), `core.read` capability (`ctx.core`: module states,
+  audit verification), and `pre_llm_call` turn gates (`ctx.hermes_gate`; first reason blocks; fail open).
+- Bundled `supervisor` module (M6): scheduled deterministic checks (failed modules, audit chain, quotas, router
+  pass-throughs), de-duplicated findings with automatic resolution, `supervisor.alert` events; no LLM calls.
+- Router `hard_stop` (opt-in): blocks a turn when only a ruled-out model is left.
+
 ## [0.6.0] - 2026-11-20
 
 Phase M5: skill activation manager.

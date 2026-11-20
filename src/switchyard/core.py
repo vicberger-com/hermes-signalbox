@@ -32,6 +32,7 @@ from switchyard.logs import JsonlLogSink
 from switchyard.ops import lookup
 from switchyard.paths import ensure_data_dir, resolve_data_dir
 from switchyard.process import ProcessBroker
+from switchyard.schedule import ScheduleBroker
 from switchyard.scheduler import Scheduler
 from switchyard.secrets import Redactor, SecretsBroker
 from switchyard.state import SqliteGrantStore, StateStore
@@ -63,6 +64,22 @@ class AnchoredAudit:
             return None
         seq, _, digest = str(rows[0][0]).partition(":")
         return int(seq), digest
+
+
+class CoreView:
+    """The ``core.read`` capability (ADR-0006): a read-only view of module states and the audit chain."""
+
+    def __init__(self, core: Core) -> None:
+        self._core = core
+
+    def modules(self) -> list[dict[str, Any]]:
+        return [{"id": i.id, "status": i.status.value, "mode": i.mode, "error": i.error}
+                for i in self._core.manager.modules()]  # fmt: skip
+
+    def verify_audit(self) -> dict[str, Any]:
+        result = self._core.verify_audit()
+        return {"ok": result.ok, "records": result.records, "first_bad_seq": result.first_bad_seq,
+                "reason": result.reason}  # fmt: skip
 
 
 class Core:
@@ -122,6 +139,8 @@ class Core:
         )
         if self.hermes_config is not None:
             brokers["hermes.config.write"] = self.hermes_config
+        brokers["schedule"] = ScheduleBroker(self.scheduler)
+        brokers["core.read"] = CoreView(self)
         self.manager = ModuleManager(
             policy=self.policy, audit=self.audit, bus=self.bus, logs=self.logs, panels=self.panels,
             trusted_roots=trusted, scheduler=self.scheduler, store=self.store,
