@@ -1,0 +1,28 @@
+# Bundled module M10: security scanner connectors. Spec: README.md in this directory.
+schema = 1
+
+[module]
+id = "scanner"
+name = "Scanner"
+version = "0.11.0"
+license = "Apache-2.0"
+license_class = "open"
+summary = "Runs external security scanners (gitleaks, bandit, pip-audit, osv-scanner, semgrep, trivy) on a schedule; findings to the store, dashboard and alerts; failures are findings too."
+requires_core = ">=0.1,<1"
+isolation = "in-process"
+entry = "scanner_module:ScannerModule"
+
+[capabilities]
+optional = ["notify"]
+request = ["process.spawn", "schedule", "notify", "ui.panel"]
+
+[contributes]
+commands = ["report", "findings", "run_now"]
+panels = ["scanner.status"]
+log_streams = ["scanner"]
+
+[lifecycle]
+activation = "manual"
+
+[update]
+source = "bundled"

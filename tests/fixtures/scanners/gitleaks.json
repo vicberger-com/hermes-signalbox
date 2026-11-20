@@ -1,0 +1,10 @@
+[
+ {
+  "RuleID": "aws-access-token",
+  "Description": "AWS Access Key",
+  "File": "seeded/config.env",
+  "StartLine": 3,
+  "Secret": "REDACTED",
+  "Match": "REDACTED"
+ }
+]

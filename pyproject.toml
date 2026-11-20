@@ -45,6 +45,7 @@ fail_under = 90
 exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\."]
 
 [tool.ruff]
+extend-exclude = ["tests/fixtures"]  # seeded-vulnerability fixtures for the scanner tests
 line-length = 110
 target-version = "py311"
 
@@ -65,6 +66,7 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
 "src/switchyard/modules/workers/workers_module.py" = ["S608"]
 "src/switchyard/modules/trimmer/trimmer_module.py" = ["S608"]
 "src/switchyard/modules/inbox/inbox_module.py" = ["S608"]
+"src/switchyard/modules/scanner/scanner_module.py" = ["S608"]
 
 [tool.mypy]
 python_version = "3.11"

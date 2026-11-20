@@ -1,0 +1,28 @@
+{
+ "Results": [
+  {
+   "Target": "seeded/requirements.txt",
+   "Vulnerabilities": [
+    {
+     "VulnerabilityID": "CVE-2018-18074",
+     "PkgName": "requests",
+     "InstalledVersion": "2.19.0",
+     "Severity": "HIGH",
+     "Title": "requests: Redirect from HTTPS to HTTP"
+    }
+   ]
+  },
+  {
+   "Target": "seeded/config.env",
+   "Secrets": [
+    {
+     "RuleID": "aws-access-key-id",
+     "Severity": "CRITICAL",
+     "Title": "AWS Access Key ID",
+     "StartLine": 3,
+     "Match": "AKIA****"
+    }
+   ]
+  }
+ ]
+}
