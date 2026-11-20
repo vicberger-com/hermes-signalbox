@@ -2,6 +2,24 @@
 
 Items that match a stop condition in `AGENTS.md`. Each names the manual action needed.
 
+## B-H1-1 (2026-11-20): tag protection and the release environment need the repository owner — OPEN
+
+Stop condition: a GitHub setting only the owner can change. The repository token gets HTTP 403 for creating a
+ruleset and an environment. Everything else in WP3 is done: the release workflow refuses a tag that is not an
+annotated tag on `main` matching the project version, and re-runs the full gate before publishing.
+
+Operator action:
+
+1. github.com/vicberger-com/hermes-switchyard/settings/rules: New ruleset, **New tag ruleset**: name
+   `Release tags`, enforcement Active, target pattern `v*`, rules **Restrict updates**, **Restrict deletions**,
+   **Block force pushes**; no bypass.
+2. github.com/vicberger-com/hermes-switchyard/settings/environments: `release` (created by the first release
+   run, or New environment), Deployment branches and tags: **Selected branches and tags**, add tag rule
+   `v*.*.*`. Optional: **Required reviewers** (yourself), which makes every release wait for your approval.
+
+Not blocking the v1.0.1 tag: the workflow gate is the main control; these settings stop a tag from being moved
+afterwards and limit which refs can deploy.
+
 ## B-R1-1 (2026-11-20): repository security settings needed before the v1.0.0 tag — RESOLVED 2026-11-20
 
 Stop condition: a GitHub setting only the owner can change. Checked with the repository token on 2026-11-20:

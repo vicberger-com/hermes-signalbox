@@ -15,8 +15,14 @@ hermes plugins install vicberger-com/hermes-switchyard --ref <40-character commi
 pip install "git+https://github.com/vicberger-com/hermes-switchyard@<40-character commit SHA>"
 ```
 
-Releases carry `SHA256SUMS`, a CycloneDX SBOM and a build provenance attestation
-(`gh attestation verify <file> -R vicberger-com/hermes-switchyard`).
+Releases carry `SHA256SUMS`, a CycloneDX SBOM of what the wheel installs, and a build provenance attestation
+(`gh attestation verify <file> -R vicberger-com/hermes-switchyard`). Pin a commit SHA, not a tag name, for
+both routes: tags are annotated but not yet signed.
+
+The two routes differ in one way: Hermes 0.23 shows a plugin's dashboard tab only for plugins installed into a
+plugins directory, so the Switchyard tab (section 5) needs `hermes plugins install`. A pip install provides the
+plugin, the `switchyard` command and the model tools, without the tab; the wheel carries the dashboard files
+under `switchyard/_plugin/` for when Hermes supports that.
 
 ## 2. First run
 

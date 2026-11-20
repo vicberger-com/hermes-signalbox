@@ -5,11 +5,19 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 ## [Unreleased]
 
 ### Security
+- Release workflow (H1 D-3): a `verify` job re-runs the full gate and checks that the tag is an annotated tag on
+  `main` matching the project version; the release job needs it. Release notes come from this file.
 - Router: H1 C-1, C-4, C-8 (ADR-0013). A route that misses the bridge deadline fails closed: a remembered
   free candidate is sent, or a paid configured model is charged as a paid pass-through; late route results
   never charge or record. Cool-downs are never shortened by a later error. Every request shape is sized.
 
 ### Changed
+- Packaging (H1 D-5, D-6, D-25): the wheel ships `py.typed`, `plugin.yaml` and the dashboard files (under
+  `switchyard/_plugin/`); CI builds the wheel and sdist, checks the wheel's file list against
+  `tools/wheel_files.txt` and smoke-tests a clean install; the release SBOM lists what the wheel installs, not
+  the build tools; `[build-system]` pins `hatchling>=1.27,<2`. A pip install has no dashboard tab in Hermes
+  0.23 (use `hermes plugins install` for it).
+- CI (H1 D-12, D-23): Python 3.11 to 3.14; the skipped tests must match `tests/skip_allowlist.json` per OS.
 - Bridge: `ctx.hermes_middleware` takes an optional `fallback`; middleware gets `context["claim"]`
   (ADR-0013). State store: `ModuleState.deadline(seconds)` bounds a thread's store waits.
 - Router: a request with no recognised text key is sized as tier T5. With `hard_stop = true` the turn after
@@ -346,3 +354,20 @@ Repository bootstrap (phase P0). No runtime code.
 ### Changed
 - Tooling is installed from a hash-pinned `requirements-dev.txt`; `ci-required` and `security-required` gate jobs added.
 - Secret scanning runs the pinned gitleaks CLI. Repository moved to the `vicberger-com` organization.
+
+[Unreleased]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.13.0...v1.0.0
+[0.13.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.0.1...v0.1.0
+[0.0.1]: https://github.com/vicberger-com/hermes-switchyard/releases/tag/v0.0.1

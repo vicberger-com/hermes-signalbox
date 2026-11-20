@@ -59,3 +59,18 @@ def test_core_hosting_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
                 client.run("module", "activate", {"id": "x"}, actor="cli")
     with Core(data_dir=data, hosting=None) as later:
         assert later.hosting  # the lock was released on close
+
+
+def test_h1_d12_file_lock_times_out_on_every_os(tmp_path: Path) -> None:
+    import time
+
+    from switchyard.hostlock import FileLock
+
+    path = tmp_path / "chain.lock"
+    with FileLock(path):
+        started = time.monotonic()
+        with pytest.raises(TimeoutError, match="could not lock"), FileLock(path, timeout=0.2):
+            pass
+        assert time.monotonic() - started < 5
+    with FileLock(path, timeout=0.2):  # released: free again
+        pass

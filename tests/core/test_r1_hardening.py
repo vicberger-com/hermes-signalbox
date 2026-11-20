@@ -78,6 +78,7 @@ def test_trailing_underscore_ids_cannot_reach_other_tables(tmp_path: Path) -> No
         attacker.execute('SELECT * FROM "m_ab___notes"')
     attacker.drop_all()  # does not fail on, or touch, the other table
     assert store.core_query("SELECT name FROM sqlite_master WHERE name = 'm_ab___notes'")
+    store.close()  # H1 D-23
 
 
 def test_model_actor_is_refused_operator_ops_in_the_core(tmp_path: Path) -> None:

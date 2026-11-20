@@ -1,12 +1,38 @@
-"""Suite-wide fixtures."""
+"""Suite-wide fixtures and the per-platform skip check (``tools/skip_allowlist.py``)."""
 
+import os
 from collections.abc import Iterator
 
 import pytest
 
+_SKIPPED: set[str] = set()
+_PASSED: set[str] = set()
+
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "bundled_modules: run with the bundled modules (M1+) discoverable")
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    if report.skipped and report.when in ("setup", "call"):
+        _SKIPPED.add(report.nodeid)
+    elif report.passed and report.when == "call":
+        _PASSED.add(report.nodeid)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """H1 D-12: in CI (``SWITCHYARD_CHECK_SKIPS=1``) the skipped set must match this platform's allow-list."""
+    if os.environ.get("SWITCHYARD_CHECK_SKIPS") != "1":
+        return
+    from skip_allowlist import allowed, compare
+
+    problems = compare(_SKIPPED, _PASSED, allowed())
+    if problems:
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        for line in problems:
+            if reporter is not None:
+                reporter.write_line(f"skip allow-list: {line}", red=True)
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 @pytest.fixture(autouse=True)

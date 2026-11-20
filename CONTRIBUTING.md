@@ -7,7 +7,9 @@ Applies to people and agents alike. Agents also follow [AGENTS.md](AGENTS.md).
 - Trunk-based. `main` is protected. Branch names: `feat/m3-router`, `fix/…`, `docs/…`, `chore/…`.
 - Conventional Commits (`feat(m3): …`, `fix(core): …`). One logical change per PR. Squash merge.
 - A PR needs: linked issue or phase, filled template, green CI, no unresolved review comment.
-- Releases: semantic versions, annotated signed tags, changelog entry (Keep a Changelog format), SBOM attached.
+- Releases: semantic versions, annotated tags (signing is planned once a maintainer signing key exists), changelog
+  entry (Keep a Changelog format), SBOM attached. The release workflow publishes only an annotated tag on `main`
+  that matches the project version and passes the full gate again.
 - Never commit secrets, generated credentials, real usage data or prompts. gitleaks runs in CI and pre-commit.
 
 ## Code

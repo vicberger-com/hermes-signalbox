@@ -32,6 +32,10 @@ conversation that produced it.
 | Published wheel | release asset `hermes_switchyard-1.0.0-py3-none-any.whl`, read 2026-11-20 | Checksum matches `SHA256SUMS`; 85 entries; no `dashboard/`, no `plugin.yaml`, no `py.typed` |
 | Local gates on `a141ec0` | run 2026-11-20, Windows, Python 3.11.15 | 671 passed, 10 skipped, 94.39% branch coverage; ruff, format, mypy strict, bandit, pip-audit clean |
 | `llm_request` middleware contract (WP1) | installed v0.23.2 `hermes_cli/middleware.py` `apply_llm_request_middleware`, `agent/turn_api_request.py` lines 158-176, read 2026-11-20 | Middleware may return `{"request": ...}` to replace the provider kwargs; it cannot refuse. An exception is logged and the request is sent unmodified. Context keys: `task_id`, `turn_id`, `api_request_id`, `session_id`, `platform`, `model`, `provider`, `base_url`, `api_mode`, `api_call_count`. `llm_execution` middleware wraps the call and could refuse it (not used; a feature). `pre_llm_call` runs once per turn (`agent/turn_context.py`). Api modes: `chat_completions`, `anthropic_messages`, `codex_responses`, `bedrock_converse`, `codex_app_server` |
+| Dashboard discovery for pip-installed plugins (WP3) | installed v0.23.2 `hermes_cli/web_server_dashboard.py` `_discover_dashboard_plugins` and `hermes_cli/plugins_discovery.py` `discover_entrypoint_manifests`, read 2026-11-20 | Dashboard tabs come only from `<plugins root>/*/dashboard/manifest.json` (user, bundled, project plugin directories); entry-point plugins get a metadata-only manifest and no dashboard. Decision D6 is therefore implemented as: ship `plugin.yaml` and `dashboard/` in the wheel under `switchyard/_plugin/`, and document that the tab needs `hermes plugins install` |
+| GitHub settings with the repository token (WP3) | `POST repos/.../rulesets`, `PUT repos/.../environments/release`, 2026-11-20 | HTTP 403 "Resource not accessible by personal access token" for both; recorded in `BLOCKERS.md` B-H1-1 |
+| Upload/download artifact actions (WP3) | GitHub API `repos/actions/{upload,download}-artifact/releases/latest`, 2026-11-20 | upload-artifact v7.0.2 (`cf430e0`), download-artifact v8.0.2 (`9000827`), both published 2026-10-07; pinned by SHA |
+| Python versions (WP3) | `uv python list`, 2026-11-20 | 3.14.10 current; 3.15.2 is released. CI now covers 3.11 to 3.14 as the finding asks; 3.15 is a backlog item |
 | To do in the phase | each work package | Before relying on a Hermes hook, keyword argument or loader rule, read it in the installed source and add a row here (WP1: `llm_request` middleware contract; WP3: how a pip-installed plugin's dashboard files are found; WP8: `post_api_request` keyword set) |
 
 ## 3. Questions
@@ -111,15 +115,22 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 | C-1 | Fixed | #78 | ADR-0013: bridge fallback and claim, router fallback from remembered candidates, 1 s store budget |
 | C-4 | Fixed | #78 | Cool-down upsert keeps the later end and the quota reason |
 | C-8 | Fixed | #78 | All text keys sized; unknown shape is T5 |
-| D-1 | Fixed | WP2 | Guide grants `ui.panel`; table of capabilities needed to start; walkthrough test runs the guide on every CI OS |
-| D-7 | Fixed | WP2 | Guide step 0 is `switchyard api serve`; `[daemon]` marks in `--help`, the guide and REFERENCE |
-| D-8 | Fixed | WP2 | Failed results exit 1 naming the missing grants; `missing_grants` in list/show; inactive panel message |
-| D-9 | Fixed | WP2 | SIGTERM/SIGBREAK handlers; client clears files left by a dead daemon under `host.lock`; 0.5 s connect timeout |
-| D-10 | Fixed | WP2 | Guide section 2 explains the two stores; `config show` prints `data_dir_source` |
-| D-20 | Fixed | WP2 | Description lists only the enum's actions; test keeps them equal |
-| D-26 | Fixed | WP2 | Unknown capability exits 2; dotted nested output; readiness line flushed |
-| B-20 | Fixed | WP2 | `_unsupported` runs the Host/Origin check first |
-| B-24 | Fixed | WP2 | `handle_error` is silent for dropped connections, one line (class only) otherwise |
+| D-1 | Fixed | #79 | Guide grants `ui.panel`; table of capabilities needed to start; walkthrough test runs the guide on every CI OS |
+| D-7 | Fixed | #79 | Guide step 0 is `switchyard api serve`; `[daemon]` marks in `--help`, the guide and REFERENCE |
+| D-8 | Fixed | #79 | Failed results exit 1 naming the missing grants; `missing_grants` in list/show; inactive panel message |
+| D-9 | Fixed | #79 | SIGTERM/SIGBREAK handlers; client clears files left by a dead daemon under `host.lock`; 0.5 s connect timeout |
+| D-10 | Fixed | #79 | Guide section 2 explains the two stores; `config show` prints `data_dir_source` |
+| D-20 | Fixed | #79 | Description lists only the enum's actions; test keeps them equal |
+| D-26 | Fixed | #79 | Unknown capability exits 2; dotted nested output; readiness line flushed |
+| B-20 | Fixed | #79 | `_unsupported` runs the Host/Origin check first |
+| B-24 | Fixed | #79 | `handle_error` is silent for dropped connections, one line (class only) otherwise |
+| D-3 | Fixed (adapted) | WP3 | `verify` job (tag on `main`, annotated, matches version, full gate, wheel check) gates `release`; notes from the CHANGELOG. Tag signing deferred (D2); tag ruleset and environment protection need the owner (B-H1-1) |
+| D-5 | Fixed (adapted) | WP3 | `py.typed`, `plugin.yaml` and `dashboard/` in the wheel; Hermes 0.23.2 shows the tab only for directory installs, documented in the guide |
+| D-6 | Fixed | WP3 | CI `package` job: wheel and sdist built, file list checked, clean install and CLI smoke test; release SBOM from a clean environment with only the wheel |
+| D-12 | Fixed | WP3 | Per-OS skip allow-list enforced in CI; FileLock timeout test runs on every OS |
+| D-23 | Fixed | WP3 | CI matrix 3.11 to 3.14; leaking SQLite connections in tests closed |
+| D-24 | Fixed | WP3 | `tools/release_notes.py` feeds `--notes-file`; compare links in the CHANGELOG; post-tag changes under `[Unreleased]` |
+| D-25 | Fixed | WP3 | `hatchling>=1.27,<2` in `[build-system]` |
 
 Changes visible to existing users (complete this list; it becomes the `### Changed` section):
 
