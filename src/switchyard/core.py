@@ -22,6 +22,7 @@ from switchyard.config import CoreConfig, load_config
 from switchyard.context import MemoryActionRegistry, MemoryPanelRegistry
 from switchyard.errors import SwitchyardError
 from switchyard.events import EventBus
+from switchyard.fsread import FsBroker
 from switchyard.hostinfo import capacity_metrics
 from switchyard.hostlock import HostLock
 from switchyard.lifecycle import ModuleManager
@@ -102,6 +103,7 @@ class Core:
         self.panels = MemoryPanelRegistry()
         self.actions = MemoryActionRegistry()
         self.processes = ProcessBroker(self.policy, self.audit)
+        self.files = FsBroker(self.policy, self.audit)
         self.secrets = SecretsBroker(list(secret_backends), self.policy, self.audit, self.redactor)
         trusted = list(trusted_roots) if trusted_roots is not None else [BUILTIN_MODULES]
         roots = (
@@ -110,7 +112,8 @@ class Core:
         self.manager = ModuleManager(
             policy=self.policy, audit=self.audit, bus=self.bus, logs=self.logs, panels=self.panels,
             trusted_roots=trusted, scheduler=self.scheduler, store=self.store,
-            brokers={"secrets.read": self.secrets, "process.spawn": self.processes}, actions=self.actions,
+            brokers={"secrets.read": self.secrets, "process.spawn": self.processes, "fs.read": self.files},
+            actions=self.actions,
             secret_backends=self.secrets, config=lambda mid: self.config.modules.get(mid, {}),
         )  # fmt: skip
         self.manager.discover(roots)

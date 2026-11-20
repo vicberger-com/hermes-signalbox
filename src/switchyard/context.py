@@ -277,6 +277,11 @@ class ModuleContext:
         return self._broker("schedule")
 
     @property
+    def fs(self) -> object:
+        """File-read facade (ADR-0003). Needs ``fs.read``."""
+        return self._broker("fs.read")
+
+    @property
     def spawn(self) -> object:
         """Process launcher facade. Needs ``process.spawn``."""
         return self._broker("process.spawn")
