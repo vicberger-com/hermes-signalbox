@@ -184,7 +184,9 @@ class PolicyEngine:
         self.require(module_id, "net.outbound", host=host)
         with self._lock:
             reg = self._modules[module_id]
-        if host.lower() not in reg.net_hosts:
+        host = host.lower()
+        bare = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+        if host not in reg.net_hosts and bare not in reg.net_hosts:  # a bare entry allows any port
             raise self._deny(
                 module_id,
                 {"capability": "net.outbound", "host": host},
