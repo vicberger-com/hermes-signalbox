@@ -117,9 +117,17 @@ coarse for minute-level triggers; choose the Hermes-side driver (plugin thread o
 
 ### Lifecycle
 
-`ModuleManager`: `discover(roots)`, `verify(id)`, `load(id)`, `activate(id)`, `deactivate(id)`, `remove(id, keep_data=False)`,
-`set_mode(id, manual|auto|disabled)`, `tick()` (idle stop). Every transition is audited. A failure in `activate`
-or `health` stops that module only (fail closed); the core continues.
+`ModuleManager`: `discover(roots)` (load + verify manifests; reject invalid, duplicate, or untrusted in-process
+modules), `activate(id)`, `deactivate(id, reason)`, `health(id)`, `remove(id, keep_data=False)`,
+`set_mode(id, manual|auto|disabled)`, `start_auto()`, `touch(id)`, `tick()` (idle stop), `modules()`, `info(id)`.
+States: `verified`, `active`, `stopped`, `failed`. Modes persist in the `modules` table. Each module is imported as
+the synthetic package `_switchyard_modules.<id>` rooted at its directory (no name clashes, relative imports work,
+removal purges `sys.modules`). In-process modules are accepted only under trusted roots (resolved paths). Any
+exception from import, construction, `activate`, `health` or a bus handler fails that module closed (audited by
+class name); deactivation always closes the context and removes the module's triggers. `health()` may return a
+bool, `(bool, str)` or an object with `ok`/`detail`. Logs: `JsonlLogSink` (one user-only file per stream, every
+string redacted, 16 KiB line cap). Panels: `MemoryPanelRegistry`. `ctx.state` returns the module's `ModuleState`.
+Release signature verification of T1 modules is deferred until a signing key exists (Q&A A8/C7).
 
 ### T2 subprocess host
 

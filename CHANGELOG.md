@@ -16,6 +16,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Event bus (typed dotted names, per-handler data copies, isolated and audited handler failures, depth
   limit) and scheduler (time/every, 5-field cron, event, usage and capacity triggers; one run at a time,
   minimum interval, counted skips).
+- Module lifecycle manager (T1): discovery with trust roots, per-module import packages, fail-closed
+  activation and health, idle stop for auto modules, persistent modes, removal with or without data;
+  JSON Lines log sink with redaction; panel registry; `ctx.state`.
 - Coverage gate (90%) on `src/switchyard`; mypy strict and bandit now include `src/`.
 
 ### Changed
