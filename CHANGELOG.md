@@ -7,6 +7,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 ### Added
 - `ctx.fs` file-read broker for `fs.read` (ADR-0003): absolute regular files only, size-capped, JSON depth
   limit, audited by path.
+- M2 bundled `resources` module: registry of models, endpoints, agents and tools; pools; consumer bindings;
+  `resolve`; reviewed imports (preview, then human apply) from the Hermes models.dev cache and catalog files;
+  imported resources start disabled.
 
 ## [0.2.0] - 2026-11-19
 
