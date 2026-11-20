@@ -42,6 +42,7 @@ ACTOR = MODEL_ACTOR  # model-initiated tool calls
 USER_ACTOR = "hermes-user"  # the /switchyard slash command, typed by the user
 TICK_SECONDS = 15.0
 MODEL_TOOL_ACTIONS = ("list", "show", "activate", "deactivate", "health", "run")
+_INT = re.compile(r"-?\d{1,18}")
 _LITERAL_PREFIX = re.compile(r"[A-Za-z0-9_-]{2}")
 
 _current: HermesAdapter | None = None
@@ -151,11 +152,12 @@ class HermesAdapter:
     # model tools --------------------------------------------------------------------------------------
 
     def _call(self, noun: str, verb: str, params: dict[str, Any], actor: str = ACTOR) -> str:
+        redact = self.core.redactor
         try:
-            text = _ok(self.core.run(noun, verb, params, actor=actor))
+            result = redact.redact_obj(self.core.run(noun, verb, params, actor=actor))
         except Exception as exc:
-            text = _error(exc)
-        return self.core.redactor.redact(text)
+            return redact.redact(_error(exc))
+        return _ok(result)
 
     def tool_modules(self, args: dict[str, Any], **_kw: Any) -> str:
         action = args.get("action")
@@ -209,11 +211,11 @@ class HermesAdapter:
             key, _, value = word.partition("=")
             spec = operation.params.get(key)
             if spec is None and "args" in operation.params:
-                extra[key] = int(value) if value.lstrip("-").isdigit() else _bool_or_str(value)
+                extra[key] = int(value) if _INT.fullmatch(value) else _bool_or_str(value)
                 continue
             if spec is not None and spec.kind is bool:
                 params[key] = value.lower() in ("1", "true", "yes")
-            elif spec is not None and spec.kind is int and value.lstrip("-").isdigit():
+            elif spec is not None and spec.kind is int and _INT.fullmatch(value):
                 params[key] = int(value)
             else:
                 params[key] = value

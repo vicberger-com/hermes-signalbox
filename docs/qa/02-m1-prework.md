@@ -70,3 +70,13 @@ Automated in `tests/modules/test_secrets.py`, `tests/core/test_module_contract_v
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| Bundled modules can read their own settings | M0 gave modules no config access; added `ctx.config` (`[modules.<id>]` in `config.toml`) | Every module with settings |
+| `process.spawn` had a broker | `ctx.spawn` existed only as a declaration; added `ProcessBroker` (argv only, minimal env, audit by program and exit code) | M1, M10, M11 |
+| Modules could write their own audit records | Added `ctx.audit(event, **names)` (records `module.<id>.<event>`) so rotation is audited by name | Every module with auditable actions |
+| A backend provider must list secret names | The `secrets.read` <-> `capabilities.secrets` rule now exempts modules that declare `secret_backends` | Manifest validation |
+| An `auto` module should start at discovery | It fails without grants; `start_auto` now skips it until every requested capability is granted (`module.auto_skipped`) | Lifecycle, all auto modules |
+| Bundled modules do not affect existing tests | Default discovery picked up `secrets`; tests now run without bundled modules unless marked `bundled_modules` | Test suite |
+| mypy results are the same on every OS | Windows-only `ctypes` names fail type checks on Linux and macOS; annotated `type: ignore[attr-defined,unused-ignore]` and checked with `mypy --platform` | Any platform-specific code |
+| `secret-tool` exit 1 always means "not found" | A D-Bus or keyring error also exits 1; only exit 1 with empty stdout and stderr is "not found" | Secret Service backend |
+| `shutil.which` is a safe way to find helpers | On Windows it searches the working directory first; all helper lookups go through `find_program` | Every module that spawns helpers |
+| The API only needs to drain POST bodies | `PUT` with a body got Python's default 501 without draining (flaky reset on Windows); all methods drain and answer JSON | Control API |

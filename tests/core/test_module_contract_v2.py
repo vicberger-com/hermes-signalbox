@@ -237,3 +237,19 @@ def test_action_registration_rules(core: Core, tmp_path: Path) -> None:
             name = "vault"
 
         bare.provide_secret_backend(V())
+
+
+def test_redaction_survives_json_escaping(core: Core) -> None:
+    core.secrets._redactor.add('quote"back\\slash-' + "value")
+    out = core.redactor.redact_obj({'quote"back\\slash-value': ['x quote"back\\slash-value y']})
+    assert "quote" not in json.dumps(out)
+
+
+def test_slash_command_handles_odd_numbers(core: Core) -> None:
+    from switchyard.hermes import HermesAdapter
+
+    core.run("module", "activate", {"id": "prov"}, actor="t")
+    adapter = HermesAdapter.__new__(HermesAdapter)
+    adapter.core = core
+    reply = adapter.command("module action prov bump by=--5")
+    assert reply.startswith("error") and "int" in reply

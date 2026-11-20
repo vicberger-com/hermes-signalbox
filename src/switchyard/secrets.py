@@ -74,7 +74,9 @@ class SecretBackend(Protocol):
     name: str
 
     def available(self) -> bool:
-        """False when locked or unreachable; the broker then skips it."""
+        """False only when the backend does not exist here (wrong platform, helper not installed); the broker
+        then skips it. A locked or unreachable backend must raise from ``get`` instead, so lookups fail closed
+        rather than falling through to a later backend."""
         ...
 
     def get(self, name: str) -> str:
@@ -137,7 +139,7 @@ class Redactor:
         if isinstance(value, list | tuple):
             return [self.redact_obj(v) for v in value]
         if isinstance(value, dict):
-            return {k: self.redact_obj(v) for k, v in value.items()}
+            return {self.redact(k) if isinstance(k, str) else k: self.redact_obj(v) for k, v in value.items()}
         return value
 
 

@@ -4,7 +4,7 @@ A security-first, open-source control plane for [Hermes Agent](https://github.co
 one small core framework plus snap-on modules that manage skills, plugins, model/resource pools, sub-agents,
 token use, security testing, reporting and updates. Hermes can operate 100% of it; so can a human.
 
-**Status:** v0.1.0, phase M0 (core framework) complete: module lifecycle with in-process and subprocess hosts,
+**Status:** v0.2.0, phases M0 (core framework) and M1 (secrets: OS stores and Vaultwarden) complete: module lifecycle with in-process and subprocess hosts,
 default-deny capabilities, hash-chained audit log, secrets by reference, update with rollback, CLI, loopback API
 and the Hermes plugin. Modules M1 to M12 follow. The build is executed by a Hermes instance following
 [AGENTS.md](AGENTS.md).

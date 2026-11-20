@@ -57,8 +57,8 @@ class SecretsModule:
             raise SwitchyardError("[modules.secrets] backends must be a list of names")
         if isinstance(length, bool) or not isinstance(length, int) or not 16 <= length <= 256:
             raise SwitchyardError("[modules.secrets] rotation_length must be an integer from 16 to 256")
-        if isinstance(warn, bool) or not isinstance(warn, int) or warn < 0:
-            raise SwitchyardError("[modules.secrets] expiry_warning_days must be a non-negative integer")
+        if isinstance(warn, bool) or not isinstance(warn, int) or not 0 <= warn <= 3650:
+            raise SwitchyardError("[modules.secrets] expiry_warning_days must be an integer from 0 to 3650")
         self.settings = {"rotation_length": length, "expiry_warning_days": warn}
         self.backends = build(names, ctx.spawn.run, session_env=str(cfg.get("bw_session_env", "BW_SESSION")),
                               allow_env=cfg.get("allow_env_backend", False) is True)  # fmt: skip
@@ -137,15 +137,19 @@ class SecretsModule:
         """Write a fresh random value for ``name``; it is generated here and never returned or logged."""
         check_name(name)
         writable = [b for b in self.backends if hasattr(b, "set") and b.available()]
-        if backend:
-            writable = [b for b in writable if b.name == backend]
-        else:
-            row = self._row(name)
-            if row and row[1]:
-                writable = [b for b in writable if b.name == row[1]] or writable
+        row = self._row(name)
+        recorded = row[1] if row and row[1] else ""
+        wanted = backend or recorded
+        if wanted:
+            writable = [b for b in writable if b.name == wanted]
+            if not writable and recorded and not backend:
+                raise SwitchyardError(
+                    f"recorded backend {recorded!r} for {name!r} is not available or writable"
+                )
         if not writable:
             raise SwitchyardError("no writable, available backend for rotation")
         target = writable[0]
+        self._check_not_shadowed(name, target)
         value = _random.token_urlsafe(int(self.settings["rotation_length"]))
         target.set(name, value)
         del value
@@ -157,6 +161,26 @@ class SecretsModule:
         self.ctx.log("secrets", "rotated", secret=name, backend=target.name)
         self.ctx.audit("rotated", secret=name, backend=target.name)
         return {"name": name, "backend": target.name, "rotated_at": stamp}
+
+    def _check_not_shadowed(self, name: str, target: Any) -> None:
+        """Lookups use the first backend that holds a name. Writing to a later one would leave the old value
+        in service, so every available backend before ``target`` must not hold ``name``."""
+        for earlier in self.backends:
+            if earlier is target:
+                return
+            if not earlier.available():
+                continue
+            try:
+                earlier.get(name)
+            except KeyError:
+                continue
+            except Exception:
+                raise SwitchyardError(
+                    f"cannot check {earlier.name!r} for {name!r}; rotation refused"
+                ) from None
+            raise SwitchyardError(
+                f"{name!r} is served by {earlier.name!r}, which comes first; rotate it there"
+            )
 
     def expire(self, name: str, date: str) -> dict[str, Any]:
         check_name(name)

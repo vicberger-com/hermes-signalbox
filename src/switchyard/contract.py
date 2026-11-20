@@ -26,6 +26,7 @@ The run happens in a temporary data directory that is deleted afterwards; nothin
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import tempfile
 from collections.abc import Callable, Mapping
@@ -39,15 +40,19 @@ from switchyard.lifecycle import ModuleStatus
 from switchyard.manifest import Manifest, load_manifest
 
 ACTOR = "contract"
+_SETTING_KEY = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 
 
 def _toml_table(name: str, values: Mapping[str, Any]) -> str:
     """Minimal TOML writer for flat settings (str, int, bool, lists of those); JSON literals fit TOML."""
     lines = [f"[{name}]"]
     for key, value in values.items():
-        if not isinstance(value, (str, int, bool, list)):
-            raise ValueError(f"setting {key!r}: unsupported type {type(value).__name__}")
-        lines.append(f"{key} = {json.dumps(value)}")
+        if not isinstance(key, str) or not _SETTING_KEY.match(key):
+            raise ValueError(f"setting key {key!r} must match [a-z][a-z0-9_]*")
+        items = value if isinstance(value, list) else [value]
+        if not all(isinstance(v, (str, int, bool)) for v in items):
+            raise ValueError(f"setting {key!r}: only str, int, bool and lists of those are supported")
+        lines.append(f"{key} = {json.dumps(value, ensure_ascii=True)}")
     return "\n".join(lines) + "\n"
 
 

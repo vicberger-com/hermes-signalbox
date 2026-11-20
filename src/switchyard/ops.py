@@ -223,10 +223,11 @@ def _module_action(core: Core, p: dict[str, Any], actor: str) -> Any:
     except Exception as exc:
         raise SwitchyardError(f"action {action.name!r} failed: {type(exc).__name__}") from None
     try:
-        text = json.dumps(result)
+        json.dumps(result)
     except (TypeError, ValueError):
         raise SwitchyardError(f"action {action.name!r} returned data that is not JSON") from None
-    return json.loads(core.redactor.redact(text))
+    # Redact the values, not the JSON text: escaping (quotes, backslashes, non-ASCII) would hide a match.
+    return core.redactor.redact_obj(result)
 
 
 @op("module", "update", "Update a git-installed module to a pinned commit; rolls back if it fails.",

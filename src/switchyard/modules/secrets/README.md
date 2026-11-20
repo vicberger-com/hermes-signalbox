@@ -75,3 +75,21 @@ each backend and a real Credential Manager round trip on Windows.
 ## Third-party code
 
 None. Hermes `agent/secret_sources` (MIT) was read as a design reference; nothing copied.
+
+## Security review (M1 gate)
+
+Reviewed 2026-11-19 by a fresh subagent with only the M1 diff and the threat table; every finding was checked
+against the code.
+
+| Finding | Disposition |
+|---|---|
+| (high) On Windows `shutil.which` searches the working directory first, so a planted `bw.cmd` would run and receive `BW_SESSION` | **Fixed.** `switchyard.process.find_program` refuses relative results and anything in the working directory; used by the process broker, the backends, update control (`git`) and the API (`icacls`) |
+| (medium) `rotate` could write to a later backend while an earlier one keeps serving the old value, and silently move a secret off its recorded backend | **Fixed.** Rotation refuses when an earlier available backend holds the name (or cannot be checked), and never leaves the recorded backend implicitly |
+| (low) `available()` contract allowed "locked" to fall through | **Fixed (contract).** `available()` means "exists here"; locked backends must raise from `get` |
+| (low) Backend provider manifest without `secrets.read` passed validation | **Fixed.** Cross-field rule |
+| (low) `run_contract` TOML writer did not validate keys or values | **Fixed.** Keys `[a-z][a-z0-9_]*`; values str, int, bool or lists of those |
+| (low) Huge `expiry_warning_days` overflowed | **Fixed.** 0 to 3650 |
+| (low) `/switchyard ... x=--5` raised an uncaught error | **Fixed.** Integers parsed with a strict pattern |
+| (low) Redaction ran on JSON text, so escaped values could slip through | **Fixed.** Results are redacted as Python values (including dict keys) before serialising |
+| Credential buffers are not zeroed in memory | **Accepted.** Python strings are immutable; not achievable in pure Python |
+

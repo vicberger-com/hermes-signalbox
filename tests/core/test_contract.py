@@ -94,3 +94,9 @@ def test_denial_probe_switches_when_module_requests_net(tmp_path: Path) -> None:
     report = run_contract(d)
     assert report.checks[2].detail == "process.spawn", report.summary()
     assert _names(report)["audit"]
+
+
+@pytest.mark.parametrize("settings", [{"bad key": 1}, {"k\n[x]": 1}, {"k": None}, {"k": [None]}, {"k": 1.5}])
+def test_contract_settings_are_validated(settings: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        run_contract(TEMPLATE, settings=settings)

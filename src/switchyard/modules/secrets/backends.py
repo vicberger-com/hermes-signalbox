@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from switchyard.errors import SwitchyardError
+from switchyard.process import find_program
 
 SERVICE = "switchyard"  # keychain service / secret-tool attribute / Windows target prefix
 
@@ -91,7 +91,7 @@ class _CliBackend:
         self._program = program
 
     def _helper_present(self) -> bool:
-        return shutil.which(self._program) is not None
+        return find_program(self._program) is not None
 
 
 class KeychainBackend(_CliBackend):
