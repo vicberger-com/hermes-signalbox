@@ -145,10 +145,15 @@ are rebuilt as the same class in the child.
 
 ### Secrets broker (interface only in M0)
 
-`SecretRef("secret://name")`. `SecretsBroker.use(ref, fn)` calls `fn(value)` and returns `fn`'s result after
-checking it does not contain the value; the value is never returned. Every use is audited by name. Each resolved
-value is added to the redactor for the life of the process. `MemoryBackend` is for tests only and refuses to load
-outside pytest unless `allow_test_backend=True`.
+`SecretRef("secret://name")`; `SecretBackend` protocol (`name`, `available()`, `get(name)`). `SecretsBroker.use(module,
+ref, fn)`: policy (`secrets.read` + declared names), first available backend wins, none -> `SecretUnavailable`
+(audited); the value is registered with the `Redactor` and the use audited by name; `fn(value)`'s result is returned
+only if the value does not appear in it (`SecretLeak`, audited). If `fn` raises, only its class name is re-raised,
+with no exception context, and the value is deleted from the frame before any raise so tracebacks carry no copy.
+`ctx.secrets` returns `ModuleSecrets` (broker bound to the module, via a `for_module` hook on brokers). `Redactor`
+masks registered values (>= 4 chars, longest first) and default credential shapes (OpenAI/Anthropic `sk-`, GitHub
+`ghp_`/`github_pat_`, AWS `AKIA`, Slack `xox?-`, bearer tokens). `MemoryBackend` is test-only (refuses outside pytest
+unless `allow_test_backend=True`).
 
 ### Host profiler
 
