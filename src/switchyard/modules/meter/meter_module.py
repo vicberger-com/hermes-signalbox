@@ -377,14 +377,16 @@ class MeterModule:
         sql = (
             f"SELECT provider, model, {cols} FROM {self._t('daily')} WHERE day >= ? GROUP BY provider, model "  # nosec B608
         )
-        rows = self._q(sql + "ORDER BY sum(cost_micro) DESC, sum(requests) DESC LIMIT 200", (since,))
-        models = [self._usage_row(r[0], r[1], r[2:]) for r in rows]
-        totals = {c: sum(m[c] for m in models) for c in ("requests", "tokens", "errors")}
-        totals["cost_usd"] = round(sum(m["cost_usd"] for m in models), 6)
+        rows = self._q(sql + "ORDER BY sum(cost_micro) DESC, sum(requests) DESC LIMIT 201", (since,))
+        models = [self._usage_row(r[0], r[1], r[2:]) for r in rows[:200]]
+        whole = self._q(f"SELECT {cols} FROM {self._t('daily')} WHERE day >= ?", (since,))[0]  # nosec B608
+        all_rows = self._usage_row("", "", whole)
+        totals = {c: all_rows[c] for c in ("requests", "tokens", "errors", "cost_usd")}
         return {
             "since": since,
             "totals": totals,
             "models": models,
+            "truncated": len(rows) > 200,
             "cost_note": "estimate from models.dev prices; 'unpriced' responses add no cost",
         }
 
@@ -416,7 +418,8 @@ class MeterModule:
         sql = f"SELECT provider, model, {cols} FROM {self._t('daily')} WHERE {where} "  # nosec B608
         sql += "ORDER BY provider, model LIMIT 1000"
         rows = self._q(sql, tuple(args))
-        sub_sql = f"SELECT role, status, runs, duration_ms FROM {self._t('subagents')} WHERE day = ?"  # nosec B608
+        sub_sql = (f"SELECT role, status, runs, duration_ms FROM {self._t('subagents')} WHERE day = ? "  # nosec B608
+                   "ORDER BY runs DESC LIMIT 200")  # fmt: skip
         subs = self._q(sub_sql, (day,))
         return {
             "day": day,
@@ -491,6 +494,11 @@ class MeterModule:
         """``limit`` is a decimal string: requests, tokens or USD depending on ``metric``."""
         if not _NAME.match(name):
             raise SwitchyardError(f"invalid quota name {name[:64]!r}")
+        if scope.startswith("provider:"):  # provider ids are stored lower-case; model ids keep their case
+            scope = scope.lower()
+        elif "/" in scope:
+            head, _, tail = scope.partition("/")
+            scope = f"{head.lower()}/{tail}"
         if not _SCOPE.match(scope):
             raise SwitchyardError(
                 "scope must be 'all', 'provider:<id>' or a resource id '<provider>/<model>'"
@@ -510,7 +518,8 @@ class MeterModule:
         if not marks or len(marks) > 10 or not all(1 <= t <= 100 for t in marks):
             raise SwitchyardError("thresholds must be 1 to 10 percentages from 1 to 100")
         sql = f"INSERT OR REPLACE INTO {self._t('quotas')} VALUES (?, ?, ?, ?, ?, ?)"  # nosec B608
-        self._q(sql, (name, scope, metric, period, value, ",".join(map(str, marks))))
+        with self._lock:  # never interleave with a threshold check (_record)
+            self._q(sql, (name, scope, metric, period, value, ",".join(map(str, marks))))
         self.ctx.audit("quota_add", quota=name, scope=scope, metric=metric, period=period, limit=str(value))
         return {
             "quota": name,
@@ -524,8 +533,9 @@ class MeterModule:
     def quota_remove(self, name: str) -> dict[str, Any]:
         if not _NAME.match(name):
             raise SwitchyardError(f"invalid quota name {name[:64]!r}")
-        self._q(f"DELETE FROM {self._t('quotas')} WHERE name = ?", (name,))  # nosec B608
-        self._q(f"DELETE FROM {self._t('fired')} WHERE name = ?", (name,))  # nosec B608
+        with self._lock:
+            self._q(f"DELETE FROM {self._t('quotas')} WHERE name = ?", (name,))  # nosec B608
+            self._q(f"DELETE FROM {self._t('fired')} WHERE name = ?", (name,))  # nosec B608
         self.ctx.audit("quota_remove", quota=name)
         return {"removed": name}
 

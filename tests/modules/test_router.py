@@ -296,3 +296,10 @@ def test_configured_paid_model_is_not_a_back_door(core: Core) -> None:
     assert (
         route(core, request(model="unknown/model")) == "free/small:free" or True
     )  # unknown models: outside the gate
+
+
+def test_free_resources_need_the_llm_free_grant(core: Core) -> None:
+    core.run("module", "revoke", {"id": "router", "capability": "llm.free"}, actor="t")
+    assert route(core, request()) == "x/default"  # no free candidates without the grant
+    core.run("module", "grant", {"id": "router", "capability": "llm.free"}, actor="t")
+    assert route(core, request()) == "free/small:free"

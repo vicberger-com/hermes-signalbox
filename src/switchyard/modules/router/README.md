@@ -46,6 +46,12 @@ When the `meter` module reports `meter.exhausted` for a quota, the router cools 
 the end of the quota period: one resource (`<provider>/<model>`), a whole provider (`provider:<id>`), or
 everything (`all`). `cooldown_clear {id}` lifts it early (use the scope as the id).
 
+This is **steering, not a hard stop**: Hermes middleware can change a request's model but cannot refuse the
+request. If the configured model is inside an exhausted scope (or paid while paid is not allowed), the router
+sends the request to any free or self-hosted resource outside the scope; if there is none, the request goes
+out unchanged and `module.router.quota_passthrough` (or `paid_passthrough`) is audited once per resource and
+day. A hard stop needs a blocking hook and is a later decision.
+
 ## Control surface
 
 | Kind | Name | Model may run |
@@ -56,7 +62,8 @@ everything (`all`). `cooldown_clear {id}` lifts it early (use the scope as the i
 | Config | `[modules.router]` `consumer` (`main`), `providers` (`["openrouter"]`), `max_attempts` (3, 1-10), `cooldown_seconds` (60, 5-86400) | |
 
 Capabilities: `hermes.hooks` and `ui.panel` (required to start); `llm.free`, `llm.paid` (optional in the
-manifest, so auto-start does not wait for them; paid stays off without `llm.paid`). The router needs the `resources` module running; without it every request passes through.
+manifest, so auto-start does not wait for them, and checked on every request: without `llm.free` no free or
+self-hosted resource is chosen, without `llm.paid` no paid one). The router needs the `resources` module running; without it every request passes through.
 
 ## State and removal
 

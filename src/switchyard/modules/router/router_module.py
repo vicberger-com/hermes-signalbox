@@ -155,7 +155,18 @@ class RouterModule:
             resolved = self.ctx.call("resources", "resolve", {"consumer": self.settings["consumer"]})
         except SwitchyardError:
             return []  # registry not running: pass requests through unchanged
-        return candidates_from(resolved.get("resources", []), provider)
+        found = candidates_from(resolved.get("resources", []), provider)
+        if not self.ctx.has("llm.free"):  # free and self-hosted resources need the llm.free grant
+            found = [c for c in found if c.cost_class == "paid"]
+        return found
+
+    def _effective_cooling(self, provider: str, candidates: list[Candidate]) -> dict[str, str]:
+        """Cooling resource ids, with quota scopes (``all``, ``provider:<id>``) applied to every candidate."""
+        cooling = self._cooling()
+        scope = "all" if "all" in cooling else f"provider:{provider}"
+        if scope in cooling:
+            cooling.update({c.id: cooling[scope] for c in candidates})
+        return cooling
 
     def _record(self, need: Need, chosen: Candidate | None, reason: str) -> None:
         t = self._t("decisions")
@@ -187,11 +198,7 @@ class RouterModule:
     def choose(self, need: Need, provider: str) -> tuple[Candidate | None, str, dict[str, str]]:
         consumer = self.settings["consumer"]
         candidates = self._candidates(provider)
-        cooling = self._cooling()
-        if (
-            "all" in cooling or f"provider:{provider}" in cooling
-        ):  # a meter quota is exhausted for all of them
-            cooling.update({c.id: "quota exhausted" for c in candidates})
+        cooling = self._effective_cooling(provider, candidates)
         paid_ok = self._paid_ok(consumer, need.tier)
         pin = self._q(f"SELECT resource FROM {self._t('pins')} WHERE consumer = ?", (consumer,))  # nosec B608
         if pin:
@@ -237,28 +244,36 @@ class RouterModule:
     def _guard_paid_default(
         self, request: dict[str, Any], need: Need, provider: str, reason: str
     ) -> tuple[Candidate | None, str]:
-        """Nothing fits. Passing through would send Hermes's configured model; if that is a paid registry
-        resource and paid is not allowed now, use any free or self-hosted resource that is not cooling down
-        instead (ignoring size and tag checks). A configured model the registry does not know is outside the
-        router's control and is passed through (README)."""
+        """Nothing fits, so Hermes's configured model would go out unchanged. If that model is a paid resource
+        while paid is not allowed, or its quota scope is exhausted, use any free or self-hosted ``auto``
+        resource that is not cooling down instead (size and tag checks ignored). Middleware cannot refuse a
+        request, so if there is no such resource the configured model is passed through and that is audited
+        once per resource and day (``paid_passthrough`` / ``quota_passthrough``)."""
         candidates = self._candidates(provider)
-        current = next((c for c in candidates if c.model == request.get("model")), None)
-        if (
-            current is None
-            or current.cost_class != "paid"
-            or self._paid_ok(self.settings["consumer"], need.tier)
-        ):
+        cooling = self._effective_cooling(provider, candidates)
+        model = str(request.get("model") or "")
+        current = next((c for c in candidates if c.model == model), None)
+        rid = current.id if current else f"{provider}/{model}"
+        raw = self._cooling()
+        quota_hit = any(k in raw and raw[k].startswith("quota") for k in ("all", f"provider:{provider}", rid))
+        paid_blocked = (
+            current is not None
+            and current.cost_class == "paid"
+            and not self._paid_ok(self.settings["consumer"], need.tier)
+        )
+        if not (paid_blocked or quota_hit):
             return None, reason
-        cooling = self._cooling()
+        why = "quota exhausted" if quota_hit else "configured model is paid"
         fallback = next((c for c in candidates if c.cost_class != "paid" and c.state == "auto"
                          and c.id not in cooling), None)  # fmt: skip
         if fallback is not None:
-            return fallback, f"{reason}; configured model is paid"
+            return fallback, f"{reason}; {why}"
+        event = "quota_passthrough" if quota_hit else "paid_passthrough"
         day = _day(self.clock())
-        if self._warned.get(current.id) != day:
-            self._warned[current.id] = day
-            self.ctx.audit("paid_passthrough", consumer=self.settings["consumer"], resource=current.id)
-        return None, f"{reason}; configured paid model passed through"
+        if self._warned.get(f"{event}:{rid}") != day:
+            self._warned[f"{event}:{rid}"] = day
+            self.ctx.audit(event, consumer=self.settings["consumer"], resource=rid[:200])
+        return None, f"{reason}; {why}, passed through"
 
     def _sent_model(self, kwargs: dict[str, Any]) -> str | None:
         """The resource a failed request actually used: what ``route`` sent for this request id, else the
