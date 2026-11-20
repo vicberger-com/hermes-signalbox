@@ -21,6 +21,31 @@ Executed by a Hermes agent under [AGENTS.md](../AGENTS.md). Order is fixed: core
 | M11 | Offload connectors (n8n, JevK5, ACP agents, others) | M2, M7 | v0.12.0 |
 | M12 | Update, patch and release control for modules | M0 | v0.13.0 |
 | R1 | Hardening review, full docs pass, public release | all | v1.0.0 |
+| H1 | Hardening after the v1.0.0 evaluation: all High and Medium findings, named Low ones ([Q&A](qa/15-h1-prework.md)) | R1 | v1.0.1 |
+| H2 | First real install in a Hermes test profile, real-Hermes CI job, live connector checks, re-verification on the current Hermes release | H1 | none (report in the Q&A) |
+
+## Maintenance phases (after 1.0)
+
+A maintenance phase (H1, H2, ...) fixes or verifies what exists; it adds no module and no feature.
+
+1. **Scope comes from a recorded review.** The phase Q&A file lists every finding by ID with its scope class
+   (must, should, backlog, no action) and work package. Nothing outside that list is changed; anything else
+   noticed becomes a `backlog` issue.
+2. **Same loop, smaller steps.** Steps 1 to 9 of the per-phase loop apply. "Spec freeze" becomes: an ADR for
+   every change to core behaviour, and corrections to `docs/modules/<id>.md` and the module READMEs.
+3. **One work package is one pull request**, in the order the Q&A gives. Tests first: each finding gets a
+   regression test that fails before the fix.
+4. **Triage before fixing.** Reproduce each finding in a test. A finding that does not reproduce is recorded
+   as "Not reproduced" with the test and the reason; it is not fixed by guesswork.
+5. **Unfixed security detail stays out of this repository.** Findings about the security of a released
+   version are listed here by ID, severity, component and work package only. Their mechanism, evidence and
+   reproduction live in the maintainer's private record until the fix is merged; pull request titles and
+   commit messages refer to the ID. Dispositions are published in the phase Q&A when the fix merges, as in
+   earlier phases.
+6. **Behaviour changes in a patch release** are allowed only when they tighten security or correct documented
+   behaviour. Each is listed under `### Changed` in the changelog with the step an operator must take.
+7. **Phase close** is the same as a module phase: acceptance tests, a fresh security review of the fix diff,
+   retro, release pull request, tag.
 
 ## Per-phase loop
 
