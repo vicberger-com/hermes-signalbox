@@ -4,6 +4,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-20
+
+Phase M3: router and failover.
+
 ### Added
 - Hermes hook bridge (ADR-0004): modules granted `hermes.hooks` observe `pre_llm_call`, `pre_api_request`,
   `post_api_request`, `api_request_error`, `post_llm_call` and register `llm_request` middleware that may
@@ -13,6 +17,12 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   within the active provider: tiers T1-T5 by request size, free and self-hosted first, paid only with the
   `llm.paid` grant + a tier rule + daily budget (each paid choice audited), pins, failover with cool-down
   across Hermes retries, bounded per turn. Decisions keep no prompt text.
+
+### Security
+- M3 security review (`src/switchyard/modules/router/README.md`): failover now cools down the resource
+  actually sent; a paid configured model can no longer bypass the paid gate on pass-through; bridge
+  callbacks get deep copies, only `model` is adopted, calls are time-bounded (2 s); paid choice and charge are
+  atomic; request-caused 4xx errors no longer cool resources down.
 
 ## [0.3.0] - 2026-11-19
 
