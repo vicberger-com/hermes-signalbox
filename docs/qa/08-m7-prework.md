@@ -51,7 +51,7 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 | Module reads delegated goals, context or summaries | Module gets role, goal digest, index only; observers metadata only | same |
 | Route smuggles credentials or endpoints (`api_key`, `base_url`) | Only `{model, provider}` or `{profile}` accepted, validated | same |
 | Paid subagents without consent | Router paid rules and budget **and** the workers `llm.paid` grant | `test_paid_needs_the_workers_grant` |
-| Router overrides a role's model on the child's requests | Children started from a routed task are marked `delegated`; router skips them | `test_per_role_model_binding_is_honoured` |
+| Router overrides a role's model on the child's requests | Children started from a routed task are routed within their role's consumer (paid rules, budget, quotas apply) | `test_per_role_model_binding_is_honoured` |
 | Runaway re-delegation | Same goal routed `loop_limit` times in the window is refused | `test_loop_detection_refuses_repeated_delegation` |
 | Model edits roles to escalate | Role and team changes are human-only | `test_router_down_and_actions` |
 
@@ -65,3 +65,7 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| Leaving a child alone keeps the role's choice | It also skipped paid charging and quotas; route the child within its role's consumer instead | Router, any per-request policy |
+| An operator-named persona is safe to run | Its profile's model can be paid; the operator declares cost and the router still steers | Workers, future profile routes |
+| A digest is a good link key | Without consumption it links many children; consume once and scope to the owner | Bridge child tracking |
+

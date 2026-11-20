@@ -81,6 +81,7 @@ _MAX_STR = 300
 _ROLE = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
 _ROUTE_VALUE = re.compile(r"[A-Za-z0-9._:/@+-]{1,200}\Z")
 _PROFILE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")
+_DELEGATED_CONSUMER = re.compile(r"subagent:[a-z][a-z0-9_-]{0,31}\Z")
 _GATE_CODE = re.compile(r"[a-z][a-z0-9_]{0,39}\Z")
 
 
@@ -97,7 +98,26 @@ def goal_sha(goal: object) -> str:
     and spots repeated delegation, without any module seeing the goal text."""
     if not isinstance(goal, str):
         return ""
-    return hashlib.sha256(" ".join(goal.split()).encode("utf-8")).hexdigest()[:16]
+    folded = " ".join(re.sub(r"[^\w\s]", " ", goal.casefold()).split())
+    return hashlib.sha256(folded.encode("utf-8")).hexdigest()[:16]
+
+
+def _valid_route(answer: Mapping[str, Any], label: str) -> dict[str, str] | None:
+    """The route Hermes gets: ``{model, provider}`` or ``{profile}`` plus our label; extra keys a module
+    may add for Switchyard (``consumer``, ``free_only``) are never forwarded."""
+    keys = set(answer) - {"consumer", "free_only"}
+    profile, model, provider = answer.get("profile"), answer.get("model"), answer.get("provider")
+    if keys == {"profile"} and isinstance(profile, str) and _PROFILE.match(profile):
+        return {"profile": profile, "label": label}
+    if (
+        keys == {"model", "provider"}
+        and isinstance(model, str)
+        and isinstance(provider, str)
+        and _ROUTE_VALUE.match(model)
+        and _ROUTE_VALUE.match(provider)
+    ):
+        return {"model": model, "provider": provider, "label": label}
+    return None
 
 
 def metadata_only(kwargs: Mapping[str, Any]) -> dict[str, Any]:
@@ -150,8 +170,9 @@ class HermesBridge:
         self._pools: dict[str, concurrent.futures.ThreadPoolExecutor] = {}
         self._closed = False
         self._delegation: tuple[str, Callable[..., Any], Callable[[], Any]] | None = None
-        self._routed_goals: collections.OrderedDict[str, None] = collections.OrderedDict()
-        self._delegated: collections.OrderedDict[str, None] = collections.OrderedDict()
+        # goal digest -> list of pending (consumer, free_only) routes; child session -> (consumer, free_only)
+        self._routed_goals: collections.OrderedDict[str, list[tuple[str, bool]]] = collections.OrderedDict()
+        self._delegated: collections.OrderedDict[str, tuple[str, bool]] = collections.OrderedDict()
 
     def _pool(self, module_id: str) -> concurrent.futures.ThreadPoolExecutor:
         """One small pool per module, so a module whose calls hang only starves itself (M6 review)."""
@@ -203,6 +224,7 @@ class HermesBridge:
         with self._lock:
             if self._delegation and self._delegation[0] == module_id:
                 self._delegation = None
+                self._routed_goals.clear()  # pending routes die with their owner (M7 review)
             for table in (self._hooks, self._middleware):
                 for key in list(table):
                     table[key] = [(m, f) for m, f in table[key] if m != module_id]
@@ -299,20 +321,21 @@ class HermesBridge:
                     f"[switchyard] The {module_id} module refused this task ({words}). "
                     "Do not delegate the same task again; do it differently or ask the user."
                 )
-            profile = answer.get("profile")
-            if isinstance(profile, str) and _PROFILE.match(profile) and set(answer) == {"profile"}:
-                self._remember(self._routed_goals, meta["goal_sha"])
-                return {"profile": profile, "label": label}, ""
-            model, provider = answer.get("model"), answer.get("provider")
-            if (
-                set(answer) == {"model", "provider"}
-                and isinstance(model, str)
-                and isinstance(provider, str)
-                and _ROUTE_VALUE.match(model)
-                and _ROUTE_VALUE.match(provider)
-            ):
-                self._remember(self._routed_goals, meta["goal_sha"])
-                return {"model": model, "provider": provider, "label": label}, ""
+            route = _valid_route(answer, label)
+            if route is not None:
+                consumer = answer.get("consumer")
+                mark = (
+                    consumer if isinstance(consumer, str) and _DELEGATED_CONSUMER.match(consumer) else "",
+                    answer.get("free_only") is not False,
+                )
+                with self._lock:  # consumed by the first matching subagent_start (M7 review)
+                    pending = self._routed_goals.setdefault(meta["goal_sha"], [])
+                    pending.append(mark)
+                    del pending[:-16]
+                    self._routed_goals.move_to_end(meta["goal_sha"])
+                    while len(self._routed_goals) > 2000:
+                        self._routed_goals.popitem(last=False)
+                return route, ""
         self._audit.append(
             actor=CORE_ACTOR,
             action="module.delegation_failed",
@@ -324,22 +347,25 @@ class HermesBridge:
             "[switchyard] Delegation routing failed for this task. Ask the operator to check Switchyard.",
         )
 
-    def _remember(self, table: collections.OrderedDict[str, None], key: str) -> None:
-        if not key:
+    def _track_children(self, name: str, kwargs: Mapping[str, Any]) -> None:
+        """ADR-0007: link a started child to the pending route of its goal (consumed once) and forget it when
+        it stops, so the marker neither spreads to other children nor ages out while the child runs."""
+        child = str(kwargs.get("child_session_id") or "")
+        if not child:
             return
         with self._lock:
-            table[key] = None
-            table.move_to_end(key)
-            while len(table) > 2000:
-                table.popitem(last=False)
+            if name == "subagent_stop":
+                self._delegated.pop(child, None)
+                return
+            pending = self._routed_goals.get(goal_sha(kwargs.get("child_goal")))
+            if pending:
+                self._delegated[child] = pending.pop(0)
+                while len(self._delegated) > 20_000:  # backstop only: entries leave on subagent_stop
+                    self._delegated.popitem(last=False)
 
     def dispatch_hook(self, name: str, kwargs: Mapping[str, Any]) -> None:
-        if name == "subagent_start":
-            child = str(kwargs.get("child_session_id") or "")
-            with self._lock:
-                routed = goal_sha(kwargs.get("child_goal")) in self._routed_goals
-            if routed:
-                self._remember(self._delegated, child)
+        if name in ("subagent_start", "subagent_stop"):
+            self._track_children(name, kwargs)
         with self._lock:
             entries = list(self._hooks.get(name, ()))
         for module_id, fn in entries:
@@ -397,7 +423,10 @@ class HermesBridge:
             # ADR-0007: a subagent whose model a delegation route chose is marked, so request middleware
             # (the router) leaves that choice alone.
             with self._lock:
-                ctx["delegated"] = str(context.get("session_id") or "") in self._delegated
+                mark = self._delegated.get(str(context.get("session_id") or ""))
+            ctx["delegated"] = mark is not None
+            if mark is not None:
+                ctx["delegated_consumer"], ctx["delegated_free_only"] = mark
         except Exception:
             return None  # not copyable: never hand a module the live request
         for module_id, fn in entries:

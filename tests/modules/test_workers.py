@@ -142,8 +142,25 @@ def test_per_role_model_binding_is_honoured(core: Core) -> None:
     )
     res(core, "bind", consumer="main", pool="scout")
     body = {"model": "free/coder:free", "messages": [{"role": "user", "content": "hi"}]}
+    # the child is routed within its role's pool (subagent:coder), not the main session's
     assert core.bridge.dispatch_llm_request(body, {"provider": OR, "session_id": "kid"}) is None
     assert core.bridge.dispatch_llm_request(body, {"provider": OR, "session_id": "main"}) is not None
+    core.bridge.dispatch_hook(
+        "subagent_start", {"child_session_id": "kid2", "child_goal": "summarise the report"}
+    )
+    other = {
+        **body,
+        "model": "free/small:free",
+    }  # the route was consumed by "kid": kid2 is not a routed child
+    assert (
+        core.bridge.dispatch_llm_request(other, {"provider": OR, "session_id": "kid2"}) is None
+    )  # main pool
+    swapped = core.bridge.dispatch_llm_request(other, {"provider": OR, "session_id": "kid"})
+    assert swapped is not None and swapped["model"] == "free/coder:free"  # kid stays in the coder pool
+    core.bridge.dispatch_hook("subagent_stop", {"child_session_id": "kid", "child_status": "completed"})
+    assert (
+        core.bridge.dispatch_llm_request(other, {"provider": OR, "session_id": "kid"}) is None
+    )  # marker gone
     route, message = core.bridge.dispatch_delegation(task("nobody"))
     assert route is None and "(unknown role)" in message
     route, message = core.bridge.dispatch_delegation(task(None, goal="x"))
@@ -180,6 +197,31 @@ def test_paid_needs_the_workers_grant(core: Core) -> None:
     grant(core, "workers", "llm.paid")
     route, _ = core.bridge.dispatch_delegation(task("big", goal="g2"))
     assert route == {"model": "paid/big", "provider": OR, "label": "big"}
+    # the paid child's requests are charged to the router's paid budget, per request (M7 review)
+    core.bridge.dispatch_hook("subagent_start", {"child_session_id": "paid-kid", "child_goal": "g2"})
+    body = {"model": "paid/big", "messages": [{"role": "user", "content": "x"}]}
+    router = core.manager._entry("router").instance
+    before = router._spent_today()
+    core.bridge.dispatch_llm_request(body, {"provider": OR, "session_id": "paid-kid"})
+    assert router._spent_today() == before + 1
+
+
+def test_paid_personas_need_consent_and_stay_steered(core: Core) -> None:
+    wk(core, "role_set", name="deep", profile="deep", paid=True)
+    wk(core, "role_set", name="cheap", profile="cheap")
+    assert "(paid not granted)" in core.bridge.dispatch_delegation(task("deep"))[1]
+    assert core.bridge.dispatch_delegation(task("cheap"))[0] == {"profile": "cheap", "label": "cheap"}
+    # the persona's profile turns out to use a paid model: the router steers it to a free one in the main pool
+    pool(core, "main_pool", f"{OR}/free/small:free", f"{OR}/paid/big")
+    res(core, "bind", consumer="main", pool="main_pool")
+    core.bridge.dispatch_hook(
+        "subagent_start", {"child_session_id": "p1", "child_goal": "summarise the report"}
+    )
+    out = core.bridge.dispatch_llm_request(
+        {"model": "paid/big", "messages": []}, {"provider": OR, "session_id": "p1"}
+    )
+    assert out is not None and out["model"] == "free/small:free"
+    assert {r["name"]: r["paid"] for r in wk(core, "roles")["roles"]} == {"cheap": False, "deep": True}
 
 
 def test_ledger_links_routes_and_survives_restart(tmp_path: Path, clock: Clock, catalog: Path) -> None:
@@ -235,8 +277,8 @@ def test_loop_detection_refuses_repeated_delegation(core: Core, clock: Clock) ->
     wk(core, "role_set", name="coder")
     loops: list[Any] = []
     core.bus.subscribe("test", "workers.loop", loops.append)
-    for _ in range(3):
-        assert core.bridge.dispatch_delegation(task("coder", goal="same   goal"))[0] is not None
+    for goal in ("same   goal", "Same goal.", "same, goal!"):  # case and punctuation do not escape it
+        assert core.bridge.dispatch_delegation(task("coder", goal=goal))[0] is not None
     route, message = core.bridge.dispatch_delegation(task("coder", goal="same goal"))
     assert route is None and "(repeated delegation)" in message and "Do not delegate" in message
     assert loops[0].data["goal_sha"] == goal_sha("same goal")
@@ -267,7 +309,7 @@ def test_module_sees_no_text_and_bad_answers_fail_closed(core: Core, monkeypatch
     with pytest.raises(SwitchyardError, match="already provided"):
         core.bridge.set_delegation("other", spy, inst.role_list)
     core.run("module", "deactivate", {"id": "workers"}, actor="t")
-    assert not core.bridge.delegation_active()
+    assert not core.bridge.delegation_active() and not core.bridge._routed_goals
     route, message = core.bridge.dispatch_delegation(task("any"))
     assert route is None and "No Switchyard module" in message
 

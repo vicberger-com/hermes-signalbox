@@ -203,12 +203,12 @@ class RouterModule:
     # Hermes callbacks ---------------------------------------------------------------------------------
 
     def choose(
-        self, need: Need, provider: str, consumer: str | None = None
+        self, need: Need, provider: str, consumer: str | None = None, free_only: bool = False
     ) -> tuple[Candidate | None, str, dict[str, str]]:
         consumer = consumer or self.settings["consumer"]
         candidates = self._candidates(provider, consumer)
         cooling = self._effective_cooling(provider, candidates)
-        paid_ok = self._paid_ok(consumer, need.tier)
+        paid_ok = not free_only and self._paid_ok(consumer, need.tier)
         pin = self._q(f"SELECT resource FROM {self._t('pins')} WHERE consumer = ?", (consumer,))  # nosec B608
         if pin:
             pinned = next((c for c in candidates if c.id == pin[0][0]), None)
@@ -221,10 +221,16 @@ class RouterModule:
 
     def route(self, request: dict[str, Any], context: dict[str, Any]) -> dict[str, Any] | None:
         provider = context.get("provider")
-        if self.ctx is None or provider not in self.settings["providers"] or context.get("delegated"):
-            return None  # a subagent routed by its worker role keeps that role's model (ADR-0007)
+        if self.ctx is None or provider not in self.settings["providers"]:
+            return None
+        # ADR-0007 (M7 review): a subagent routed by a worker role is routed within that role's consumer, with
+        # the same paid rules, budget charge, quotas and failover as the main session.
+        consumer = str(context.get("delegated_consumer") or "") or None
+        free_only = bool(context.get("delegated_free_only"))
         with self._lock:  # choice and paid-budget charge are one step (concurrent Hermes requests)
-            chosen, need, reason = self._decide(request, str(provider), str(context.get("turn_id") or ""))
+            chosen, need, reason = self._decide(
+                request, str(provider), str(context.get("turn_id") or ""), consumer, free_only
+            )
             if chosen is not None and chosen.cost_class == "paid":
                 self._charge_paid(need, chosen)
         if chosen is None:
@@ -238,27 +244,40 @@ class RouterModule:
         return {**request, "model": chosen.model}
 
     def _decide(
-        self, request: dict[str, Any], provider: str, turn: str
+        self,
+        request: dict[str, Any],
+        provider: str,
+        turn: str,
+        consumer: str | None = None,
+        free_only: bool = False,
     ) -> tuple[Candidate | None, Need, str]:
         need = need_for(request)
         if self._failures.get(turn, 0) >= self.settings["max_attempts"]:
             chosen, reason = None, "attempts exhausted"
         else:
-            chosen, reason, _ = self.choose(need, provider)
+            chosen, reason, _ = self.choose(need, provider, consumer, free_only)
         if chosen is None:
-            chosen, reason = self._guard_paid_default(request, need, provider, reason)
+            chosen, reason = self._guard_paid_default(request, need, provider, reason, consumer, free_only)
         self._record(need, chosen, reason)
         return chosen, need, reason
 
     def _guard_paid_default(
-        self, request: dict[str, Any], need: Need, provider: str, reason: str
+        self,
+        request: dict[str, Any],
+        need: Need,
+        provider: str,
+        reason: str,
+        consumer: str | None = None,
+        free_only: bool = False,
     ) -> tuple[Candidate | None, str]:
         """Nothing fits, so Hermes's configured model would go out unchanged. If that model is a paid resource
         while paid is not allowed, or its quota scope is exhausted, use any free or self-hosted ``auto``
         resource that is not cooling down instead (size and tag checks ignored). Middleware cannot refuse a
         request, so if there is no such resource the configured model is passed through and that is audited
         once per resource and day (``paid_passthrough`` / ``quota_passthrough``)."""
-        fallback, why, rid = self._guard_eval(str(request.get("model") or ""), need, provider)
+        fallback, why, rid = self._guard_eval(
+            str(request.get("model") or ""), need, provider, consumer, free_only
+        )
         if not why:
             return None, reason
         if fallback is not None:
@@ -268,12 +287,19 @@ class RouterModule:
         day = _day(self.clock())
         if self._warned.get(f"{event}:{rid}") != day:
             self._warned[f"{event}:{rid}"] = day
-            self.ctx.audit(event, consumer=self.settings["consumer"], resource=rid[:200])
+            self.ctx.audit(event, consumer=consumer or self.settings["consumer"], resource=rid[:200])
         return None, f"{reason}; {why}, passed through"
 
-    def _guard_eval(self, model: str, need: Need, provider: str) -> tuple[Candidate | None, str, str]:
+    def _guard_eval(
+        self, model: str, need: Need, provider: str, consumer: str | None = None, free_only: bool = False
+    ) -> tuple[Candidate | None, str, str]:
         """(fallback, why, resource id) for the configured ``model``: ``why`` is empty when it may go out."""
-        candidates = self._candidates(provider)
+        candidates = self._candidates(provider, consumer)
+        if consumer and not any(c.model == model for c in candidates):
+            # a delegated child's model may be outside its role's pool (a persona's own model): judge it, and
+            # find a free fallback, with the main registry view too, so a paid model is still recognised
+            seen = {c.id for c in candidates}
+            candidates = [*candidates, *(c for c in self._candidates(provider) if c.id not in seen)]
         cooling = self._effective_cooling(provider, candidates)
         current = next((c for c in candidates if c.model == model), None)
         rid = current.id if current else f"{provider}/{model}"
@@ -282,7 +308,7 @@ class RouterModule:
         paid_blocked = (
             current is not None
             and current.cost_class == "paid"
-            and not self._paid_ok(self.settings["consumer"], need.tier)
+            and (free_only or not self._paid_ok(consumer or self.settings["consumer"], need.tier))
         )
         if not (paid_blocked or quota_hit):
             return None, "", rid
