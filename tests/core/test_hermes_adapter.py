@@ -81,6 +81,9 @@ def ctx(tmp_path: Path) -> Iterator[FakeCtx]:
 
 def _tool(ctx: FakeCtx, name: str, **args: Any) -> dict[str, Any]:
     result: dict[str, Any] = json.loads(ctx.tools[name]["handler"](args, task_id="t1"))
+    inner = result.get("result")
+    if isinstance(inner, dict) and "untrusted_data" in inner:  # module text is labelled as data (R1)
+        result["result"] = inner["untrusted_data"]
     return result
 
 

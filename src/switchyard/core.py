@@ -85,7 +85,13 @@ class CoreView:
 
     def modules(self) -> list[dict[str, Any]]:
         return [
-            {"id": i.id, "status": i.status.value, "mode": i.mode, "error": i.error}
+            {
+                "id": i.id,
+                "status": i.status.value,
+                "mode": i.mode,
+                "error": i.error,
+                "stop_reason": i.stop_reason,
+            }
             for i in self._core.manager.modules()
         ]
 

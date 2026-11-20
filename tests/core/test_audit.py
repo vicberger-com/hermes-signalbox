@@ -115,8 +115,13 @@ def test_torn_last_line_fails_closed(tmp_path: Path) -> None:
     [(path, _)] = _lines(tmp_path / "audit")
     with path.open("a", encoding="utf-8") as fh:
         fh.write('{"seq": 3, "ts"')
-    with pytest.raises(AuditError, match="last record"):
-        _log(tmp_path)
+    log = _log(tmp_path)  # opening no longer fails (R1 follow-up) ...
+    assert AuditLog.verify_directory(tmp_path / "audit").ok is False  # ... verification still reports it
+    log.append(actor="user", action="after", module="demo", detail={})  # the next append repairs the tail
+    result = AuditLog.verify_directory(tmp_path / "audit")
+    assert result.ok and result.records == 4
+    assert [r["action"] for r in log.tail(2)] == ["audit.torn_tail_repaired", "after"]
+    assert list((tmp_path / "audit").glob("*.torn-*"))  # the cut bytes are kept
 
 
 def test_detail_values_are_redacted(tmp_path: Path) -> None:

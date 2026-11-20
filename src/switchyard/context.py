@@ -137,16 +137,24 @@ class _Guarded:
         self._capability = capability
 
     def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):  # private state (a facade's broker) is never reachable (R1 follow-up)
+            raise AttributeError(name)
+        self._check()
         value = getattr(self._facade, name)
-        if not callable(value):
+        if value is None or isinstance(value, str | int | float | bool | bytes):
             return value
+        if not callable(value):
+            return _Guarded(value, self._ctx, self._capability)  # nested objects are checked too
 
         def guarded(*args: Any, **kwargs: Any) -> Any:
-            self._ctx._open()
-            self._ctx._services.policy.require(self._ctx.module_id, self._capability)
+            self._check()
             return value(*args, **kwargs)
 
         return guarded
+
+    def _check(self) -> None:
+        self._ctx._open()
+        self._ctx._services.policy.require(self._ctx.module_id, self._capability)
 
 
 class ModuleContext:

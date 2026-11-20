@@ -151,15 +151,16 @@ def _forms(value: str) -> list[str]:
     raw = value.encode("utf-8")
     forms = {
         value,
-        value.lower(),
-        value.upper(),
         raw.hex(),
         base64.b64encode(raw).decode(),
         base64.urlsafe_b64encode(raw).decode().rstrip("="),
         urllib.parse.quote(value, safe=""),
     }
-    if len(value) >= 16:
-        forms.update(value[i : i + 12] for i in range(0, len(value) - 11, 4))
+    # Case changes and pieces only for long values: short ones match ordinary text (R1 follow-up).
+    if len(value) >= 12:
+        forms.update({value.lower(), value.upper()})
+    if len(value) >= 24:
+        forms.update(value[i : i + 16] for i in range(0, len(value) - 15, 8))
     return [f for f in forms if len(f) >= MIN_REDACT_CHARS]
 
 
@@ -170,11 +171,10 @@ def _contains(result: Any, value: str) -> bool:
         text = result
     else:
         try:
-            text = json.dumps(result, default=repr, ensure_ascii=False) + repr(result)
+            text = json.dumps(result, default=repr, ensure_ascii=False)
         except (TypeError, ValueError):
             text = repr(result)
-    folded = text.lower()
-    return any(form in text or form.lower() in folded for form in _forms(value))
+    return any(form in text for form in _forms(value))
 
 
 class SecretsBroker:

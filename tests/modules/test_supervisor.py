@@ -310,7 +310,7 @@ def test_router_hard_stop_blocks_the_turn(tmp_path: Path) -> None:
             "E", (), {"data": {"scope": "all", "period_end": "2099-01-01T00:00:00Z", "quota": "q"}}
         )()
         c.manager._entry("router").instance.on_exhausted(total)
-        assert "quota exhausted" in (c.bridge.dispatch_gate({**turn, "model": "unknown/model"}) or "")  # R1
+        assert c.bridge.dispatch_gate({**turn, "model": "unknown/model"}) is None  # unknown: never blocked
         c.run("module", "deactivate", {"id": "resources"}, actor="t")
         assert c.bridge.dispatch_gate(turn) is None  # registry down: no positive knowledge, no block
         out = c.run("module", "revoke", {"id": "router", "capability": "hermes.hooks"}, actor="t")

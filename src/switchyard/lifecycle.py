@@ -69,6 +69,7 @@ class ModuleInfo:
     isolation: str
     path: Path
     error: str | None
+    stop_reason: str = ""  # why it last stopped: "idle", "revoked <cap>", "update", ... (R1 follow-up)
 
     @property
     def state(self) -> ModuleStatus:
@@ -84,6 +85,7 @@ class _Entry:
     instance: Any = None
     ctx: ModuleContext | None = None
     last_used: float = 0.0
+    stop_reason: str = ""
 
 
 def _error_name(exc: BaseException) -> str:
@@ -150,7 +152,9 @@ class ModuleManager:
         with self._lock:
             e = self._entry(module_id)
             m = e.manifest
-            return ModuleInfo(m.id, m.version, e.status, e.mode, m.isolation, m.directory, e.error)
+            return ModuleInfo(
+                m.id, m.version, e.status, e.mode, m.isolation, m.directory, e.error, e.stop_reason
+            )
 
     def manifest(self, module_id: str) -> Manifest:
         with self._lock:
@@ -368,6 +372,7 @@ class ModuleManager:
             finally:
                 self._cleanup(e)
                 e.status = ModuleStatus.STOPPED
+                e.stop_reason = reason or "operator"
                 self._persist(e)
         detail = {"reason": reason} if reason else {}
         self._record("module.deactivated", module_id, actor, **detail)

@@ -17,6 +17,7 @@ import json
 import os
 import re
 import threading
+import time
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -90,6 +91,10 @@ def _iter_lines(directory: Path) -> Iterator[str]:
                     yield line.rstrip("\n")
 
 
+class _TornTail(AuditError):
+    pass
+
+
 class AuditLog:
     """Thread-safe writer and verifier for one audit directory. Satisfies ``capabilities.AuditSink``."""
 
@@ -107,7 +112,10 @@ class AuditLog:
         self._max_bytes = max_bytes
         self._lock = threading.Lock()
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self._seq, self._prev, self._file_no = self._recover()
+        try:
+            self._seq, self._prev, self._file_no = self._recover()
+        except _TornTail:
+            self._seq, self._prev, self._file_no = 0, GENESIS, 1  # repaired under the lock on first append
 
     # state --------------------------------------------------------------------------------------------
 
@@ -127,7 +135,7 @@ class AuditLog:
             fh.seek(max(0, size - _TAIL_PROBE_BYTES))
             tail = fh.read()
         if not tail.endswith(b"\n"):
-            raise AuditError(f"{last}: last record is incomplete (torn write); run 'switchyard audit verify'")
+            raise _TornTail(f"{last}: last record is incomplete (torn write); run 'switchyard audit verify'")
         try:
             rec = json.loads(tail.rstrip(b"\n").rsplit(b"\n", 1)[-1])
             seq, digest = int(rec["seq"]), str(rec["hash"])
@@ -176,15 +184,35 @@ class AuditLog:
         with self._lock, self._file_lock():
             # Another process may have appended since our last write: recover the head under the shared
             # lock, so two writers never fork the chain (R1 review).
-            self._seq, self._prev, self._file_no = self._recover()
-            body: dict[str, Any] = {
-                "seq": self._seq + 1, "ts": self._clock(), "actor": actor, "action": action,
-                "module": module, "detail": clean, "prev": self._prev,
-            }  # fmt: skip
-            body["hash"] = record_hash(body)
-            line = _canonical(body) + b"\n"
-            self._write(line)
-            self._seq, self._prev = body["seq"], body["hash"]
+            try:
+                self._seq, self._prev, self._file_no = self._recover()
+            except _TornTail:
+                # A crash cut the last record short. It was never anchored; keep its bytes in a quarantine
+                # file, drop it from the log, and record that (R1 follow-up: otherwise every append failed).
+                quarantined = self._repair_torn_tail()
+                self._seq, self._prev, self._file_no = self._recover()
+                self._emit("core", "audit.torn_tail_repaired", "", {"quarantine": quarantined})
+            return self._emit(actor, action, module, clean)
+
+    def _repair_torn_tail(self) -> str:
+        last = next(p for p in reversed(_files(self._dir)) if p.stat().st_size > 0)
+        data = last.read_bytes()
+        cut = data.rfind(b"\n") + 1
+        target = last.with_name(f"{last.stem}.torn-{time.time_ns()}")
+        target.write_bytes(data[cut:])
+        with last.open("r+b") as fh:
+            fh.truncate(cut)
+        return target.name
+
+    def _emit(self, actor: str, action: str, module: str, clean: dict[str, str]) -> AuditRecord:
+        """Write one record; the caller holds both locks and has recovered the head."""
+        body: dict[str, Any] = {
+            "seq": self._seq + 1, "ts": self._clock(), "actor": actor, "action": action,
+            "module": module, "detail": clean, "prev": self._prev,
+        }  # fmt: skip
+        body["hash"] = record_hash(body)
+        self._write(_canonical(body) + b"\n")
+        self._seq, self._prev = body["seq"], body["hash"]
         return AuditRecord(**{**body, "detail": MappingProxyType(clean)})
 
     def _write(self, line: bytes) -> None:
@@ -219,8 +247,13 @@ class AuditLog:
         return out
 
     def verify(self, expected_head: tuple[int, str] | None = None) -> VerifyResult:
-        with self._lock:
-            return self.verify_directory(self._dir, expected_head)
+        # Under the append lock: a read racing another process's write must not see half a record
+        # (R1 follow-up).
+        try:
+            with self._lock, self._file_lock():
+                return self.verify_directory(self._dir, expected_head)
+        except TimeoutError:
+            raise AuditError("the audit log is locked by another process") from None
 
     @staticmethod
     def verify_directory(directory: Path, expected_head: tuple[int, str] | None = None) -> VerifyResult:
