@@ -16,6 +16,7 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 ### Fixed
 - Schema `pattern` checks used Python's `$`, which accepts a trailing newline; they now follow JSON Schema
   semantics (a module id such as `"example\n"` is rejected).
+
 ## [0.0.1] - 2026-11-19
 
 Repository bootstrap (phase P0). No runtime code.
