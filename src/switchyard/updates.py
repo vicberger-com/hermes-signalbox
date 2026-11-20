@@ -160,6 +160,9 @@ class UpdateController:
                 raise UpdateError(f"staged module id {new.id!r} does not match {module_id!r}")
             if new.update_source != "git" or new.update_url != old.update_url:
                 raise UpdateError("staged manifest changes the pinned update source; refused")
+            links = [p for p in stage.rglob("*") if p.is_symlink()]
+            if links:
+                raise UpdateError(f"staged tree contains a symlink ({links[0].relative_to(stage)}); refused")
         except UpdateError as exc:
             shutil.rmtree(stage, ignore_errors=True)
             self._record("module.update_rejected", module_id, actor, ref=ref, reason=str(exc)[:300])

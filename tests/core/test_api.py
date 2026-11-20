@@ -7,6 +7,7 @@ import http.server
 import json
 import os
 import stat
+import subprocess
 import sys
 import threading
 from collections.abc import Iterator
@@ -252,3 +253,13 @@ def test_client_caps_response_size(tmp_path: Path) -> None:
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL check")
+def test_token_file_acl_is_user_only_on_windows(served: tuple[ControlServer, Path]) -> None:
+    _, data = served
+    cmd = ["icacls", str(data / "api.token")]
+    out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout  # noqa: S603
+    entries = [line for line in out.splitlines()[:-2] if ":" in line]
+    assert len([e for e in entries if "(" in e]) == 1, out
+    assert "(I)" not in out, out

@@ -32,7 +32,7 @@ class FakeFetcher:
         src = self.sources.get((url, ref))
         if src is None:
             raise UpdateError(f"no such commit {ref}")
-        shutil.copytree(src, dest)
+        shutil.copytree(src, dest, symlinks=True)
 
 
 def _git_manifest(d: Path, *, version: str, url: str = URL) -> None:
@@ -218,3 +218,17 @@ def test_git_fetcher_rejects_bad_input_without_running_git(tmp_path: Path) -> No
         fetcher.fetch("https://example.invalid/x.git", "main", tmp_path / "o")
     with pytest.raises(UpdateError, match="git"):
         fetcher.fetch("https://example.invalid/x.git", "a" * 40, tmp_path / "o")
+
+
+def test_staged_tree_with_symlinks_is_rejected(env: Any) -> None:
+    core, fetcher, tmp_path = env
+    src = _source(tmp_path / "v8", "x", version="0.8.0")
+    try:
+        (src / "escape.py").symlink_to(tmp_path / "outside.py")
+    except OSError:
+        pytest.skip("this account cannot create symlinks")
+    link = "6" * 40
+    fetcher.sources[(URL, link)] = src
+    with pytest.raises(UpdateError, match="symlink"):
+        core.run("module", "update", {"id": "ext", "ref": link}, actor="t")
+    assert _version(core) == "0.1.0"

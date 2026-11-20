@@ -63,6 +63,29 @@ def _write_private(path: Path, text: str) -> None:
         os.close(fd)
     if os.name == "posix":
         os.chmod(path, 0o600)
+    else:
+        _restrict_windows_acl(path)
+
+
+def _restrict_windows_acl(path: Path) -> None:
+    """Replace the inherited ACL with one entry for the current user. Fails closed: the token is deleted."""
+    import getpass
+    import shutil
+    import subprocess  # nosec B404
+
+    user = getpass.getuser()
+    exe = shutil.which("icacls")
+    try:
+        if exe is None:
+            raise OSError("icacls not found")
+        # Fixed argv, no shell; the user name comes from this process's own account.
+        subprocess.run(  # noqa: S603 # nosec B603
+            [exe, str(path), "/inheritance:r", "/grant:r", f"{user}:F"],
+            capture_output=True, timeout=30, check=True,
+        )  # fmt: skip
+    except (OSError, subprocess.SubprocessError) as exc:
+        path.unlink(missing_ok=True)
+        raise SwitchyardError(f"could not restrict access to {path.name}: {type(exc).__name__}") from None
 
 
 class _Handler(BaseHTTPRequestHandler):

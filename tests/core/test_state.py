@@ -216,3 +216,25 @@ def test_double_underscore_cannot_forge_a_namespace(tmp_path: Path) -> None:
     with pytest.raises(StateError, match="name"):
         store.module("foo").create_table("bar__baz", [("x", "TEXT")])
     store.close()
+
+
+def test_module_queries_have_a_work_budget_and_row_cap(tmp_path: Path) -> None:
+    from switchyard import state as state_mod
+
+    store = StateStore(tmp_path / "state.db", backup_dir=tmp_path / "backup")
+    store.migrate()
+    mod = store.module("demo")
+    # Recursive CTEs are already refused by the authorizer (CTE names are not module tables); a cross join on
+    # the module's own table is the remaining way to burn CPU or memory.
+    mod.create_table("t", [("n", "INTEGER")])
+    t = mod.table("t")
+    for i in range(200):
+        mod.execute(f"INSERT INTO {t} VALUES (?)", (i,))  # noqa: S608
+    assert mod.execute(f"SELECT count(*) FROM {t}") == [(200,)]  # noqa: S608
+    with pytest.raises(StateError, match="work budget"):
+        mod.execute(f"SELECT count(*) FROM {t} a, {t} b, {t} c, {t} d")  # noqa: S608
+    assert state_mod.MAX_ROWS < 200 * 200
+    with pytest.raises(StateError, match="rows"):
+        mod.execute(f"SELECT a.n FROM {t} a, {t} b")  # noqa: S608
+    assert mod.execute("SELECT 1") == [(1,)]
+    store.close()

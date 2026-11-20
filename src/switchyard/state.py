@@ -57,6 +57,12 @@ def _check_name(kind: str, name: str) -> None:
         raise StateError(f"invalid {kind} name {name!r}")
 
 
+# Module statements: abort after MAX_WORK_STEPS * PROGRESS_EVERY VM instructions; cap returned rows.
+PROGRESS_EVERY = 1000
+MAX_WORK_STEPS = 10_000
+MAX_ROWS = 10_000
+
+
 class StateStore:
     """Owner of the single SQLite connection. All access is serialised by one lock."""
 
@@ -131,12 +137,27 @@ class StateStore:
         return ModuleState(self, module_id)
 
     def _run_confined(self, authorizer: Any, sql: str, params: Sequence[Any]) -> list[tuple[Any, ...]]:
+        budget = [0]
+
+        def progress() -> int:
+            budget[0] += 1
+            return 1 if budget[0] > MAX_WORK_STEPS else 0  # non-zero aborts the statement
+
         with self._lock:
             self._conn.set_authorizer(authorizer)
+            self._conn.set_progress_handler(progress, PROGRESS_EVERY)
             try:
-                return self._conn.execute(sql, params).fetchall()
+                rows = self._conn.execute(sql, params).fetchmany(MAX_ROWS + 1)
+            except sqlite3.OperationalError as exc:
+                if budget[0] > MAX_WORK_STEPS:
+                    raise StateError("module query exceeded its work budget") from None
+                raise StateError(f"module query failed: {exc}") from None
             finally:
+                self._conn.set_progress_handler(None, 0)
                 self._conn.set_authorizer(None)
+        if len(rows) > MAX_ROWS:
+            raise StateError(f"module query returned more than {MAX_ROWS} rows; page with LIMIT/OFFSET")
+        return rows
 
 
 class SqliteGrantStore:
@@ -204,7 +225,9 @@ class ModuleState:
         if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_RECURSIVE):
             return sqlite3.SQLITE_OK
         if action in _TABLE_ACTIONS:
-            if db == "main" and arg1 is not None and arg1.startswith(self._prefix):
+            # count(*) reads with db=None; ATTACH is denied, so that can only be main.
+            main = db == "main" or (db is None and action == sqlite3.SQLITE_READ and arg2 == "")
+            if main and arg1 is not None and arg1.startswith(self._prefix):
                 return sqlite3.SQLITE_OK
             self._denied = f"table {arg1!r}"
             return sqlite3.SQLITE_DENY
