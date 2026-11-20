@@ -1,0 +1,162 @@
+# M0 core: specification
+
+Status: frozen for M0, 2026-11-19. Inputs: [DESIGN.md](../DESIGN.md), [ADR-0001](../adr/0001-m0-core-stack.md),
+[01-m0-prework.md](../qa/01-m0-prework.md). Changes after freeze need a Q&A retro entry; changes to the module
+contract need an ADR.
+
+## 1. Package layout
+
+```
+src/switchyard/
+  __init__.py        version, public re-exports
+  errors.py          SwitchyardError, ManifestError, CapabilityDenied, AuditError, StateError, UpdateError
+  paths.py           data-directory resolution
+  config.py          CoreConfig (TOML, tomllib), defaults, env override SWITCHYARD_DATA_DIR
+  manifest.py        load + validate module.toml -> Manifest (frozen dataclass)
+  capabilities.py    capability ids, Grant, PolicyEngine
+  context.py         ModuleContext and the per-capability broker facades
+  state.py           StateStore (SQLite WAL, migrations, module table namespace)
+  audit.py           AuditLog (hash-chained JSON Lines), verify()
+  events.py          EventBus (typed, in-process, synchronous with error isolation)
+  scheduler.py       Trigger, Scheduler (time / event / usage / capacity)
+  lifecycle.py       ModuleManager (discover -> verify -> grant -> load -> active <-> idle -> stopped)
+  host_t2.py         Subprocess host: parent side; host_t2_child.py child side; rpc.py framing
+  secrets.py         SecretRef, SecretBackend protocol, SecretsBroker, MemoryBackend (tests only)
+  hostinfo.py        HostProfile, profile() -> tiny | laptop | workstation | server
+  updates.py         UpdateController (fetch, verify, stage, swap, health, rollback)
+  api.py             Loopback control API server and bounded client
+  cli.py             `switchyard` entry point (argparse)
+  core.py            Core: wires all of the above; the only object adapters hold
+  hermes/__init__.py Hermes adapter: register(ctx)
+```
+
+Root `plugin.yaml` + `__init__.py` (thin re-export of `switchyard.hermes.register`) for `hermes plugins install`;
+entry point `[project.entry-points."hermes_agent.plugins"] switchyard = "switchyard.hermes"` for pip installs.
+CLI entry point `[project.scripts] switchyard = "switchyard.cli:main"`.
+
+## 2. Data directory
+
+Resolution order: `SWITCHYARD_DATA_DIR` env, `CoreConfig.data_dir`, then inside Hermes `ctx.state.data_dir`, else
+platform default: Windows `%LOCALAPPDATA%\switchyard`, macOS `~/Library/Application Support/switchyard`, other
+`$XDG_DATA_HOME/switchyard` or `~/.local/share/switchyard`. Created with mode 0700 where POSIX applies.
+
+```
+<data_dir>/config.toml   state.db   audit/audit-<n>.jsonl   logs/<stream>.jsonl
+          api.token (0600)   staging/<module>/<sha>/   modules/<module>/   backup/
+```
+
+## 3. Interfaces
+
+### Manifest
+
+`load_manifest(path) -> Manifest`. Same rules as `tools/validate_manifest.py` (which becomes a thin CLI over
+`switchyard.manifest`). Additional core checks: `entry` is `module:Class` with identifier parts only; the resolved
+module file is inside the module directory; `isolation = "in-process"` is allowed only for modules whose
+directory is inside the package's `modules/` root or a test-registered trusted root.
+
+### Policy
+
+```python
+class PolicyEngine:
+    def grant(self, module_id: str, capability: str, *, actor: str) -> None      # audited
+    def revoke(self, module_id: str, capability: str, *, actor: str) -> None     # audited
+    def granted(self, module_id: str) -> frozenset[str]
+    def require(self, module_id: str, capability: str, **detail: str) -> None    # raises CapabilityDenied; denial audited
+```
+
+A grant is effective only if the capability is also in the manifest's `request` list; `contributes.policies` can
+only remove. Grants persist in `state.db`.
+
+### ModuleContext
+
+Built per module at activation. Members always present: `module_id`, `log(stream, event, **fields)`,
+`register_panel(panel_id, render)`, `emit(event)`, `subscribe(type, handler)`, `state` (namespaced store),
+`health_report(ok, detail)`. Capability-gated members raise `CapabilityDenied` when ungranted: `secrets`
+(`secrets.read`), `net` (`net.outbound`, host allow-list), `schedule` (`schedule`), `spawn` (`process.spawn`).
+The context never exposes the core, other modules or the policy engine.
+
+### State store
+
+`StateStore(path)`; `migrate()` applies `switchyard/migrations/NNNN_*.sql` in order inside a transaction after
+copying the file to `backup/`. `ModuleState(module_id)`: `create_table(name, columns)`, `execute(sql, params)`
+restricted to its own tables (statement is parsed for table names; any other table name is refused), `kv_get`,
+`kv_set`, `drop_all()`. Names match `^[a-z][a-z0-9_]{0,31}$`.
+
+### Audit log
+
+Record: `{"seq", "ts", "actor", "action", "module", "detail", "prev", "hash"}` where
+`hash = sha256(canonical_json(record without hash))` and `prev` is the previous `hash` (genesis `"0"*64`). Canonical
+JSON: sorted keys, `separators=(",", ":")`, UTF-8. `append(...)` fsyncs. `verify() -> VerifyResult(ok, first_bad_seq)`
+detects edit, deletion, reorder and truncation-with-gap. `detail` values pass through the redactor before writing.
+
+### Events and scheduler
+
+`Event(type: str, source: str, data: Mapping[str, JSONValue], ts)`. Handlers run synchronously in subscription order;
+a handler exception is logged and audited, never propagated to the publisher. `Trigger(kind, spec, target, min_interval_s)`
+with kinds `time` (interval seconds or 5-field cron), `event`, `usage`, `capacity`. One run at a time per trigger;
+runs within `min_interval_s` are skipped and counted. Inside Hermes, time triggers are driven by `register_idle_task`.
+
+### Lifecycle
+
+`ModuleManager`: `discover(roots)`, `verify(id)`, `load(id)`, `activate(id)`, `deactivate(id)`, `remove(id, keep_data=False)`,
+`set_mode(id, manual|auto|disabled)`, `tick()` (idle stop). Every transition is audited. A failure in `activate`
+or `health` stops that module only (fail closed); the core continues.
+
+### T2 subprocess host
+
+Child started with `[sys.executable, "-I", "-m", "switchyard.host_t2_child", <module_dir>]`, cwd = module dir,
+environment reduced to an allow-list (`PATH`, `SYSTEMROOT`, `TEMP`, `TMP`, `HOME`/`USERPROFILE`, `LANG`) plus
+`SWITCHYARD_T2=1`. Framing: 4-byte big-endian length + UTF-8 JSON-RPC 2.0, max frame 1 MiB. Calls time out (default 10 s);
+an oversize frame, invalid JSON, or timeout kills the child and marks the module stopped. Context calls from the
+child are proxied and go through the same `PolicyEngine.require`.
+
+### Secrets broker (interface only in M0)
+
+`SecretRef("secret://name")`. `SecretsBroker.use(ref, fn)` calls `fn(value)` and returns `fn`'s result after
+checking it does not contain the value; the value is never returned. Every use is audited by name. Each resolved
+value is added to the redactor for the life of the process. `MemoryBackend` is for tests only and refuses to load
+outside pytest unless `allow_test_backend=True`.
+
+### Host profiler
+
+`profile() -> HostProfile(cpu_count, ram_bytes, disk_free_bytes, gpu: str | None, net_class, profile_name)`.
+RAM: Windows `GlobalMemoryStatusEx` via `ctypes`, Linux `/proc/meminfo`, macOS `sysctl hw.memsize`. Profile:
+`tiny` < 4 GiB RAM or < 2 CPUs; `laptop` < 16 GiB; `workstation` < 64 GiB; else `server`. Overridable in config.
+
+### Control API
+
+`switchyard api serve` binds `127.0.0.1` on `api.port` (0 = ephemeral; actual port written to `api.port` file).
+Token: `secrets.token_urlsafe(32)` written to `api.token` with user-only permissions, rotated per start.
+Request checks, in order: method `POST` (or `GET /v1/health`); `Host` is `127.0.0.1:<port>` or `localhost:<port>`;
+any `Origin` header (including `null`) is refused, since the only client is the CLI; `Authorization: Bearer` compared with
+`hmac.compare_digest`; `Content-Type: application/json`; body <= 64 KiB. Routes `POST /v1/<noun>/<verb>` map 1:1 to CLI
+operations. Responses never echo request text into headers; a header writer rejects CR/LF. Client reads are
+capped at 1 MiB.
+
+### CLI
+
+`switchyard [--data-dir D] [--json] <noun> <verb> [args]`. Nouns: `module`, `audit`, `host`, `api`, `config`.
+Exit 0 success, 1 operation error, 2 usage error, 3 denied.
+
+### Hermes adapter
+
+`register(ctx)`: builds `Core` with `data_dir = ctx.state.data_dir`; registers tools `switchyard_modules`,
+`switchyard_audit`, `switchyard_host` (toolset `switchyard`), command `/switchyard`, CLI command `switchyard`.
+Declares no Hermes plugin capabilities. Tool results are JSON strings passed through the redactor.
+
+### Update control
+
+`UpdateController.update(module_id, ref) -> UpdateResult`. Fetcher is injectable (`GitFetcher` runs `git` with an
+argument list, `-c protocol.file.allow=never` in production; tests inject a local-repository fetcher because the
+manifest schema allows only `https://` URLs). Steps: fetch, check `HEAD` equals `ref`, validate manifest, stage,
+deactivate, swap (rename), activate, health; on failure swap back and reactivate the previous version. All steps audited.
+
+## 4. Events
+
+`module.discovered|verified|granted|revoked|activated|deactivated|failed|removed|updated|rolled_back`,
+`policy.denied`, `trigger.fired|skipped`, `audit.verify_failed`.
+
+## 5. Acceptance tests
+
+As listed in [01-m0-prework.md](../qa/01-m0-prework.md) section 4, plus the threat tests in its question 5 table.
+Coverage target for `src/switchyard`: 90%.

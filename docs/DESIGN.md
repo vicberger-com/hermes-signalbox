@@ -70,11 +70,11 @@ adapter over the same core, so Hermes has full control without the core dependin
 
 ### Stack
 
-Python >= 3.11, standard library first. Planned runtime dependencies, each to be re-verified in the M0 Q&A:
-PyYAML (MIT, only to read and write Hermes config) and an HTTP client (httpx, BSD-3-Clause, or stdlib `urllib`
-if M0 research shows it is sufficient). Module manifests are TOML because `tomllib` is in the standard library
-and TOML has no implicit typing surprises. No web framework in core; the control API uses `http.server` behind
-the policy engine unless M0 research finds a security reason not to.
+Python >= 3.11, standard library only in the core: zero runtime dependencies
+([ADR-0001](adr/0001-m0-core-stack.md)). Inside Hermes, settings come from `ctx.get_config`, so the core does not
+parse YAML. Module manifests are TOML because `tomllib` is in the standard library and TOML has no implicit typing
+surprises. No web framework in core; the control API uses `http.server` behind the policy engine, with the
+hardening listed in section 4. Modules that need a library declare it in their own phase.
 
 ## 4. Trust and security model
 
