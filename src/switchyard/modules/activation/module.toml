@@ -1,0 +1,28 @@
+# Bundled module M5: skill activation manager. Spec: README.md in this directory.
+schema = 1
+
+[module]
+id = "activation"
+name = "Activation"
+version = "0.6.0"
+license = "Apache-2.0"
+license_class = "open"
+summary = "Skill inventory with prompt cost, presets, index-size benchmark, timed presets; every config change backed up and reversible."
+requires_core = ">=0.1,<1"
+isolation = "in-process"
+entry = "activation_module:ActivationModule"
+
+[capabilities]
+request = ["hermes.config.write", "hermes.hooks", "ui.panel"]
+
+[contributes]
+hooks = ["pre_llm_call"]
+commands = ["inventory", "presets", "benchmark", "history", "preset_add", "preset_remove", "apply", "restore", "undo"]
+panels = ["activation.status"]
+log_streams = ["activation"]
+
+[lifecycle]
+activation = "auto"
+
+[update]
+source = "bundled"

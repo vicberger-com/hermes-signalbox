@@ -36,6 +36,7 @@ from switchyard.bridge import OBSERVER_HOOKS
 from switchyard.capabilities import CORE_ACTOR
 from switchyard.core import Core
 from switchyard.errors import SwitchyardError
+from switchyard.hermes.config_port import HermesConfigAdapter
 from switchyard.ops import MODEL_ACTOR, OPERATIONS, UsageError
 from switchyard.secrets import DEFAULT_PATTERNS
 
@@ -98,7 +99,9 @@ class HermesAdapter:
         self.ctx = ctx
         configured = ctx.get_config("data_dir", None)
         data_dir = Path(configured) if configured else None
-        self.core = Core(data_dir=data_dir, hermes_dir=Path(ctx.state.data_dir))
+        self.core = Core(
+            data_dir=data_dir, hermes_dir=Path(ctx.state.data_dir), hermes_config=HermesConfigAdapter()
+        )
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 

@@ -286,3 +286,6 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
 - Manifest `capabilities.optional` (M4): a subset of `request` that `start_auto` does not wait for; the module
   checks it at run time with `ctx.has`.
 - Observer hooks deliver metadata only (`switchyard.bridge.metadata_only`).
+- `ctx.hermes_config` (ADR-0005): `hermes.config.write`; allow-listed keys, backup, audit, read-back, rollback,
+  `revert`. Provided only when the Hermes adapter supplies a config port.
+

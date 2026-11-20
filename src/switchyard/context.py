@@ -326,6 +326,12 @@ class ModuleContext:
         return self._broker("fs.read")
 
     @property
+    def hermes_config(self) -> object:
+        """Hermes config writes (ADR-0005): allow-listed keys, backed up, audited, rolled back on failure.
+        Needs ``hermes.config.write``."""
+        return self._broker("hermes.config.write")
+
+    @property
     def spawn(self) -> object:
         """Process launcher facade. Needs ``process.spawn``."""
         return self._broker("process.spawn")
