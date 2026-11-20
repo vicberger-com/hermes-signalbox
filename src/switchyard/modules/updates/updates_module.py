@@ -62,7 +62,7 @@ class UpdatesModule:
         if not self._checking.acquire(blocking=False):
             return {"skipped": "a check is already running"}
         try:
-            rows = ctx.core.update_checks()
+            rows = ctx.core.update_checks(max_age_s=0)  # fresh, within the core's minimum interval
         finally:
             self._checking.release()
         available = errors = 0

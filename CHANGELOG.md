@@ -4,11 +4,20 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-20
+
+Phase M12: update and release control for modules.
+
 ### Added
 - ADR-0011: `module preview` (SBOM delta, patch notes, tree digest); `module update` takes `digest` and refuses
   permission widening without `accept_wider`; SBOM delta stored for every update; manifest `[update] channel`
   and `module check_updates`.
 - Bundled `updates` module (M12): scheduled channel checks with one alert per new commit; never applies.
+
+### Security
+- M12 security review (`src/switchyard/modules/updates/README.md`): compiled and `.pth` files refused; added
+  contributions widen; git isolated from surrounding repositories; checks single and cached; chunked hashing with
+  a size cap; rollback widening check, commit restore and pruning; exact patch-note headings.
 
 ## [0.12.0] - 2026-11-20
 
