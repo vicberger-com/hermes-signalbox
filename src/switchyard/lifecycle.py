@@ -228,6 +228,26 @@ class ModuleManager:
         self._record("module.verified", manifest.id, CORE_ACTOR)
         return manifest.id
 
+    def reload(self, module_id: str) -> None:
+        """Re-read a stopped module's manifest from its directory (after an update swapped the directory)."""
+        with self._lock:
+            e = self._entry(module_id)
+            if e.status is ModuleStatus.ACTIVE:
+                raise SwitchyardError(f"module {module_id!r} must be stopped before reload")
+            directory = e.manifest.directory
+            manifest = load_manifest(directory)
+            if manifest.id != module_id:
+                raise SwitchyardError(f"manifest in {directory} now declares id {manifest.id!r}")
+            if manifest.isolation == "in-process" and not self._is_trusted(directory):
+                raise SwitchyardError(
+                    "module is outside the trusted roots; it must use isolation = 'subprocess'"
+                )
+            self._policy.register(manifest)
+            self._unload(module_id)
+            e.manifest, e.status, e.error = manifest, ModuleStatus.VERIFIED, None
+            self._persist(e)
+        self._record("module.reloaded", module_id, CORE_ACTOR, version=manifest.version)
+
     # loading ------------------------------------------------------------------------------------------
 
     @staticmethod

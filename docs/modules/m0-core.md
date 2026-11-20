@@ -217,10 +217,17 @@ live operations (activate, deactivate, health, panel). `api serve` requires host
 
 ### Update control
 
-`UpdateController.update(module_id, ref) -> UpdateResult`. Fetcher is injectable (`GitFetcher` runs `git` with an
-argument list, `-c protocol.file.allow=never` in production; tests inject a local-repository fetcher because the
-manifest schema allows only `https://` URLs). Steps: fetch, check `HEAD` equals `ref`, validate manifest, stage,
-deactivate, swap (rename), activate, health; on failure swap back and reactivate the previous version. All steps audited.
+`UpdateController.update(module_id, ref)` for modules under `<data_dir>/modules` with `[update] source = "git"`
+(bundled modules update with the release). `ref` must be a full lower-case SHA; the URL is the one pinned in the
+installed manifest. Fetch into `<data_dir>/staging/<id>/stage-<ref>` via an injectable `Fetcher`; `GitFetcher` runs
+`git` with a fixed argv, scrubbed environment, `GIT_CONFIG_NOSYSTEM`, empty global config, `core.hooksPath` to the
+null device, `protocol.file.allow=never` (tests may allow file URLs), `--depth 1`, a timeout, verifies `HEAD == ref`
+and removes `.git`. The staged manifest must be valid and keep the module id and the pinned source URL. Then
+deactivate, swap by rename (previous kept as `previous-<version>-<time>`), `ModuleManager.reload` (re-checks trust),
+reactivate if it was running, health check; any failure restores the previous directory (`module.rolled_back`).
+`rollback(id)` restores the most recent previous version. Operations `module update {id, ref}` and
+`module rollback {id}` require the hosting process. Every outcome is audited (`module.update_rejected`,
+`module.updated`, `module.rolled_back`).
 
 ## 4. Events
 

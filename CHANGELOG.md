@@ -34,6 +34,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Hermes plugin adapter: model tools (read and run only; no grants), `/switchyard` slash command,
   `hermes switchyard` CLI command, daily audit verification, redaction patterns; validated with
   `hermes plugins validate`. One hosting process per data directory via an OS file lock.
+- Update control for git-installed modules: pinned commit fetch (https only, no hooks, verified HEAD),
+  staged manifest checks (same id, same pinned source), swap with health check and automatic rollback,
+  manual rollback.
 - Coverage gate (90%) on `src/switchyard`; mypy strict and bandit now include `src/`.
 
 ### Changed

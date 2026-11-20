@@ -185,6 +185,19 @@ def _module_remove(core: Core, p: dict[str, Any], actor: str) -> Any:
     return {"removed": p["id"]}
 
 
+@op("module", "update", "Update a git-installed module to a pinned commit; rolls back if it fails.",
+    id=ID, ref=Param(str, help="full 40-character commit SHA"))  # fmt: skip
+def _module_update(core: Core, p: dict[str, Any], actor: str) -> Any:
+    _require_host(core)
+    return core.updates.update(p["id"], p["ref"], actor=actor).to_dict()
+
+
+@op("module", "rollback", "Restore the previous version of a git-installed module.", id=ID)
+def _module_rollback(core: Core, p: dict[str, Any], actor: str) -> Any:
+    _require_host(core)
+    return {"id": p["id"], "version": core.updates.rollback(p["id"], actor=actor)}
+
+
 @op("audit", "verify", "Verify the audit hash chain against the stored head anchor.", offline=True)
 def _audit_verify(core: Core, p: dict[str, Any], actor: str) -> Any:
     result = core.verify_audit()
