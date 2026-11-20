@@ -27,6 +27,8 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   patterns; test-only memory backend.
 - Host profiler (CPU, RAM, disk, GPU hint; `tiny`/`laptop`/`workstation`/`server`) and capacity metrics
   for capacity triggers, without subprocesses or network calls.
+- `Core` (wires every component for one data directory; audit head anchor kept in `state.db` and
+  checked at startup) and the shared operations table used by the CLI, the API and Hermes.
 - Coverage gate (90%) on `src/switchyard`; mypy strict and bandit now include `src/`.
 
 ### Changed

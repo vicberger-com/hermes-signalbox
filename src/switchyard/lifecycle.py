@@ -139,6 +139,10 @@ class ModuleManager:
             m = e.manifest
             return ModuleInfo(m.id, m.version, e.status, e.mode, m.isolation, m.directory, e.error)
 
+    def manifest(self, module_id: str) -> Manifest:
+        with self._lock:
+            return self._entry(module_id).manifest
+
     def modules(self) -> list[ModuleInfo]:
         return [self.info(i) for i in self.ids()]
 
