@@ -25,6 +25,8 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Secrets broker interface: `secret://` references, policy-checked use with fail-closed backends, leak
   blocking on results, no value in exception context or traceback locals, redactor with default token
   patterns; test-only memory backend.
+- Host profiler (CPU, RAM, disk, GPU hint; `tiny`/`laptop`/`workstation`/`server`) and capacity metrics
+  for capacity triggers, without subprocesses or network calls.
 - Coverage gate (90%) on `src/switchyard`; mypy strict and bandit now include `src/`.
 
 ### Changed
