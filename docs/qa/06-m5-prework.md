@@ -27,7 +27,7 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 | # | Question | Options | Recommended and why | Status |
 |---|---|---|---|---|
-| 1 | Smallest scope? | | Skills: inventory with prompt cost, presets (names, `category:<c>`, `*`), benchmark, apply with optional time limit, restore, undo. The broker also allows `plugins.disabled` for later phases; the module does not switch plugins yet (restart needed, and plugins are code) | default accepted |
+| 1 | Smallest scope? | | Skills: inventory with prompt cost, presets (names, `category:<c>`, `*`), benchmark, apply with optional time limit, restore, undo. Plugins are not switched (restart needed, plugins are code, and `plugins.disabled` is a deny-list; see the M5 review) | default accepted |
 | 2 | Capabilities | | `hermes.config.write` (new broker), `hermes.hooks` (`pre_llm_call` to expire timed presets), `ui.panel`. `fs.read` not needed: the inventory comes from Hermes's API | default accepted |
 | 3 | Reuse, adapt or write? | | Write | default accepted |
 | 4 | New dependencies? | | None | default accepted |
@@ -61,3 +61,8 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| "Restore the backup" is the way to undo a preset | A whole-list restore discards edits made since; undo the preset's own delta and audit drift | Any module that reverts shared settings |
+| Backup files can carry state an active feature depends on | Retention pruning deletes them; keep live state in the module's own row | Activation, future rollback features |
+| An allow-listed key is safe if values are validated | A deny-list key (`plugins.disabled`) can be shortened to re-enable things; key semantics matter, not only value shape | ADR-0005, any later config key |
+| Hermes's save path applies its own rules (essential skills) | Only the dedicated helpers do; `save_config` writes what it is given | Activation; any write through `hermes_cli.config` |
+

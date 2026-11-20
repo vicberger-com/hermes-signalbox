@@ -143,7 +143,9 @@ class ActivationModule:
         rows = self._q(sql)
         if not rows:
             return None
-        return {"preset": rows[0][0], "baseline": rows[0][1], "until": rows[0][2], "applied_at": rows[0][3]}
+        state = json.loads(rows[0][1])
+        return {"preset": rows[0][0], "backup": state["backup"], "before": state["before"],
+                "applied": state["applied"], "until": rows[0][2], "applied_at": rows[0][3]}  # fmt: skip
 
     def _target(self, preset: dict[str, Any], skills: list[dict[str, str]], disabled: set[str]) -> list[str]:
         return sorted((disabled | expand(preset["disable"], skills)) - expand(preset["enable"], skills))
@@ -152,13 +154,28 @@ class ActivationModule:
     def _index_tokens(skills: list[dict[str, str]], disabled: set[str]) -> int:
         return sum(line_tokens(s) for s in skills if s["name"] not in disabled)
 
+    def _undo_preset(self, active: dict[str, Any], actor: str) -> dict[str, Any]:
+        """Take back only what the presets changed: names they disabled are re-enabled, names they enabled
+        are disabled again. Edits made since (in Hermes or by hand) are kept; a difference is audited."""
+        before, applied = set(active["before"]), set(active["applied"])
+        current = set(self.ctx.hermes_config.get(KEY))
+        target = sorted((current - (applied - before)) | (before - applied))
+        if current != applied:
+            self.ctx.audit("drift", preset=active["preset"], changed=str(len(current ^ applied)))
+        note = f"end of preset {active['preset']}"
+        result: dict[str, Any] = self.ctx.hermes_config.set(KEY, target, actor=actor, note=note)
+        self._q(f"DELETE FROM {self._t('active')} WHERE slot = 'skills'")  # nosec B608
+        return result
+
+    def _expire_locked(self) -> None:
+        active = self._active()
+        if active and active["until"] and self.clock() >= active["until"]:
+            self._undo_preset(active, actor="activation:ttl")
+            self.ctx.audit("expired", preset=active["preset"])
+
     def _expire(self) -> None:
         with self._lock:
-            active = self._active()
-            if active and active["until"] and self.clock() >= active["until"]:
-                self.ctx.hermes_config.revert(active["baseline"], actor="activation:ttl")
-                self._q(f"DELETE FROM {self._t('active')} WHERE slot = 'skills'")  # nosec B608
-                self.ctx.audit("expired", preset=active["preset"])
+            self._expire_locked()
 
     def on_turn(self, _kw: dict[str, Any]) -> None:
         if self.ctx is not None:
@@ -168,16 +185,28 @@ class ActivationModule:
 
     def inventory(self, category: str = "") -> dict[str, Any]:
         skills = self._skills()
-        disabled = set(self.ctx.hermes_config.get(KEY))
+        cfg = self.ctx.hermes_config
+        disabled = set(cfg.get(KEY)) - cfg.essential()
+        per_platform = cfg.read("skills.platform_disabled")
         rows: list[dict[str, Any]] = [
-            {**s, "enabled": s["name"] not in disabled, "tokens": line_tokens(s)}
+            {
+                **s,
+                "enabled": s["name"] not in disabled,
+                "tokens": line_tokens(s),
+                "disabled_on": sorted(p for p, names in per_platform.items() if s["name"] in names),
+            }
             for s in skills
             if not category or s["category"] == category
         ]
         rows.sort(key=lambda r: (-r["tokens"], r["name"]))
         return {
-            "skills": [{k: r[k] for k in ("name", "category", "enabled", "tokens")} for r in rows[:500]],
+            "skills": [
+                {k: r[k] for k in ("name", "category", "enabled", "tokens", "disabled_on")}
+                for r in rows[:500]
+            ],
             "count": len(rows),
+            "not_listed": cfg.dropped,
+            "scope": "global skills.disabled; disabled_on: platforms that also disable it (not managed here)",
             "enabled_tokens": sum(r["tokens"] for r in rows if r["enabled"]),
             "disabled_tokens": sum(r["tokens"] for r in rows if not r["enabled"]),
             "active": self._active(),
@@ -192,9 +221,10 @@ class ActivationModule:
         """Index size now and with ``name`` applied (no change is made)."""
         preset = self._preset(name)
         skills = self._skills()
-        disabled = set(self.ctx.hermes_config.get(KEY))
+        essential = self.ctx.hermes_config.essential()
+        disabled = set(self.ctx.hermes_config.get(KEY)) - essential
         before = self._index_tokens(skills, disabled)
-        after = self._index_tokens(skills, set(self._target(preset, skills, disabled)))
+        after = self._index_tokens(skills, set(self._target(preset, skills, disabled)) - essential)
         saved = before - after
         return {
             "preset": name,
@@ -244,35 +274,37 @@ class ActivationModule:
             raise SwitchyardError(f"ttl_minutes must be from 0 to {MAX_TTL_MINUTES}")
         preset = self._preset(name)
         with self._lock:
+            self._expire_locked()  # an expired preset ends before a new one is computed
             skills = self._skills()
-            disabled = set(self.ctx.hermes_config.get(KEY))
+            disabled = sorted(self.ctx.hermes_config.get(KEY))
             result = self.ctx.hermes_config.set(
-                KEY, self._target(preset, skills, disabled), actor="activation", note=f"preset {name}"
+                KEY, self._target(preset, skills, set(disabled)), actor="activation", note=f"preset {name}"
             )
             active = self._active()
-            baseline = active["baseline"] if active else result["backup"]
+            before = active["before"] if active else disabled  # stacked presets keep the first baseline
+            first_backup = active["backup"] if active else result["backup"]
             now = self.clock()
             until = now + ttl_minutes * 60 if ttl_minutes else None
+            state = json.dumps({"backup": first_backup, "before": before, "applied": result["stored"]})
             sql = f"INSERT OR REPLACE INTO {self._t('active')} VALUES ('skills', ?, ?, ?, ?)"  # nosec B608
-            self._q(sql, (name, baseline, until, now))
+            self._q(sql, (name, state, until, now))
         return {
             "preset": name,
             "backup": result["backup"],
             "disabled": len(result["stored"]),
             "refused": result["refused"],
             "until": until,
-            "baseline": baseline,
+            "baseline": first_backup,
         }
 
     def restore(self) -> dict[str, Any]:
-        """Return to the state before the first active preset."""
+        """End the active preset(s): undo exactly what they changed, keeping other edits made since."""
         with self._lock:
             active = self._active()
             if not active:
                 raise SwitchyardError("no preset is active")
-            result = self.ctx.hermes_config.revert(active["baseline"], actor="activation")
-            self._q(f"DELETE FROM {self._t('active')} WHERE slot = 'skills'")  # nosec B608
-        return {"restored": active["baseline"], "backup": result["backup"]}
+            result = self._undo_preset(active, actor="activation")
+        return {"restored": active["preset"], "backup": result["backup"], "disabled": result["stored"]}
 
     def undo(self, backup: str) -> dict[str, Any]:
         """Restore the value recorded before any single change (itself backed up)."""
