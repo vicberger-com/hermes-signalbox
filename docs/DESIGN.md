@@ -58,7 +58,7 @@ adapter over the same core, so Hermes has full control without the core dependin
 |---|---|---|
 | Module loader | Discover, verify, load, start, stop modules | Verifies manifest schema, signature and granted capabilities before import |
 | Policy engine | Default-deny capability checks | Single choke point; every broker call passes through it |
-| Secrets broker | Resolve `secret://name` at the point of use | Backends are modules (M1); core defines the interface only |
+| Secrets broker | Resolve `secret://name` at the point of use | Backends are modules (M1); core defines the interface only. Trusted in-process modules provide backends ([ADR-0002](adr/0002-module-backends-and-actions.md)) |
 | Event bus | In-process publish and subscribe, typed events | Modules never call each other directly |
 | State store | SQLite (WAL), one schema per module, migrations | Stdlib `sqlite3` |
 | Audit log | Append-only, hash-chained JSON Lines | Each record carries the previous record's SHA-256 |
