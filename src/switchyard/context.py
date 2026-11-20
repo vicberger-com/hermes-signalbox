@@ -35,7 +35,7 @@ class PanelRegistry(Protocol):
 
 
 class EventBusPort(Protocol):
-    def publish(self, source: str, type_: str, data: Mapping[str, Any]) -> None: ...
+    def publish(self, source: str, type_: str, data: Mapping[str, Any]) -> object: ...
 
     def subscribe(self, owner: str, type_: str, handler: Callable[..., None]) -> None: ...
 
@@ -51,6 +51,29 @@ class ContextServices:
     panels: PanelRegistry
     bus: EventBusPort
     brokers: Mapping[str, object] = field(default_factory=dict)
+    state: Callable[[str], object] | None = None  # module id -> namespaced store (``StateStore.module``)
+
+
+class MemoryPanelRegistry:
+    """``PanelRegistry`` kept in memory; the control API and dashboard read panels from here."""
+
+    def __init__(self) -> None:
+        self._panels: dict[tuple[str, str], Callable[[], Any]] = {}
+
+    def add(self, module_id: str, panel_id: str, render: Callable[[], Any]) -> None:
+        self._panels[(module_id, panel_id)] = render
+
+    def remove_all(self, module_id: str) -> None:
+        self._panels = {k: v for k, v in self._panels.items() if k[0] != module_id}
+
+    def panels(self, module_id: str) -> list[str]:
+        return sorted(p for m, p in self._panels if m == module_id)
+
+    def render(self, module_id: str, panel_id: str) -> Any:
+        render = self._panels.get((module_id, panel_id))
+        if render is None:
+            raise SwitchyardError(f"unknown panel {panel_id!r} for module {module_id!r}")
+        return render()
 
 
 class ModuleContext:
@@ -104,6 +127,14 @@ class ModuleContext:
     def subscribe(self, type_: str, handler: Callable[..., None]) -> None:
         self._open()
         self._services.bus.subscribe(self.module_id, type_, handler)
+
+    @property
+    def state(self) -> object:
+        """This module's namespaced store (tables ``m_<id>__*`` and key/value rows)."""
+        self._open()
+        if self._services.state is None:
+            raise SwitchyardError("state store is not available in this host")
+        return self._services.state(self.module_id)
 
     def health_report(self, ok: bool, detail: str = "") -> None:
         """Push a health state between ``health()`` polls. ``detail`` must not contain secret values."""

@@ -125,6 +125,10 @@ class EventBus:
         self._lock = threading.Lock()
         self._local = threading.local()
 
+    def set_error_handler(self, handler: Callable[[str, BaseException], None] | None) -> None:
+        """Replace the ``on_handler_error`` callback (the lifecycle manager attaches itself here)."""
+        self._on_error = handler
+
     def subscribe(self, owner: str, type_: str, handler: Handler) -> None:
         _check_pattern(type_)
         with self._lock:
