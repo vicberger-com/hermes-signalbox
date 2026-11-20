@@ -19,7 +19,7 @@ src/switchyard/
   audit.py           AuditLog (hash-chained JSON Lines), verify()
   events.py          EventBus (typed, in-process, synchronous with error isolation)
   scheduler.py       Trigger, Scheduler (time / event / usage / capacity)
-  lifecycle.py       ModuleManager (discover -> verify -> grant -> load -> active <-> idle -> stopped)
+  lifecycle.py       ModuleManager (discover -> verify -> active <-> stopped; activation needs every required grant)
   host_t2.py         Subprocess host: parent side; host_t2_child.py child side; rpc.py framing
   secrets.py         SecretRef, SecretBackend protocol, SecretsBroker, MemoryBackend (tests only)
   hostinfo.py        HostProfile, profile() -> tiny | laptop | workstation | server
@@ -120,7 +120,10 @@ coarse for minute-level triggers; choose the Hermes-side driver (plugin thread o
 `ModuleManager`: `discover(roots)` (load + verify manifests; reject invalid, duplicate, or untrusted in-process
 modules), `activate(id)`, `deactivate(id, reason)`, `health(id)`, `remove(id, keep_data=False)`,
 `set_mode(id, manual|auto|disabled)`, `start_auto()`, `touch(id)`, `tick()` (idle stop), `modules()`, `info(id)`.
-States: `verified`, `active`, `stopped`, `failed`. Modes persist in the `modules` table. Each module is imported as
+States: `verified`, `active`, `stopped`, `failed`. `activate(id)` refuses (`CapabilityDenied`, audited as
+`policy.denied`) while a requested, non-optional capability is not granted, before importing any module code
+(H1 A-5); the module keeps its state. The `module activate` operation also refuses the model actor unless the
+module's mode is `auto` (H1 C-6). Modes persist in the `modules` table. Each module is imported as
 the synthetic package `_switchyard_modules.<id>` rooted at its directory (no name clashes, relative imports work,
 removal purges `sys.modules`). In-process modules are accepted only under trusted roots (resolved paths). Any
 exception from import, construction, `activate`, `health` or a bus handler fails that module closed (audited by

@@ -343,8 +343,9 @@ def test_broker_access_is_policy_checked_then_unavailable(env: Env) -> None:
         def health(self): return True
     """
     env.add("sched", code, request=("schedule",))
-    env.manager.activate("sched", actor="user")
-    assert env.manager.info("sched").error == "CapabilityDenied"
+    with pytest.raises(CapabilityDenied):  # H1 A-5: no child process is started without the grant
+        env.manager.activate("sched", actor="user")
+    assert env.manager.info("sched").error is None
     env.policy.grant("sched", "schedule", actor="user")
     env.manager.activate("sched", actor="user")
     assert env.manager.info("sched").error == "SwitchyardError"  # granted, but brokers do not cross in M0

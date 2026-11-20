@@ -12,6 +12,14 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   never charge or record. Cool-downs are never shortened by a later error. Every request shape is sized.
 
 ### Changed
+- Activation (H1 A-5, C-6, decision D8): a module starts only when every required capability is granted;
+  otherwise activation is refused (`policy.denied`, exit 3 in the CLI) before any module code runs, and the
+  module is not marked failed. The model may start only modules in `auto` mode. **Operator step:** grant every
+  required capability before `module activate` (`module show <id>` lists `missing_grants`), and set modules
+  the model should be able to start to `--mode auto`.
+- Router (H1 C-7): for delegated subagents, a model the registry does not know is treated as paid (steered to
+  a free resource, or counted as a paid pass-through). **Operator step:** register persona models with their
+  real cost class.
 - Packaging (H1 D-5, D-6, D-25): the wheel ships `py.typed`, `plugin.yaml` and the dashboard files (under
   `switchyard/_plugin/`); CI builds the wheel and sdist, checks the wheel's file list against
   `tools/wheel_files.txt` and smoke-tests a clean install; the release SBOM lists what the wheel installs, not

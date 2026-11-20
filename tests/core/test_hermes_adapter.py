@@ -111,6 +111,13 @@ def test_model_tools_list_and_run_modules(ctx: FakeCtx) -> None:
     register(ctx)
     listed = _tool(ctx, "switchyard_modules", action="list")
     assert listed["ok"] and listed["result"][0]["id"] == "ext"
+    import switchyard.hermes as sh
+
+    assert sh._current is not None
+    core = sh._current.core
+    assert not _tool(ctx, "switchyard_modules", action="activate", id="ext")["ok"]  # H1 C-6: ext is manual
+    core.run("module", "grant", {"id": "ext", "capability": "schedule"}, actor="t")
+    core.run("module", "mode", {"id": "ext", "mode": "auto"}, actor="t")
     assert _tool(ctx, "switchyard_modules", action="activate", id="ext")["result"]["status"] == "active"
     assert _tool(ctx, "switchyard_modules", action="health", id="ext")["result"] == {
         "ok": True,
@@ -120,10 +127,7 @@ def test_model_tools_list_and_run_modules(ctx: FakeCtx) -> None:
     from switchyard.errors import CapabilityDenied
 
     with pytest.raises(CapabilityDenied, match="operator only"):  # enforced in the core, not only the tool
-        import switchyard.hermes as sh
-
-        assert sh._current is not None
-        sh._current.core.run("module", "grant", {"id": "ext", "capability": "fs.read"}, actor="hermes")
+        core.run("module", "grant", {"id": "ext", "capability": "fs.read"}, actor="hermes")
     actors = {r["actor"] for r in _tool(ctx, "switchyard_audit", action="tail", n=10)["result"]}
     assert "hermes" in actors
     assert _tool(ctx, "switchyard_audit", action="verify")["result"]["ok"] is True

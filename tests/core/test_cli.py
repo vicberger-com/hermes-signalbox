@@ -89,6 +89,8 @@ def daemon(data: Path) -> Iterator[ControlServer]:
 def test_routes_through_running_daemon(
     data: Path, daemon: ControlServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    assert main(_run(data, "module", "grant", "ext", "--capability", "schedule")) == 0
+    capsys.readouterr()
     assert main(_run(data, "--json", "module", "activate", "ext")) == 0
     assert json.loads(capsys.readouterr().out)["status"] == "active"
     assert main(_run(data, "--json", "module", "health", "ext")) == 0
@@ -154,10 +156,10 @@ def test_h1_d8_failed_results_exit_1_and_name_what_is_missing(
 ) -> None:
     assert main(_run(pan, "module", "panel", "pan", "--panel", "pan.status")) == 1
     assert "not active" in capsys.readouterr().err
-    assert main(_run(pan, "module", "activate", "pan")) == 1
-    captured = capsys.readouterr()
-    assert "status: failed" in captured.out and "missing_grants: ['ui.panel']" in captured.out
-    assert "ui.panel" in captured.err
+    assert main(_run(pan, "module", "activate", "pan")) == 3  # H1 A-5: refused before any module code runs
+    assert "ui.panel" in capsys.readouterr().err
+    assert main(_run(pan, "--json", "module", "show", "pan")) == 0
+    assert json.loads(capsys.readouterr().out)["missing_grants"] == ["ui.panel"]
     assert main(_run(pan, "module", "health", "pan")) == 1
     assert main(_run(pan, "module", "grant", "pan", "--capability", "ui.panel")) == 0
     assert main(_run(pan, "module", "activate", "pan")) == 0

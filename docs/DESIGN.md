@@ -140,8 +140,10 @@ Template: `templates/module/`.
 | Log and metric streams, report sections | `contributes.log_streams` |
 | Update source | `[update]` |
 
-Lifecycle: `discovered -> verified -> granted -> loaded -> active <-> idle -> stopped`. Activation mode is
-`manual`, `auto` or `disabled`. `idle_stop_seconds` stops an auto module that is not in use, which is how token
+Lifecycle states: `verified -> active <-> stopped`, with `failed` reachable from any step. A module is loaded
+and activated only when every capability it requests (except those marked optional) is granted; until then
+activation is refused with `policy.denied` and no module code runs (H1 A-5; there is no separate `granted`
+state). Activation mode is `manual`, `auto` or `disabled`; the model may start only `auto` modules (H1 C-6). `idle_stop_seconds` stops an auto module that is not in use, which is how token
 and resource use stays low.
 
 Required entry methods: `activate(ctx)`, `deactivate()`, `health()`. Required tests: manifest validity,

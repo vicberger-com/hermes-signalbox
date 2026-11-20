@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from switchyard.capabilities import CAPABILITIES
-from switchyard.errors import SwitchyardError
+from switchyard.errors import CapabilityDenied, SwitchyardError
 from switchyard.hostinfo import profile
 
 if TYPE_CHECKING:
@@ -193,6 +193,15 @@ def _require_host(core: Core) -> None:
 @op("module", "activate", "Start a module (needs the hosting process: daemon or Hermes session).", id=ID)
 def _module_activate(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
+    mode = core.manager.info(p["id"]).mode
+    if actor == MODEL_ACTOR and mode != "auto":
+        # H1 C-6 (decision D8): a module the operator keeps manual or disabled is started by the operator only
+        core.audit.append(actor=actor, action="policy.denied", module=p["id"],
+                          detail={"operation": "module activate", "reason": f"mode {mode}"})  # fmt: skip
+        raise CapabilityDenied(
+            f"module {p['id']!r} is in {mode} mode: only the operator can start it (the model may start auto "
+            "modules)"
+        )
     core.manager.activate(p["id"], actor=actor)
     return _info(core, p["id"])
 

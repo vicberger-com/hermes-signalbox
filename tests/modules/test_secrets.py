@@ -183,11 +183,23 @@ def test_bad_settings_fail_activation(tmp_path: Path, setting: str) -> None:
 # rotation logic with a fake writable backend ----------------------------------------------------------------
 
 
+_OPEN_FAKES: list[Any] = []
+
+
+@pytest.fixture(autouse=True)
+def _close_fake_states() -> Any:
+    """H1 D-23: close every in-memory database a test opened (ResourceWarning on Python 3.14)."""
+    yield
+    while _OPEN_FAKES:
+        _OPEN_FAKES.pop().close()
+
+
 class FakeState:
     def __init__(self) -> None:
         import sqlite3
 
         self.db = sqlite3.connect(":memory:")
+        _OPEN_FAKES.append(self.db)
 
     def create_table(self, name: str, cols: list[tuple[str, str]], primary_key: list[str]) -> None:
         spec = ", ".join(f"{c} {t}" for c, t in cols)

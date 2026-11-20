@@ -243,7 +243,8 @@ def test_invalid_inputs_and_settings(core: Core, tmp_path: Path) -> None:
         (data / "config.toml").write_text(f"[modules.router]\n{bad}\n", encoding="utf-8")
         c = Core(data_dir=data, hosting=True)
         try:
-            c.run("module", "grant", {"id": "router", "capability": "hermes.hooks"}, actor="t")
+            for cap in ("hermes.hooks", "ui.panel"):  # H1 A-5: every required grant before activation
+                c.run("module", "grant", {"id": "router", "capability": cap}, actor="t")
             c.run("module", "activate", {"id": "router"}, actor="t")
             assert c.run("module", "show", {"id": "router"}, actor="t")["status"] == "failed", bad
         finally:
@@ -524,3 +525,21 @@ def test_h1_c8_every_request_shape_is_sized() -> None:
     }
     assert need_for(image).vision
     assert need_for({"model": "m", "messages": [{"role": "user", "content": "hi"}]}).tier == "T1"
+
+
+def test_h1_c7_unregistered_persona_model_is_never_free_by_default(core: Core) -> None:
+    """A delegated persona child (free_only) whose model the registry does not know: steered to a free
+    resource of its role's pool or the main pool; with nothing free left it goes out counted as paid."""
+    ctx = {"provider": OR, "turn_id": "p1", "api_request_id": "p-1", "delegated": True,
+           "delegated_consumer": "subagent:writer", "delegated_free_only": True}  # fmt: skip
+    persona = request(model="vendor/secret-paid-model")
+    out = core.bridge.dispatch_llm_request(persona, ctx)
+    assert out is not None and out["model"] == "free/small:free"
+    _cool_free(core)
+    assert (
+        core.bridge.dispatch_llm_request(persona, {**ctx, "api_request_id": "p-2"}) is None
+    )  # passed through
+    assert rt(core, "status")["paid_today"] == 1  # ... and counted
+    assert _audits(core, "module.router.paid_passthrough")
+    main = request(model="vendor/secret-paid-model")  # the main session: unknown models stay outside the gate
+    assert route(core, main) == "vendor/secret-paid-model" and rt(core, "status")["paid_today"] == 1

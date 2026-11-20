@@ -34,7 +34,10 @@ ignored). Only if none exists does the paid model go out, and that is audited as
 so `status` can show more than the budget. The budget is therefore a routing limit, not a hard cap: to stop
 turns that would go out paid, set `hard_stop = true`. After the turn's attempts are used up the router stays
 free-first even when paid is allowed. A configured model the registry does not know is outside the router's
-control: register it, or set Hermes's default to a free model.
+control: register it, or set Hermes's default to a free model. The exception is a delegated subagent (a worker
+role, ADR-0007): a model the registry does not know is treated as **paid** there (H1 C-7), so a persona whose
+profile model is unregistered is steered to a free resource, or passes through counted as paid. Register a
+persona's model (with its real cost class) to route it as what it is.
 
 ## When routing is slow (ADR-0013)
 
