@@ -4,7 +4,7 @@ A security-first, open-source control plane for [Hermes Agent](https://github.co
 one small core framework plus snap-on modules that manage skills, plugins, model/resource pools, sub-agents,
 token use, security testing, reporting and updates. Hermes can operate 100% of it; so can a human.
 
-**Status:** design + template (v0.0.0). No runtime code yet. The build is executed by a Hermes instance
+**Status:** design + template (v0.0.1, bootstrap complete). No runtime code yet. The build is executed by a Hermes instance
 following [AGENTS.md](AGENTS.md).
 
 **Priorities (in order, used to break every tie):** 1 security, 2 utility, 3 open source, 4 speed and capacity,
