@@ -103,10 +103,17 @@ rotate at 8 MiB with the chain running across files.
 
 ### Events and scheduler
 
-`Event(type: str, source: str, data: Mapping[str, JSONValue], ts)`. Handlers run synchronously in subscription order;
-a handler exception is logged and audited, never propagated to the publisher. `Trigger(kind, spec, target, min_interval_s)`
-with kinds `time` (interval seconds or 5-field cron), `event`, `usage`, `capacity`. One run at a time per trigger;
-runs within `min_interval_s` are skipped and counted. Inside Hermes, time triggers are driven by `register_idle_task`.
+`Event(type, source, data, ts)`; types are dotted lower-case with at least two parts; subscriptions take an exact
+type, `<prefix>.*` or `*`. Handlers run synchronously in subscription order, each on its own copy of the data
+(JSON-compatible, <= 64 KiB). A handler exception is audited by class name only, reported to `on_handler_error`,
+and never propagated. Re-entrant publishing is limited to depth 8 per thread.
+
+`Trigger(id, owner, kind, spec, callback, min_interval_s)`. Specs: `time` `{"every": s}` or `{"cron": "m h dom mon dow"}`;
+`event` `{"type": pattern}`; `usage`/`capacity` `{"metric": name, "above"|"below": x}` fed by `observe()`
+(edge-triggered). `tick()`, `observe()`, `fire()`; one run at a time per trigger; runs within `min_interval_s` are
+skipped and counted; `trigger.fired`/`trigger.skipped` events; failures audited by class name. The scheduler owns
+no thread. **Open (Hermes adapter PR):** Hermes idle tasks are gated by `min_idle_hours`/`interval_hours`, too
+coarse for minute-level triggers; choose the Hermes-side driver (plugin thread or Hermes cron) in that PR.
 
 ### Lifecycle
 
