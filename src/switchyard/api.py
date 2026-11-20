@@ -211,7 +211,8 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _dispatch(self, noun: str, verb: str, params: dict[str, Any]) -> None:
         try:
-            result = self.control.core.run(noun, verb, params, actor="api")
+            core = self.control.core
+            result = core.redactor.redact_obj(core.run(noun, verb, params, actor="api"))  # M9: panels too
         except UsageError as exc:
             self._fail(400, "usage", str(exc))
         except CapabilityDenied as exc:

@@ -15,3 +15,4 @@ htmlcov/
 *.key
 *.dpapi
 sbom*.json
+!dashboard/dist/

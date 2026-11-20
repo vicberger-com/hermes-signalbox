@@ -4,6 +4,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- ADR-0009: `notify` broker (`ctx.notify.send`), `report show {kind}` (health, usage, security, changes), control API
+  started by the Hermes adapter when `[api] enabled`, API responses redacted.
+- Bundled `inbox` module (M9) and a Switchyard dashboard tab (`dashboard/`: modules, inbox, reports).
+
 ## [0.9.0] - 2026-11-20
 
 Phase M8: token economy (trimming).
