@@ -4,12 +4,26 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-20
+
+Phase M6: supervisor.
+
 ### Added
 - ADR-0006: `schedule` capability (`ctx.schedule.every`), `core.read` capability (`ctx.core`: module states,
   audit verification), and `pre_llm_call` turn gates (`ctx.hermes_gate`; first reason blocks; fail open).
 - Bundled `supervisor` module (M6): scheduled deterministic checks (failed modules, audit chain, quotas, router
   pass-throughs), de-duplicated findings with automatic resolution, `supervisor.alert` events; no LLM calls.
 - Router `hard_stop` (opt-in): blocks a turn when only a ruled-out model is left.
+
+### Security
+- M6 security review (`src/switchyard/modules/supervisor/README.md`): the router gate blocks only with positive
+  registry knowledge and works with Hermes's real `pre_llm_call` arguments; gates return reason codes and the
+  core writes the block message; scheduled jobs run time-bounded on per-module workers without the core lock;
+  hooks use per-module pools; revoking a required capability deactivates the module; audit verification for
+  modules is cached.
+
+### Fixed
+- Control API: a request with `Transfer-Encoding` no longer resets the connection on Windows before the `400`.
 
 ## [0.6.0] - 2026-11-20
 

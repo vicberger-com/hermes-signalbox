@@ -138,7 +138,15 @@ def _module_grant(core: Core, p: dict[str, Any], actor: str) -> Any:
 @op("module", "revoke", "Revoke a capability from a module.", offline=True, id=ID, capability=CAP)
 def _module_revoke(core: Core, p: dict[str, Any], actor: str) -> Any:
     core.policy.revoke(p["id"], p["capability"], actor=actor)
-    return {"granted": sorted(core.policy.granted(p["id"]))}
+    stopped = False
+    manifest = core.manager.manifest(p["id"])
+    if (p["capability"] in manifest.requested and p["capability"] not in manifest.optional
+            and core.manager.info(p["id"]).status.value == "active"):  # fmt: skip
+        # Hooks, gates, middleware and jobs were registered under the old grant; stopping the module removes
+        # them all (M6 review). Optional capabilities are checked at run time instead.
+        core.manager.deactivate(p["id"], actor=actor, reason=f"revoked {p['capability']}")
+        stopped = True
+    return {"granted": sorted(core.policy.granted(p["id"])), "deactivated": stopped}
 
 
 @op("module", "mode", "Set activation mode: manual, auto or disabled.", offline=True, id=ID, mode=Param(str))

@@ -35,7 +35,7 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 | 7 | Control surface | | Read-only `report`, `findings {state, limit}`; human-only `ack {key}`, `run_now`. Panel `supervisor.status`. Config `[modules.supervisor]` `interval_seconds` (300), `audit_check_hours` (24), `quota_warn_percent` (80) | default accepted |
 | 8 | Alerts | (a) events + audit now, Hermes delivery later; (b) `inject_message` | (a). Injecting alerts as model input is a prompt-injection channel and needs a target session; the M8 dashboard and M9 notifications deliver them | default accepted |
 | 9 | Update and rollback | | Bundled | default accepted |
-| 10 | Core contract change? | | ADR-0006: `schedule` broker over the core scheduler; `core.read` view; `pre_llm_call` gates in the bridge (first non-empty reason blocks; a failing gate does not block) | default accepted |
+| 10 | Core contract change? | | ADR-0006: `schedule` broker over the core scheduler; `core.read` view; `pre_llm_call` gates in the bridge (first reason code blocks with a core-written sentence; a failing gate does not block) | default accepted |
 | 11 | Hard stop | (a) opt-in `[modules.router] hard_stop`; (b) always | (a). Blocking a turn is disruptive; the operator chooses. When on, the router blocks only when no routed choice exists and the configured model is over an exhausted quota or paid while paid is not allowed | default accepted |
 | 12 | Operator input? | | None | default accepted |
 
@@ -61,3 +61,9 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| Hook payloads are uniform across hooks | `pre_llm_call` has no `provider`; each hook's real keyword arguments must be read and used in tests | Every gate and observer |
+| Fail-open is only about exceptions | A gate must also not block when its inputs are missing (registry down); block only on positive knowledge | Router, any future policy gate |
+| Text from a module is fine if it is short | Hermes stores the block message as the assistant reply; modules return codes, the core writes text | Gates, any module text shown to the model |
+| A scheduler callback is cheap | It ran under the core lock with no time bound; bound and isolate every module callback | Schedules, hooks, gates |
+| Revoking a grant stops what it allowed | Registrations outlive the grant; revoke must stop the module | Every capability with registrations |
+

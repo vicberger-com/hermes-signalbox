@@ -12,6 +12,7 @@ from __future__ import annotations
 import concurrent.futures
 import contextlib
 import copy
+import re
 import threading
 import urllib.parse
 from collections.abc import Callable, Mapping
@@ -71,6 +72,7 @@ _SCALAR_KEYS = frozenset(
     }
 )
 _MAX_STR = 300
+_GATE_CODE = re.compile(r"[a-z][a-z0-9_]{0,39}\Z")
 
 
 def _host_only(url: str) -> str:
@@ -126,12 +128,28 @@ class HermesBridge:
         self._middleware: dict[str, list[tuple[str, Callable[..., Any]]]] = {}
         self._lock = threading.Lock()
         self.timeout = timeout
-        self._pool = concurrent.futures.ThreadPoolExecutor(
-            max_workers=4, thread_name_prefix="switchyard-hook"
-        )
+        self._pools: dict[str, concurrent.futures.ThreadPoolExecutor] = {}
+        self._closed = False
+
+    def _pool(self, module_id: str) -> concurrent.futures.ThreadPoolExecutor:
+        """One small pool per module, so a module whose calls hang only starves itself (M6 review)."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("bridge closed")
+            pool = self._pools.get(module_id)
+            if pool is None:
+                pool = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=2, thread_name_prefix=f"sy-{module_id}"
+                )
+                self._pools[module_id] = pool
+            return pool
 
     def close(self) -> None:
-        self._pool.shutdown(wait=False, cancel_futures=True)
+        with self._lock:
+            self._closed = True
+            pools, self._pools = list(self._pools.values()), {}
+        for pool in pools:
+            pool.shutdown(wait=False, cancel_futures=True)
 
     # registration -------------------------------------------------------------------------------------
 
@@ -176,7 +194,7 @@ class HermesBridge:
     def _run(self, module_id: str, what: str, fn: Callable[..., Any], *args: Any) -> tuple[bool, Any]:
         """Call ``fn`` on a worker thread, waiting at most ``timeout`` seconds. Returns ``(ok, result)``."""
         try:
-            future = self._pool.submit(fn, *args)
+            future = self._pool(module_id).submit(fn, *args)
             return True, future.result(timeout=self.timeout)
         except concurrent.futures.TimeoutError:
             self._audit.append(
@@ -196,18 +214,36 @@ class HermesBridge:
             self._run(module_id, name, fn, metadata_only(kwargs))
 
     def dispatch_gate(self, kwargs: Mapping[str, Any]) -> str | None:
-        """Run ``pre_llm_call`` gates (ADR-0006) on metadata. The first gate that returns a non-empty reason
-        blocks the turn; the result is ``"[switchyard/<module>] <reason>"``. A gate that fails or times out
-        does not block (fail open, audited): a bug must not stop every turn."""
+        """Run ``pre_llm_call`` gates (ADR-0006) on metadata. A gate returns ``None`` or a reason **code**
+        (``[a-z][a-z0-9_]{0,39}``); the first code blocks the turn with a core-written sentence naming the
+        module and the code. Hermes stores the block message as the assistant's reply, so module-written
+        text never reaches it (M6 review). A gate that fails, times out or returns anything else does not
+        block (fail open, audited): a bug must not stop every turn."""
         with self._lock:
             entries = list(self._middleware.get("gate:pre_llm_call", ()))
         for module_id, fn in entries:
-            ok, reason = self._run(module_id, "gate:pre_llm_call", fn, metadata_only(kwargs))
-            if ok and isinstance(reason, str) and reason.strip():
-                text = " ".join(reason.split())[:300]
-                self._audit.append(actor=CORE_ACTOR, action="module.gate_blocked", module=module_id,
-                                   detail={"turn": str(kwargs.get("turn_id", ""))[:64]})  # fmt: skip
-                return f"[switchyard/{module_id}] {text}"
+            ok, code = self._run(module_id, "gate:pre_llm_call", fn, metadata_only(kwargs))
+            if not ok or code is None:
+                continue
+            if not isinstance(code, str) or not _GATE_CODE.match(code):
+                self._audit.append(
+                    actor=CORE_ACTOR,
+                    action="module.gate_rejected",
+                    module=module_id,
+                    detail={"turn": str(kwargs.get("turn_id", ""))[:64]},
+                )
+                continue
+            self._audit.append(
+                actor=CORE_ACTOR,
+                action="module.gate_blocked",
+                module=module_id,
+                detail={"turn": str(kwargs.get("turn_id", ""))[:64], "code": code},
+            )
+            words = code.replace("_", " ")
+            return (
+                f"[switchyard] This request was stopped by the {module_id} module ({words}). "
+                "Ask the operator to check Switchyard."
+            )
         return None
 
     def dispatch_llm_request(

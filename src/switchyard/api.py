@@ -136,6 +136,19 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if 0 < length <= MAX_BODY_BYTES and "Transfer-Encoding" not in self.headers:
             self.rfile.read(length)
+        elif (
+            "Transfer-Encoding" in self.headers
+        ):  # unknown length: discard what has arrived, briefly, bounded
+            self.connection.settimeout(0.2)
+            remaining = MAX_BODY_BYTES
+            try:
+                while remaining > 0:
+                    chunk = self.rfile.read1(min(65536, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+            except OSError:
+                pass  # timed out: nothing more is coming
 
     def _origin_ok(self) -> bool:
         port = self.control.port
