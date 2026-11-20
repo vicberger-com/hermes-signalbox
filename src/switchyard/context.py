@@ -206,6 +206,11 @@ class ModuleContext:
         self._services.audit.append(actor=self.module_id, action=f"module.{self.module_id}.{event}",
                                     module=self.module_id, detail=clean)  # fmt: skip
 
+    def has(self, capability: str) -> bool:
+        """Whether this module currently holds ``capability`` (no audit record; use for optional features)."""
+        self._open()
+        return capability in self._services.policy.granted(self.module_id)
+
     def call(self, module_id: str, action: str, args: Mapping[str, Any] | None = None) -> Any:
         """Run another module's read-only action (ADR-0004)."""
         self._open()

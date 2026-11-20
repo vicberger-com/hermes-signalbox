@@ -52,10 +52,10 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 ## 4. Acceptance tests (written before code)
 
-- [ ] Deterministic routing per tier (T1 to T5) over a fixed candidate list.
-- [ ] Paid never used without a matching rule, the `llm.paid` grant and remaining budget.
-- [ ] Failover within a bounded number of attempts; a failed resource cools down.
-- [ ] Every paid decision audited.
+- [x] Deterministic routing per tier (T1 to T5) over a fixed candidate list.
+- [x] Paid never used without a matching rule, the `llm.paid` grant and remaining budget.
+- [x] Failover within a bounded number of attempts; a failed resource cools down.
+- [x] Every paid decision audited.
 
 ## 5. Retro (fill in after merge)
 
