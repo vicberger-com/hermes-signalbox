@@ -54,9 +54,11 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 ## 4. Acceptance tests (written before code)
 
-- [ ] Import from the models.dev cache and from a JSON file, filter, prioritise, pool and bind resources; `resolve` returns the bound pool's enabled resources in priority order.
-- [ ] Catalog refresh is reviewed-diff only: preview shows added, changed and removed; nothing changes until a human applies it.
-- [ ] Nothing new is enabled without a user action: imported resources are `disabled`.
+Automated in `tests/modules/test_resources.py` and `tests/core/test_fsread.py`.
+
+- [x] Import from the models.dev cache and from a JSON file, filter, prioritise, pool and bind resources; `resolve` returns the bound pool's enabled resources in priority order.
+- [x] Catalog refresh is reviewed-diff only: preview shows added, changed and removed; nothing changes until a human applies it.
+- [x] Nothing new is enabled without a user action: imported resources are `disabled`.
 
 ## 5. Retro (fill in after merge)
 

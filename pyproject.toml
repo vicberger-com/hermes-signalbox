@@ -54,6 +54,9 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101"]
 "tests/**" = ["S101"]
+# Bundled modules build SQL only from constants and ctx.state.table() names; values are always bound.
+# Bandit's B608 is still marked per line with "nosec B608".
+"src/switchyard/modules/*/*_module.py" = ["S608"]
 
 [tool.mypy]
 python_version = "3.11"

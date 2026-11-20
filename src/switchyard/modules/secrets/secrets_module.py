@@ -97,7 +97,7 @@ class SecretsModule:
         return str(self.ctx.state.table("meta"))
 
     def _row(self, name: str) -> tuple[Any, ...] | None:
-        sql = f"SELECT {_COLUMNS} FROM {self._table()} WHERE name = ?"  # noqa: S608 # nosec B608
+        sql = f"SELECT {_COLUMNS} FROM {self._table()} WHERE name = ?"  # nosec B608
         rows = self.ctx.state.execute(sql, (name,))
         return rows[0] if rows else None
 
@@ -106,7 +106,7 @@ class SecretsModule:
         current = dict(zip(("name", "backend", "created_at", "rotated_at", "expires_at"),
                            row or (name, None, None, None, None), strict=True))  # fmt: skip
         current.update(fields)
-        sql = f"INSERT OR REPLACE INTO {self._table()} VALUES (?, ?, ?, ?, ?)"  # noqa: S608
+        sql = f"INSERT OR REPLACE INTO {self._table()} VALUES (?, ?, ?, ?, ?)"
         self.ctx.state.execute(sql, tuple(current[k] for k in ("name", "backend", "created_at", "rotated_at",
                                                                "expires_at")))  # fmt: skip
 
@@ -116,7 +116,7 @@ class SecretsModule:
         """Backends and per-name metadata. Never values."""
         today = datetime.now(UTC).date()
         warn = timedelta(days=int(self.settings.get("expiry_warning_days", 14)))
-        sql = f"SELECT {_COLUMNS} FROM {self._table()} ORDER BY name"  # noqa: S608 # nosec B608
+        sql = f"SELECT {_COLUMNS} FROM {self._table()} ORDER BY name"  # nosec B608
         rows = self.ctx.state.execute(sql)
         secrets = []
         for name, backend, created, rotated, expires in rows:

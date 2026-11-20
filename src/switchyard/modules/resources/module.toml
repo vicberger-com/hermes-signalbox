@@ -1,0 +1,32 @@
+# Bundled module M2: resource registry, pools and bindings. Spec: README.md in this directory.
+schema = 1
+
+[module]
+id = "resources"
+name = "Resources"
+version = "0.3.0"
+license = "Apache-2.0"
+license_class = "open"
+summary = "Catalog of providers, models, endpoints, agents and tools; pools; consumer bindings; reviewed imports."
+requires_core = ">=0.1,<1"
+isolation = "in-process"
+entry = "resources_module:ResourcesModule"
+
+[capabilities]
+request = ["fs.read", "ui.panel"]
+
+[contributes]
+commands = [
+  "list", "show", "pools", "resolve", "import_preview",
+  "set_state", "set_priority", "tag", "untag",
+  "pool_create", "pool_delete", "pool_add", "pool_remove",
+  "bind", "unbind", "import_apply", "import_discard",
+]
+panels = ["resources.status"]
+log_streams = ["resources"]
+
+[lifecycle]
+activation = "auto"
+
+[update]
+source = "bundled"
