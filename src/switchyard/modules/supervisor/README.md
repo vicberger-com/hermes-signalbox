@@ -37,3 +37,23 @@ Capabilities: `schedule`, `core.read`, `ui.panel`.
 
 Tables `findings` (resolved findings capped at 500), `runs` (last 500), `kv`. Removed with the module unless
 `keep_data`.
+
+## Security review (M6 gate)
+
+Reviewed 2026-11-20 by a fresh subagent with the M6 diff, the threat table and the Hermes v0.23.2 sources.
+
+| Finding | Disposition |
+|---|---|
+| (high) Router gate assumed a `provider` key that Hermes's `pre_llm_call` does not send, so it could block turns of unknown models or other providers | **Fixed.** The gate finds the routed provider whose registry knows the model and blocks only with positive knowledge; tests use Hermes's real keyword arguments |
+| (high) Gate blocked when the registry was down | **Fixed.** No registry answer, no block |
+| (high) Scheduled jobs ran on the tick under the core lock with no time bound | **Fixed.** Per-module worker, 5 s wait, skip while running, no core lock held |
+| (medium) Revoking a capability left hooks, gates and jobs running | **Fixed.** Revoking a required capability deactivates the module |
+| (medium) Gate reason text became the stored assistant reply | **Fixed.** Gates return a reason code; the core writes the sentence |
+| (medium) One hung module could exhaust the shared hook pool; the router gate held its lock across a cross-module call | **Fixed.** Per-module pools; the gate no longer takes the router lock |
+| (medium) `verify_audit` callable in a loop | **Fixed.** Cached for 60 s |
+| (low) `ack` with a long key reported success without effect | **Fixed** |
+| (low) A failed audit verification was deferred a full day | **Fixed.** Stays due until it succeeds |
+
+Also fixed while here: the control API's handling of a request with `Transfer-Encoding` could reset the
+connection on Windows before the client read the `400` reply (the long-standing occasional local test failure).
+

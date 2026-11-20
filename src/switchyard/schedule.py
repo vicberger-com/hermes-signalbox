@@ -7,10 +7,13 @@ and every job of a module is removed when it stops (``Scheduler.remove_owner``).
 
 from __future__ import annotations
 
+import concurrent.futures
 import re
+import threading
 from collections.abc import Callable
 from typing import Any
 
+from switchyard.capabilities import CORE_ACTOR, AuditSink
 from switchyard.errors import SwitchyardError
 from switchyard.scheduler import Scheduler, Trigger
 
@@ -18,21 +21,61 @@ _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}\Z")
 MIN_SECONDS, MAX_SECONDS = 10, 86_400
 
 
+RUN_TIMEOUT = 5.0
+
+
 class ScheduleBroker:
-    def __init__(self, scheduler: Scheduler) -> None:
+    def __init__(self, scheduler: Scheduler, audit: AuditSink, timeout: float = RUN_TIMEOUT) -> None:
         self._scheduler = scheduler
+        self._audit = audit
+        self.timeout = timeout
+        self._pools: dict[str, concurrent.futures.ThreadPoolExecutor] = {}
+        self._inflight: dict[str, concurrent.futures.Future[Any]] = {}
+        self._lock = threading.Lock()
 
     def for_module(self, module_id: str) -> ModuleSchedule:
-        return ModuleSchedule(self._scheduler, module_id)
+        return ModuleSchedule(self, module_id)
+
+    def run(self, module_id: str, trigger_id: str, fn: Callable[[], Any]) -> None:
+        """Run one job on the module's own worker, waiting at most ``timeout`` (M6 review): a slow job cannot
+        stall the tick, and a job still running from last time is skipped rather than stacked."""
+        with self._lock:
+            previous = self._inflight.get(trigger_id)
+            if previous is not None and not previous.done():
+                return
+            pool = self._pools.get(module_id)
+            if pool is None:
+                pool = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix=f"sy-job-{module_id}"
+                )
+                self._pools[module_id] = pool
+            future = pool.submit(fn)
+            self._inflight[trigger_id] = future
+        try:
+            future.result(timeout=self.timeout)
+        except concurrent.futures.TimeoutError:
+            self._audit.append(
+                actor=CORE_ACTOR,
+                action="module.job_timeout",
+                module=module_id,
+                detail={"job": trigger_id, "seconds": str(self.timeout)},
+            )
+
+    def close(self) -> None:
+        with self._lock:
+            pools, self._pools = list(self._pools.values()), {}
+        for pool in pools:
+            pool.shutdown(wait=False, cancel_futures=True)
 
 
 class ModuleSchedule:
     """What ``ctx.schedule`` returns."""
 
-    __slots__ = ("_module_id", "_scheduler")
+    __slots__ = ("_broker", "_module_id", "_scheduler")
 
-    def __init__(self, scheduler: Scheduler, module_id: str) -> None:
-        self._scheduler = scheduler
+    def __init__(self, broker: ScheduleBroker, module_id: str) -> None:
+        self._broker = broker
+        self._scheduler = broker._scheduler
         self._module_id = module_id
 
     def every(self, name: str, seconds: int, fn: Callable[[], Any]) -> str:
@@ -48,7 +91,7 @@ class ModuleSchedule:
         trigger_id = f"{self._module_id}.{name}"
 
         def run(_payload: Any) -> None:
-            fn()
+            self._broker.run(self._module_id, trigger_id, fn)
 
         self._scheduler.add(
             Trigger(

@@ -290,24 +290,26 @@ class RouterModule:
     def gate(self, meta: dict[str, Any]) -> str | None:
         """``hard_stop`` (ADR-0006): block the turn when no routed choice is possible and the configured model
         is over an exhausted quota or is paid while paid is not allowed. Sized as the smallest tier."""
-        provider = meta.get("provider") or (
-            self.settings["providers"][0] if self.settings["providers"] else ""
-        )
-        if self.ctx is None or provider not in self.settings["providers"]:
+        if self.ctx is None:
             return None
+        model = str(meta.get("model") or "")
         need = Need(tokens=1, tools=False, vision=False, tier="T1")
-        with self._lock:
+        # Hermes's pre_llm_call carries no provider: find the routed provider whose registry knows the
+        # configured model. Block only with positive knowledge (M6 review): the registry answers, the model is
+        # a known resource, nothing routable is left, and the model itself is ruled out.
+        for provider in self.settings["providers"]:
+            candidates = self._candidates(provider)
+            if not any(c.model == model for c in candidates):
+                continue
             chosen, _, _ = self.choose(need, provider)
             if chosen is not None:
                 return None
-            fallback, why, rid = self._guard_eval(str(meta.get("model") or ""), need, provider)
-        if not why or fallback is not None:
-            return None
-        self.ctx.audit("hard_stop", consumer=self.settings["consumer"], resource=rid[:200], reason=why)
-        return (
-            f"Request blocked: {why} for {rid} and no free model is available. "
-            "Ask the operator to raise the quota or allow paid use."
-        )
+            fallback, why, rid = self._guard_eval(model, need, provider)
+            if not why or fallback is not None:
+                return None
+            self.ctx.audit("hard_stop", consumer=self.settings["consumer"], resource=rid[:200], reason=why)
+            return "quota_exhausted" if why == "quota exhausted" else "paid_model_not_allowed"
+        return None
 
     def _sent_model(self, kwargs: dict[str, Any]) -> str | None:
         """The resource a failed request actually used: what ``route`` sent for this request id, else the

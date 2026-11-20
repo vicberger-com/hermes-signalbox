@@ -149,10 +149,10 @@ class SupervisorModule:
                 "WHERE key = 'audit:chain' AND state != 'resolved'"
             )
             return [(r[0], r[1], r[2]) for r in current]  # keep the last result until the next check
+        result = self.ctx.core.verify_audit()  # if this raises, the check stays due and runs next pass
         self._last_audit_check = now
         sql = f"INSERT OR REPLACE INTO {self._t('kv')} VALUES ('last_audit_check', ?)"  # nosec B608
         self._q(sql, (str(now),))
-        result = self.ctx.core.verify_audit()
         if result["ok"]:
             return []
         return [
@@ -320,6 +320,7 @@ class SupervisorModule:
 
     def ack(self, key: str) -> dict[str, Any]:
         """Acknowledge an open finding: it stays listed but no longer counts as new until it escalates."""
+        key = key[:200]
         rows = self._q(f"SELECT state FROM {self._t('findings')} WHERE key = ?", (key[:200],))  # nosec B608
         if not rows or rows[0][0] == "resolved":
             raise SwitchyardError(f"no open finding {key[:80]!r}")

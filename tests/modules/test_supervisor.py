@@ -201,6 +201,29 @@ def test_model_is_read_only_and_settings(core: Core, tmp_path: Path) -> None:
             c.close()
 
 
+def test_slow_jobs_do_not_stall_the_tick(core: Core) -> None:
+    import threading
+    import time as _time
+
+    release = threading.Event()
+    calls = {"n": 0}
+
+    def slow() -> None:
+        calls["n"] += 1
+        release.wait(5)
+
+    sched = core.manager._entry("supervisor").instance.ctx.schedule
+    core.schedules.timeout = 0.2
+    sched.every("slow", 60, slow)
+    start = _time.monotonic()
+    core.scheduler.fire("supervisor.slow")
+    core.scheduler.fire("supervisor.slow")  # previous run still going: skipped, not stacked
+    assert _time.monotonic() - start < 2 and calls["n"] == 1
+    assert core.run("module", "list", {}, actor="t")  # control plane still answers
+    assert "module.job_timeout" in [r["action"] for r in core.run("audit", "tail", {"n": 20}, actor="t")]
+    release.set()
+
+
 def test_schedule_broker_rules(core: Core) -> None:
     sched = core.manager._entry("supervisor").instance.ctx.schedule
     for name, seconds in [("Bad", 60), ("ok", 5), ("ok", True), ("ok", 100_000)]:
@@ -244,14 +267,22 @@ def test_router_hard_stop_blocks_the_turn(tmp_path: Path) -> None:
         res("bind", consumer="main", pool="main")
         grant(c, "router", "hermes.hooks", "ui.panel", "llm.free")
         c.run("module", "activate", {"id": "router"}, actor="t")
-        turn = {"provider": OR, "model": "paid/big", "turn_id": "t", "user_message": "hi"}
+        # Hermes's real pre_llm_call keyword arguments: no provider (agent/turn_context.py)
+        turn = {
+            "session_id": "s",
+            "task_id": "k",
+            "turn_id": "t",
+            "user_message": "hi",
+            "conversation_history": [],
+            "is_first_turn": True,
+            "model": "paid/big",
+            "platform": "cli",
+            "parent_session_id": "",
+            "sender_id": "u",
+        }
         assert c.bridge.dispatch_gate(turn) is None  # a free model can take it
-        c.run(
-            "module",
-            "action",
-            {"id": "router", "action": "pin", "args": {"consumer": "main", "id": f"{OR}/free/a:free"}},
-            actor="t",
-        )
+        pin = {"consumer": "main", "id": f"{OR}/free/a:free"}
+        c.run("module", "action", {"id": "router", "action": "pin", "args": pin}, actor="t")
         c.bridge.dispatch_hook(
             "api_request_error",
             {
@@ -262,13 +293,53 @@ def test_router_hard_stop_blocks_the_turn(tmp_path: Path) -> None:
             },
         )
         reason = c.bridge.dispatch_gate(turn)
-        assert reason is not None and reason.startswith(
-            "[switchyard/router] Request blocked: configured model is paid"
-        )
+        assert reason is not None and "router module (paid model not allowed)" in reason
         assert "module.router.hard_stop" in [
             r["action"] for r in c.run("audit", "tail", {"n": 50}, actor="t")
         ]
-        assert c.bridge.dispatch_gate({**turn, "provider": "anthropic"}) is None
         assert c.bridge.dispatch_gate({**turn, "model": "unknown/model"}) is None  # not a registry resource
+        exhausted = type(
+            "E", (), {"data": {"scope": f"provider:{OR}", "period_end": "2099-01-01T00:00:00Z", "quota": "q"}}
+        )()
+        c.manager._entry("router").instance.on_exhausted(exhausted)
+        assert (
+            c.bridge.dispatch_gate({**turn, "model": "unknown/model"}) is None
+        )  # still unknown: never blocked
+        assert "quota exhausted" in (c.bridge.dispatch_gate(turn) or "")
+        c.run("module", "deactivate", {"id": "resources"}, actor="t")
+        assert c.bridge.dispatch_gate(turn) is None  # registry down: no positive knowledge, no block
+        out = c.run("module", "revoke", {"id": "router", "capability": "hermes.hooks"}, actor="t")
+        assert out["deactivated"] is True and c.bridge.registered("router") == []
+        out = c.run("module", "revoke", {"id": "router", "capability": "llm.free"}, actor="t")
+        assert out["deactivated"] is False  # optional capability: checked at run time
     finally:
         c.close()
+
+
+def test_core_view_caches_audit_verification(core: Core, monkeypatch: pytest.MonkeyPatch) -> None:
+    view = core.manager._entry("supervisor").instance.ctx.core
+    calls = {"n": 0}
+    real = core.verify_audit
+
+    def counted() -> Any:
+        calls["n"] += 1
+        return real()
+
+    monkeypatch.setattr(core, "verify_audit", counted)
+    first = view.verify_audit()
+    for _ in range(20):
+        assert view.verify_audit() == first
+    assert calls["n"] <= 1
+    assert {m["id"] for m in view.modules()} >= {"supervisor"}
+
+
+def test_ack_long_key_and_audit_retry(core: Core, monkeypatch: pytest.MonkeyPatch) -> None:
+    inst = core.manager._entry("supervisor").instance
+    inst._check_router = lambda: [("x" * 250, "low", "m")]
+    sv(core, "run_now")
+    assert sv(core, "ack", key="x" * 250)["acked"] == "x" * 200
+    assert sv(core, "findings", state="acked")["findings"][0]["key"] == "x" * 200
+    inst._last_audit_check = 0.0
+    monkeypatch.setattr(inst.ctx.core, "verify_audit", lambda: 1 / 0)
+    sv(core, "run_now")
+    assert inst._last_audit_check == 0.0  # failed verification stays due

@@ -53,9 +53,10 @@ out unchanged and `module.router.quota_passthrough` (or `paid_passthrough`) is a
 day.
 
 **Hard stop (M6, opt-in).** With `[modules.router] hard_stop = true` the router also registers a turn gate
-(ADR-0006): before each Hermes turn, if no routed choice exists and the configured model is over an exhausted
-quota or is paid while paid is not allowed, the turn is blocked with a message telling the user why
-(`module.router.hard_stop` audited). A configured model the registry does not know is never blocked.
+(ADR-0006): before each Hermes turn, if the registry knows the configured model, no routed choice exists, and
+that model is over an exhausted quota or is paid while paid is not allowed, the turn is blocked with a short
+core-written message (`quota exhausted` or `paid model not allowed`; `module.router.hard_stop` audited). A
+model the registry does not know, or a registry that is not running, never leads to a block.
 
 ## Control surface
 

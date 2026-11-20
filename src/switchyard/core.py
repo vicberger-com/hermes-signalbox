@@ -10,6 +10,7 @@ modules, not to the control plane that must report the problem).
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import TracebackType
@@ -66,20 +67,40 @@ class AnchoredAudit:
         return int(seq), digest
 
 
+VERIFY_CACHE_SECONDS = 60.0
+
+
 class CoreView:
     """The ``core.read`` capability (ADR-0006): a read-only view of module states and the audit chain."""
 
     def __init__(self, core: Core) -> None:
         self._core = core
+        self._lock = threading.Lock()
+        self._cached: tuple[float, dict[str, Any]] | None = None
 
     def modules(self) -> list[dict[str, Any]]:
-        return [{"id": i.id, "status": i.status.value, "mode": i.mode, "error": i.error}
-                for i in self._core.manager.modules()]  # fmt: skip
+        return [
+            {"id": i.id, "status": i.status.value, "mode": i.mode, "error": i.error}
+            for i in self._core.manager.modules()
+        ]
 
     def verify_audit(self) -> dict[str, Any]:
+        """Cached for ``VERIFY_CACHE_SECONDS``: a full scan holds the audit lock, so a module calling this in
+        a loop must not stall every audited action (M6 review)."""
+        now = time.monotonic()
+        with self._lock:
+            if self._cached is not None and now - self._cached[0] < VERIFY_CACHE_SECONDS:
+                return dict(self._cached[1])
         result = self._core.verify_audit()
-        return {"ok": result.ok, "records": result.records, "first_bad_seq": result.first_bad_seq,
-                "reason": result.reason}  # fmt: skip
+        out = {
+            "ok": result.ok,
+            "records": result.records,
+            "first_bad_seq": result.first_bad_seq,
+            "reason": result.reason,
+        }
+        with self._lock:
+            self._cached = (now, out)
+        return dict(out)
 
 
 class Core:
@@ -130,8 +151,11 @@ class Core:
         roots = (
             list(module_roots) if module_roots is not None else [BUILTIN_MODULES, self.data_dir / "modules"]
         )
-        brokers: dict[str, object] = {"secrets.read": self.secrets, "process.spawn": self.processes,
-                                      "fs.read": self.files}  # fmt: skip
+        brokers: dict[str, object] = {
+            "secrets.read": self.secrets,
+            "process.spawn": self.processes,
+            "fs.read": self.files,
+        }
         self.hermes_config = (
             ConfigWriter(hermes_config, self.audit, self.data_dir / "hermes-config-backups")
             if hermes_config
@@ -139,16 +163,25 @@ class Core:
         )
         if self.hermes_config is not None:
             brokers["hermes.config.write"] = self.hermes_config
-        brokers["schedule"] = ScheduleBroker(self.scheduler)
+        self.schedules = ScheduleBroker(self.scheduler, self.audit)
+        brokers["schedule"] = self.schedules
         brokers["core.read"] = CoreView(self)
         self.manager = ModuleManager(
-            policy=self.policy, audit=self.audit, bus=self.bus, logs=self.logs, panels=self.panels,
-            trusted_roots=trusted, scheduler=self.scheduler, store=self.store,
+            policy=self.policy,
+            audit=self.audit,
+            bus=self.bus,
+            logs=self.logs,
+            panels=self.panels,
+            trusted_roots=trusted,
+            scheduler=self.scheduler,
+            store=self.store,
             brokers=brokers,
             actions=self.actions,
-            secret_backends=self.secrets, config=lambda mid: self.config.modules.get(mid, {}),
-            bridge=self.bridge, call=self._module_call,
-        )  # fmt: skip
+            secret_backends=self.secrets,
+            config=lambda mid: self.config.modules.get(mid, {}),
+            bridge=self.bridge,
+            call=self._module_call,
+        )
         self.manager.discover(roots)
         self.updates = UpdateController(self.manager, self.audit, self.data_dir, fetcher or GitFetcher())
         self._lock = threading.RLock()
@@ -176,7 +209,12 @@ class Core:
         with self._lock:
             if self._closed or not self.hosting:
                 return
-            self.scheduler.tick()
+        # Scheduled module jobs run without the core lock held, so a slow job cannot block the control plane
+        # (M6 review); each module job is itself time-bounded (ModuleSchedule).
+        self.scheduler.tick()
+        with self._lock:
+            if self._closed:
+                return
             self.manager.tick()
             for metric, value in capacity_metrics(self.data_dir).items():
                 self.scheduler.observe(metric, value)
@@ -189,6 +227,7 @@ class Core:
                 self.manager.deactivate(module_id, actor=CORE_ACTOR, reason="shutdown")
             self._closed = True
             self.bridge.close()
+            self.schedules.close()
             self.store.close()
             self._host_lock.release()
 
