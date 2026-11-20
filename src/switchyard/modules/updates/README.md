@@ -7,11 +7,11 @@ design: [ADR-0011](../../../../docs/adr/0011-update-preview-and-channels.md).
 ## Updating a module (operator)
 
 1. `switchyard module check_updates`: installed commit versus channel head for every git-installed module.
-2. `switchyard module preview --id ext --ref <sha>`: files changed, permission changes (`widens`), patch notes
+2. `switchyard module preview ext --ref <sha>`: files changed, permission changes (`widens`), patch notes
    and a `digest`. Nothing is applied.
-3. `switchyard module update --id ext --ref <sha> --digest <digest>`: installs exactly the previewed files; add
+3. `switchyard module update ext --ref <sha> --digest <digest>`: installs exactly the previewed files; add
    `--accept-wider` only if you accept the listed permission changes. A failed health check rolls back.
-4. `switchyard module rollback --id ext` restores the previous version (the last 3 are kept); a previous version
+4. `switchyard module rollback ext` restores the previous version (the last 3 are kept); a previous version
    that may do more than the current one needs `--accept-wider`.
 
 Updates containing compiled Python files (`__pycache__`, `.pyc`, `.pyo`) or `.pth` files are refused: they

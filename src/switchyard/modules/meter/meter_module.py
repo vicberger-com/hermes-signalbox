@@ -517,6 +517,12 @@ class MeterModule:
             raise SwitchyardError("thresholds must be comma-separated percentages") from None
         if not marks or len(marks) > 10 or not all(1 <= t <= 100 for t in marks):
             raise SwitchyardError("thresholds must be 1 to 10 percentages from 1 to 100")
+        # 100 always fires meter.exhausted: without it the router never cools the scope (R1 review)
+        marks = sorted({*marks, 100})
+        if metric == "cost_usd" and not self.prices:
+            raise SwitchyardError(
+                "no model prices are loaded, so a cost quota would never move; run prices_reload"
+            )
         sql = f"INSERT OR REPLACE INTO {self._t('quotas')} VALUES (?, ?, ?, ?, ?, ?)"  # nosec B608
         with self._lock:  # never interleave with a threshold check (_record)
             self._q(sql, (name, scope, metric, period, value, ",".join(map(str, marks))))

@@ -19,6 +19,7 @@ from typing import Any
 from switchyard.errors import SwitchyardError
 
 MAX_LINE_BYTES = 16 * 1024
+MAX_STREAM_BYTES = 20 * 1024 * 1024
 _STREAM = re.compile(r"[a-z][a-z0-9_.-]{0,63}\Z")
 
 
@@ -69,8 +70,16 @@ class JsonlLogSink:
                 + b"\n"
             )
         flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
+        path = self.directory / f"{stream}.jsonl"
         with self._lock:
-            fd = os.open(self.directory / f"{stream}.jsonl", flags, 0o600)
+            # Bounded per stream (R1 review): at MAX_STREAM_BYTES the file becomes <stream>.1.jsonl, replacing
+            # the previous one, so a stream never holds more than twice the limit on disk.
+            try:
+                if path.stat().st_size + len(line) > MAX_STREAM_BYTES:
+                    os.replace(path, self.directory / f"{stream}.1.jsonl")
+            except FileNotFoundError:
+                pass
+            fd = os.open(path, flags, 0o600)
             try:
                 os.write(fd, line)
             finally:

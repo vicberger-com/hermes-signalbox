@@ -24,7 +24,10 @@ _EXT = "py|js|mjs|ts|tsx|jsx|go|rs|java|kt|c|cc|cpp|h|hpp|rb|php|cs|toml|yaml|ym
 MUST_KEEP = re.compile(
     r"(?i)\b(?:error|errors|err!|exception|traceback|fatal|fail|failed|failure|failures|panic|denied|refused|"
     r"warning|warn|critical|abort|aborted|segmentation fault|killed|timeout|timed out|not found|"
-    r"exit code|exit status|exited|returncode|return code)\b"
+    r"exit code|exit status|exited|returncode|return code|forbidden|unauthorized|unauthorised|expired|"
+    r"rejected|blocked|invalid)\b"
+    r"|\bHTTP/\d(?:\.\d)? [45]\d\d\b"  # HTTP error status lines (R1 review)
+    r"|^\s*[45]\d\d [A-Z]"  # "401 Unauthorized", "503 Service Unavailable"
     r"|\bERR!"
     r"|^E: "  # apt
     r"|\brc\s*[=:]\s*-?\d"

@@ -65,3 +65,55 @@ class HostLock:
                     fcntl.flock(fd, fcntl.LOCK_UN)
             finally:
                 os.close(fd)
+
+
+class FileLock:
+    """A blocking OS lock on ``path`` for short critical sections shared between processes (the audit log's
+    hash chain: R1 review). Waits up to ``timeout`` seconds."""
+
+    def __init__(self, path: Path, timeout: float = 10.0) -> None:
+        self.path = path
+        self.timeout = timeout
+        self._fd: int | None = None
+
+    def __enter__(self) -> FileLock:
+        import time
+
+        fd = os.open(self.path, os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o600)
+        deadline = time.monotonic() + self.timeout
+        while True:
+            try:
+                if sys.platform == "win32":
+                    import msvcrt
+
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() > deadline:
+                    os.close(fd)
+                    raise TimeoutError(f"could not lock {self.path.name}") from None
+                time.sleep(0.01)
+        self._fd = fd
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        fd, self._fd = self._fd, None
+        if fd is None:
+            return
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)

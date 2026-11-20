@@ -26,6 +26,23 @@ class UsageError(SwitchyardError):
 
 # The actor the Hermes adapter uses for model-initiated tool calls. Human paths use other actors.
 MODEL_ACTOR = "hermes"
+# What the model actor may run at all, enforced in the core (R1 review): the adapter's tool list is not the
+# only guard. Module actions are further limited to read-only ones in run_action.
+MODEL_OPS = frozenset(
+    {
+        ("module", "list"),
+        ("module", "show"),
+        ("module", "activate"),
+        ("module", "health"),
+        ("module", "action"),
+        ("audit", "verify"),
+        ("audit", "tail"),
+        ("host", "profile"),
+        ("report", "show"),
+        ("config", "show"),
+        ("module", "panel"),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -190,7 +207,7 @@ def _module_panel(core: Core, p: dict[str, Any], actor: str) -> Any:
 
 
 @op(
-    "module", "remove", "Stop and forget a module; drops its grants and data unless keep_data is true.",
+    "module", "remove", "Stop and forget a module; drops its grants, and its data unless keep_data is true.",
     offline=True, id=ID, keep_data=Param(bool, required=False, default=False),
 )  # fmt: skip
 def _module_remove(core: Core, p: dict[str, Any], actor: str) -> Any:
@@ -291,6 +308,12 @@ def _audit_verify(core: Core, p: dict[str, Any], actor: str) -> Any:
         "first_bad_seq": result.first_bad_seq,
         "reason": result.reason,
     }
+
+
+@op("audit", "ack", "Acknowledge a recorded audit-chain failure after investigating it (operator only).",
+    offline=True)  # fmt: skip
+def _audit_ack(core: Core, p: dict[str, Any], actor: str) -> Any:
+    return core.ack_audit(actor=actor)
 
 
 @op("audit", "tail", "Show the most recent audit records.", offline=True,

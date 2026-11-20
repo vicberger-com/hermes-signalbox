@@ -124,6 +124,31 @@ class MemoryPanelRegistry:
         return render()
 
 
+class _Guarded:
+    """A broker facade that re-checks, on every call, that the context is still open and the capability
+    still granted (R1 review): a module that kept ``ctx.schedule`` after deactivation or revocation cannot
+    use it."""
+
+    __slots__ = ("_capability", "_ctx", "_facade")
+
+    def __init__(self, facade: object, ctx: ModuleContext, capability: str) -> None:
+        self._facade = facade
+        self._ctx = ctx
+        self._capability = capability
+
+    def __getattr__(self, name: str) -> Any:
+        value = getattr(self._facade, name)
+        if not callable(value):
+            return value
+
+        def guarded(*args: Any, **kwargs: Any) -> Any:
+            self._ctx._open()
+            self._ctx._services.policy.require(self._ctx.module_id, self._capability)
+            return value(*args, **kwargs)
+
+        return guarded
+
+
 class ModuleContext:
     """What a module sees. Built by the lifecycle manager, one per activation."""
 
@@ -173,7 +198,11 @@ class ModuleContext:
         self._services.bus.publish(self.module_id, type_, data)
 
     def subscribe(self, type_: str, handler: Callable[..., None]) -> None:
+        """Receive events of ``type_``. Every event (``*``) and core events (``core.…``, including operator
+        notifications from all modules) need ``core.read`` (R1 review)."""
         self._open()
+        if type_ == "*" or type_.startswith("core."):
+            self._services.policy.require(self.module_id, "core.read")
         self._services.bus.subscribe(self.module_id, type_, handler)
 
     @property
@@ -337,7 +366,8 @@ class ModuleContext:
         if broker is None:
             raise SwitchyardError(f"{capability!r} is not available in this host")
         for_module = getattr(broker, "for_module", None)
-        return for_module(self.module_id) if callable(for_module) else broker
+        facade = for_module(self.module_id) if callable(for_module) else broker
+        return _Guarded(facade, self, capability)
 
     @property
     def notify(self) -> object:

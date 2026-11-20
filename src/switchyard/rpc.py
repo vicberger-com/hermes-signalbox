@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import time
 from collections.abc import Callable
 from typing import IO, Any
 
@@ -161,8 +162,14 @@ class Channel:
     def request(self, method: str, params: dict[str, Any], timeout: float | None = None) -> Any:
         mid = next(self._ids)
         self._send({"jsonrpc": "2.0", "id": mid, "method": method, "params": params})
+        # One deadline for the whole call: a peer sending a request every few seconds must not keep it open
+        # forever (R1 review).
+        deadline = None if timeout is None else time.monotonic() + timeout
         while True:
-            msg = self._recv(timeout)
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                raise ProtocolError(f"{method} did not finish within {timeout} s")
+            msg = self._recv(remaining)
             if msg is None:
                 raise ProtocolError("peer closed the channel")
             if "method" in msg:

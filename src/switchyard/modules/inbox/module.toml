@@ -13,7 +13,7 @@ isolation = "in-process"
 entry = "inbox_module:InboxModule"
 
 [capabilities]
-request = ["ui.panel"]
+request = ["core.read", "ui.panel"]
 
 [contributes]
 commands = ["list", "ack", "ack_all"]

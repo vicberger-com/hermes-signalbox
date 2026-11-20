@@ -124,7 +124,7 @@ def test_failed_modules_audit_chain_and_isolated_checks(
     sv(core, "run_now")
     keys = {f["key"] for f in sv(core, "findings")["findings"]}
     assert "module:router:failed" in keys
-    view = core.manager._entry("supervisor").instance.ctx.core
+    view = core.manager._entry("supervisor").instance.ctx.core._facade
     monkeypatch.setattr(
         view, "verify_audit", lambda: {"ok": False, "records": 9, "first_bad_seq": 4, "reason": "hash"}
     )
@@ -306,6 +306,11 @@ def test_router_hard_stop_blocks_the_turn(tmp_path: Path) -> None:
             c.bridge.dispatch_gate({**turn, "model": "unknown/model"}) is None
         )  # still unknown: never blocked
         assert "quota exhausted" in (c.bridge.dispatch_gate(turn) or "")
+        total = type(
+            "E", (), {"data": {"scope": "all", "period_end": "2099-01-01T00:00:00Z", "quota": "q"}}
+        )()
+        c.manager._entry("router").instance.on_exhausted(total)
+        assert "quota exhausted" in (c.bridge.dispatch_gate({**turn, "model": "unknown/model"}) or "")  # R1
         c.run("module", "deactivate", {"id": "resources"}, actor="t")
         assert c.bridge.dispatch_gate(turn) is None  # registry down: no positive knowledge, no block
         out = c.run("module", "revoke", {"id": "router", "capability": "hermes.hooks"}, actor="t")
@@ -340,6 +345,6 @@ def test_ack_long_key_and_audit_retry(core: Core, monkeypatch: pytest.MonkeyPatc
     assert sv(core, "ack", key="x" * 250)["acked"] == "x" * 200
     assert sv(core, "findings", state="acked")["findings"][0]["key"] == "x" * 200
     inst._last_audit_check = 0.0
-    monkeypatch.setattr(inst.ctx.core, "verify_audit", lambda: 1 / 0)
+    monkeypatch.setattr(inst.ctx.core._facade, "verify_audit", lambda: 1 / 0)
     sv(core, "run_now")
     assert inst._last_audit_check == 0.0  # failed verification stays due

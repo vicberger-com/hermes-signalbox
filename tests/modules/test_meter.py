@@ -411,3 +411,22 @@ def test_summary_totals_cover_every_row(core: Core) -> None:
     s = mt(core, "summary", days=1)
     assert s["truncated"] is True and len(s["models"]) == 200
     assert s["totals"]["requests"] == 205 and s["totals"]["tokens"] == 410
+
+
+def test_r1_quota_always_exhausts_and_cost_needs_prices(core: Core, tmp_path: Path) -> None:
+    mt(
+        core,
+        "quota_add",
+        name="warn",
+        scope="all",
+        metric="requests",
+        period="day",
+        limit="10",
+        thresholds="80",
+    )
+    (q,) = [q for q in mt(core, "quotas")["quotas"] if q["name"] == "warn"]
+    assert q["thresholds"] == [80, 100]  # 100 always fires meter.exhausted
+    (tmp_path / "models_dev_cache.json").write_text("{}", encoding="utf-8")
+    mt(core, "prices_reload")
+    with pytest.raises(SwitchyardError, match="no model prices"):
+        mt(core, "quota_add", name="usd", scope="all", metric="cost_usd", period="day", limit="1")
