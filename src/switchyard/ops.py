@@ -249,10 +249,28 @@ def run_action(
 
 
 @op("module", "update", "Update a git-installed module to a pinned commit; rolls back if it fails.",
-    id=ID, ref=Param(str, help="full 40-character commit SHA"))  # fmt: skip
+    id=ID, ref=Param(str, help="full 40-character commit SHA"),
+    digest=Param(str, required=False, help="tree digest from module preview; refuses different files"),
+    accept_wider=Param(bool, required=False, default=False,
+                       help="accept new capabilities, hosts, secrets or weaker isolation"))  # fmt: skip
 def _module_update(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
-    return core.updates.update(p["id"], p["ref"], actor=actor).to_dict()
+    return core.updates.update(
+        p["id"], p["ref"], actor=actor, digest=p.get("digest"), accept_wider=bool(p.get("accept_wider"))
+    ).to_dict()
+
+
+@op("module", "preview", "Stage a commit without applying it: SBOM delta, patch notes and tree digest.",
+    id=ID, ref=Param(str, help="full 40-character commit SHA"))  # fmt: skip
+def _module_preview(core: Core, p: dict[str, Any], actor: str) -> Any:
+    _require_host(core)
+    return core.updates.preview(p["id"], p["ref"], actor=actor)
+
+
+@op("module", "check_updates", "Compare git-installed modules with the head of their update channel.")
+def _module_check_updates(core: Core, p: dict[str, Any], actor: str) -> Any:
+    _require_host(core)
+    return {"modules": core.updates.check_all()}
 
 
 @op("module", "rollback", "Restore the previous version of a git-installed module.", id=ID)

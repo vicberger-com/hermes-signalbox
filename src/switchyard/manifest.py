@@ -199,6 +199,7 @@ class Manifest:
     update_url: str | None
     update_ref: str | None
     optional: frozenset[str] = frozenset()  # requested, but not needed to start (auto activation)
+    update_channel: str = "main"  # branch whose head scheduled checks compare with (ADR-0011)
 
 
 def _entry_file(directory: Path, entry_module: str) -> Path:
@@ -256,4 +257,5 @@ def load_manifest(path: Path) -> Manifest:
         update_source=update.get("source", "bundled"),
         update_url=update.get("url"),
         update_ref=update.get("ref"),
+        update_channel=update.get("channel", "main"),
     )

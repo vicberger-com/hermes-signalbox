@@ -1,0 +1,28 @@
+# Bundled module M12: scheduled update checks. Spec: README.md in this directory.
+schema = 1
+
+[module]
+id = "updates"
+name = "Updates"
+version = "0.13.0"
+license = "Apache-2.0"
+license_class = "open"
+summary = "Checks git-installed modules against the head of their update channel on a schedule and announces available updates. It never applies one: preview and update are operator commands."
+requires_core = ">=0.1,<1"
+isolation = "in-process"
+entry = "updates_module:UpdatesModule"
+
+[capabilities]
+optional = ["notify"]
+request = ["schedule", "core.read", "notify", "ui.panel"]
+
+[contributes]
+commands = ["report", "check_now"]
+panels = ["updates.status"]
+log_streams = ["updates"]
+
+[lifecycle]
+activation = "manual"
+
+[update]
+source = "bundled"
