@@ -61,3 +61,9 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| Hook payloads look like the middleware request | `api_request_error` carries the sanitized kwargs under `request.body` and the agent's configured model at the top level; read the real Hermes source shape and use it in tests | Every module that consumes Hermes hooks (M4 metering) |
+| Routing only needs to gate what it chooses | Pass-through sends the configured default; a gate must cover the fallback path too | Any policy module |
+| Shallow copies isolate callbacks | Nested lists are shared; deep-copy inputs and adopt only the allowed field | Bridge, any future middleware kind |
+| Exception isolation is enough | A hung callback stalls every turn; bound time too | Bridge |
+| A frozen test clock is harmless | Ids built from the clock collide; add a sequence | Any module ordering by time |
+

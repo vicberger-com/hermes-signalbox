@@ -22,10 +22,22 @@ Bridge: [ADR-0004](../../../../docs/adr/0004-hermes-bridge.md).
 7. Only the request's `model` changes (the bridge drops any other change). The decision is stored (time,
    consumer, tier, token estimate, chosen id, cost class, reason; never prompt text; last 1 000 kept).
 
+## When nothing fits
+
+If no candidate fits (or the turn's attempts are used up), passing the request through would send Hermes's
+configured model. If that model is a **paid** registry resource and paid is not allowed right now, the router
+sends it to any free or self-hosted `auto` resource that is not cooling down instead (size and tag checks
+ignored). Only if none exists does the paid model go out, and that is audited as
+`module.router.paid_passthrough` (once per resource per day). A configured model the registry does not know
+is outside the router's control: register it, or set Hermes's default to a free model.
+
 ## Failover
 
-`api_request_error` puts the failed resource on cool-down for `cooldown_seconds` (ten times longer for HTTP
-401, 402, 403 and 404) and counts the failure against the turn. Hermes's retry then gets the next candidate.
+The router remembers which resource it sent for each Hermes request id. `api_request_error` counts the failure
+against the turn and, for HTTP 429, 5xx and connection errors, puts that resource on cool-down for
+`cooldown_seconds` (ten times longer for 401, 402, 403 and 404). Other 4xx (400, 413, 422) are caused by the
+request, so they count as an attempt but cool nothing down. Hermes's retry then gets the next candidate.
+The choice and the paid-budget charge happen under one lock, so concurrent requests cannot overspend.
 The router cannot change provider, base URL or credentials: cross-provider routing needs a gateway resource.
 
 ## Control surface
@@ -44,3 +56,19 @@ it), `ui.panel`. The router needs the `resources` module running; without it eve
 
 Tables `rules`, `pins`, `cooldowns`, `spend` (paid requests per day), `kv`, `decisions`. Removed with the module
 unless `keep_data`.
+
+## Security review (M3 gate)
+
+Reviewed 2026-11-20 by a fresh subagent with the M3 diff and the threat table; findings checked against the
+code and the Hermes v0.23.2 sources.
+
+| Finding | Disposition |
+|---|---|
+| (high) Failover cooled the wrong resource: Hermes's `api_request_error` carries the sent kwargs under `request.body` and the configured model at the top level | **Fixed.** The router maps request id to the resource it sent; `request.body.model` is the fallback. Tests use the real event shape |
+| (high) A paid configured model bypassed the paid gate when the router passed a request through | **Fixed.** Falls back to any free or self-hosted resource; a remaining paid pass-through is audited. Unknown models documented as outside the gate |
+| (medium) In-place mutation of shared nested objects passed the model-only check | **Fixed.** Modules get deep copies; only `model` is adopted; type-strict comparison (no custom `__eq__`) |
+| (medium) No time bound on module callbacks | **Fixed.** Worker threads, 2 s timeout, `module.hook_timeout` audit |
+| (medium) Paid budget check and charge were not atomic | **Fixed.** One lock around choice and charge |
+| (low) 400/413/422 cooled resources down | **Fixed.** Attempt only |
+| (low) `ctx.call` needs no capability | **Accepted, documented** (ADR-0004): read-only actions must return no secret or sensitive data; the existing ones return metadata only |
+

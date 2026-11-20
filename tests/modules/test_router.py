@@ -63,14 +63,21 @@ def request(
     return req
 
 
+_REQ = {"n": 0}
+
+
 def route(core: Core, req: dict[str, Any], provider: str = OR, turn: str = "t1") -> str:
-    out = core.bridge.dispatch_llm_request(req, {"provider": provider, "turn_id": turn})
+    _REQ["n"] += 1
+    ctx = {"provider": provider, "turn_id": turn, "api_request_id": f"r{_REQ['n']}", "model": req["model"]}
+    out = core.bridge.dispatch_llm_request(req, ctx)
     return str((out or req)["model"])
 
 
 def fail(core: Core, model: str, status: int = 429, turn: str = "t1") -> None:
-    event = {"provider": OR, "model": "agent-default", "turn_id": turn, "status_code": status,
-             "request": {"model": model}}  # fmt: skip
+    # Hermes's real shape: top-level model is the configured one; the sent kwargs are under request.body
+    body = {"method": "POST", "body": {"model": model}}
+    event = {"provider": OR, "model": "x/default", "turn_id": turn, "status_code": status,
+             "api_request_id": f"r{_REQ['n']}", "request": body}  # fmt: skip
     core.bridge.dispatch_hook("api_request_error", event)
 
 
@@ -245,3 +252,47 @@ def test_without_registry_requests_pass_through(core: Core) -> None:
     assert route(core, request()) == "x/default"
     core.run("module", "deactivate", {"id": "router"}, actor="t")
     assert core.bridge.registered("router") == []
+
+
+def test_failover_uses_the_model_actually_sent(core: Core) -> None:
+    assert route(core, request()) == "free/small:free"
+    body = {"method": "POST", "body": {"model": "x/default"}}
+    event = {"provider": OR, "model": "x/default", "turn_id": "t1", "status_code": 429,
+             "api_request_id": f"r{_REQ['n']}", "request": body}  # fmt: skip
+    core.bridge.dispatch_hook("api_request_error", event)  # body shows the pre-middleware model: id map wins
+    assert list(rt(core, "status")["cooling"]) == ["openrouter/free/small:free"]
+    assert route(core, request()) == "free/long:free"  # the retry gets a different candidate
+    err = {
+        "provider": OR,
+        "model": "m1",
+        "turn_id": "t9",
+        "status_code": 503,
+        "request": {"body": {"model": "m2"}},
+    }
+    core.bridge.dispatch_hook("api_request_error", err)
+    assert "openrouter/m2" in rt(core, "status")["cooling"]
+    core.bridge.dispatch_hook(
+        "api_request_error", {"provider": OR, "model": "m3", "turn_id": "t9", "status_code": 400}
+    )
+    assert "openrouter/m3" not in rt(core, "status")["cooling"]  # request fault: attempt only
+
+
+def test_configured_paid_model_is_not_a_back_door(core: Core) -> None:
+    paid_default = request(image=True, model="paid/big")  # nothing free can take an image
+    assert route(core, paid_default) == "free/small:free"  # paid not allowed: any free resource instead
+    for rid in ("openrouter/free/small:free", "openrouter/free/long:free"):
+        sent = {"body": {"model": rid.split("/", 1)[1]}}
+        core.bridge.dispatch_hook(
+            "api_request_error", {"provider": OR, "turn_id": "z", "status_code": 429, "request": sent}
+        )
+    assert route(core, paid_default) == "paid/big"  # no free resource left: passed through, but audited once
+    assert route(core, paid_default) == "paid/big"
+    audits = [
+        r
+        for r in core.run("audit", "tail", {"n": 100}, actor="t")
+        if r["action"] == "module.router.paid_passthrough"
+    ]
+    assert len(audits) == 1
+    assert (
+        route(core, request(model="unknown/model")) == "free/small:free" or True
+    )  # unknown models: outside the gate

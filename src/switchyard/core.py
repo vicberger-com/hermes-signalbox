@@ -158,6 +158,7 @@ class Core:
             for module_id in self.manager.ids():
                 self.manager.deactivate(module_id, actor=CORE_ACTOR, reason="shutdown")
             self._closed = True
+            self.bridge.close()
             self.store.close()
             self._host_lock.release()
 

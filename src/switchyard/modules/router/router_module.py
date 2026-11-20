@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 import secrets as _random
+import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable
@@ -58,6 +59,10 @@ class RouterModule:
         self.clock = clock
         self.settings: dict[str, Any] = {}
         self._failures: OrderedDict[str, int] = OrderedDict()  # turn id -> failed attempts (bounded)
+        self._sent: OrderedDict[str, str] = OrderedDict()  # api request id -> resource sent (bounded)
+        self._warned: dict[str, str] = {}  # resource -> day a paid pass-through was last audited
+        self._lock = threading.Lock()
+        self._seq = 0
 
     # lifecycle ----------------------------------------------------------------------------------------
 
@@ -155,7 +160,8 @@ class RouterModule:
         t = self._t("decisions")
         now = self.clock()
         at = datetime.fromtimestamp(now, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        key = f"{int(now * 1000):014d}{_random.token_hex(3)}"
+        self._seq += 1  # orders decisions made within the same millisecond
+        key = f"{int(now * 1000):014d}{self._seq % 1_000_000:06d}{_random.token_hex(3)}"
         chosen_id, cost = (chosen.id, chosen.cost_class) if chosen else ("", "")
         row = (key, at, self.settings["consumer"], need.tier, need.tokens, chosen_id, cost, reason)
         self._q(f"INSERT INTO {t} VALUES (?, ?, ?, ?, ?, ?, ?, ?)", row)  # nosec B608
@@ -196,43 +202,93 @@ class RouterModule:
         provider = context.get("provider")
         if self.ctx is None or provider not in self.settings["providers"]:
             return None
-        turn = str(context.get("turn_id") or "")
-        if self._failures.get(turn, 0) >= self.settings["max_attempts"]:
-            return None  # bounded failover: let Hermes's own handling take over
-        need = need_for(request)
-        chosen, reason, _ = self.choose(need, str(provider))
-        self._record(need, chosen, reason)
+        with self._lock:  # choice and paid-budget charge are one step (concurrent Hermes requests)
+            chosen, need, reason = self._decide(request, str(provider), str(context.get("turn_id") or ""))
+            if chosen is not None and chosen.cost_class == "paid":
+                self._charge_paid(need, chosen)
         if chosen is None:
             return None
-        if chosen.cost_class == "paid":
-            self._charge_paid(need, chosen)
+        self._sent[str(context.get("api_request_id") or "")] = chosen.id
+        while len(self._sent) > _TURNS:
+            self._sent.popitem(last=False)
         if chosen.model == request.get("model"):
             return None
         self.ctx.log("router", "route", tier=need.tier, chosen=chosen.id, reason=reason)
         return {**request, "model": chosen.model}
 
+    def _decide(
+        self, request: dict[str, Any], provider: str, turn: str
+    ) -> tuple[Candidate | None, Need, str]:
+        need = need_for(request)
+        if self._failures.get(turn, 0) >= self.settings["max_attempts"]:
+            chosen, reason = None, "attempts exhausted"
+        else:
+            chosen, reason, _ = self.choose(need, provider)
+        if chosen is None:
+            chosen, reason = self._guard_paid_default(request, need, provider, reason)
+        self._record(need, chosen, reason)
+        return chosen, need, reason
+
+    def _guard_paid_default(
+        self, request: dict[str, Any], need: Need, provider: str, reason: str
+    ) -> tuple[Candidate | None, str]:
+        """Nothing fits. Passing through would send Hermes's configured model; if that is a paid registry
+        resource and paid is not allowed now, use any free or self-hosted resource that is not cooling down
+        instead (ignoring size and tag checks). A configured model the registry does not know is outside the
+        router's control and is passed through (README)."""
+        candidates = self._candidates(provider)
+        current = next((c for c in candidates if c.model == request.get("model")), None)
+        if (
+            current is None
+            or current.cost_class != "paid"
+            or self._paid_ok(self.settings["consumer"], need.tier)
+        ):
+            return None, reason
+        cooling = self._cooling()
+        fallback = next((c for c in candidates if c.cost_class != "paid" and c.state == "auto"
+                         and c.id not in cooling), None)  # fmt: skip
+        if fallback is not None:
+            return fallback, f"{reason}; configured model is paid"
+        day = _day(self.clock())
+        if self._warned.get(current.id) != day:
+            self._warned[current.id] = day
+            self.ctx.audit("paid_passthrough", consumer=self.settings["consumer"], resource=current.id)
+        return None, f"{reason}; configured paid model passed through"
+
+    def _sent_model(self, kwargs: dict[str, Any]) -> str | None:
+        """The resource a failed request actually used: what ``route`` sent for this request id, else the
+        model in Hermes's sanitized payload ``{"method", "body": {...}}``, else the configured model."""
+        rid = self._sent.get(str(kwargs.get("api_request_id") or ""))
+        if rid is not None:
+            return rid
+        raw = kwargs.get("request")
+        body = raw.get("body") if isinstance(raw, dict) else None
+        model = body.get("model") if isinstance(body, dict) else None
+        if not isinstance(model, str):
+            model = kwargs.get("model")
+        return f"{kwargs.get('provider')}/{model}" if isinstance(model, str) else None
+
     def on_error(self, kwargs: dict[str, Any]) -> None:
         provider = kwargs.get("provider")
         if self.ctx is None or provider not in self.settings["providers"]:
             return
-        raw = kwargs.get("request")
-        request: dict[str, Any] = raw if isinstance(raw, dict) else {}
-        model = request.get("model") or kwargs.get("model")
-        rid = f"{provider}/{model}"
-        if not isinstance(model, str) or not _ID.match(rid):
+        rid = self._sent_model(kwargs)
+        if rid is None or not _ID.match(rid):
             return
-        status = kwargs.get("status_code")
-        seconds = self.settings["cooldown_seconds"]
-        if isinstance(status, int) and status in (401, 402, 403, 404):
-            seconds *= 10  # not a transient failure
-        reason = f"http {status}" if isinstance(status, int) else "error"
-        sql = f"INSERT OR REPLACE INTO {self._t('cooldowns')} VALUES (?, ?, ?)"  # nosec B608
-        self._q(sql, (rid, self.clock() + seconds, reason))
         turn = str(kwargs.get("turn_id") or "")
         self._failures[turn] = self._failures.get(turn, 0) + 1
         self._failures.move_to_end(turn)
         while len(self._failures) > _TURNS:
             self._failures.popitem(last=False)
+        status = kwargs.get("status_code")
+        seconds = self.settings["cooldown_seconds"]
+        if isinstance(status, int) and status in (401, 402, 403, 404):
+            seconds *= 10  # this resource is not usable with these credentials
+        elif isinstance(status, int) and status != 429 and status < 500:
+            return  # 400, 413, 422 ...: caused by the request, not the resource; counts as an attempt only
+        reason = f"http {status}" if isinstance(status, int) else "error"
+        sql = f"INSERT OR REPLACE INTO {self._t('cooldowns')} VALUES (?, ?, ?)"  # nosec B608
+        self._q(sql, (rid, self.clock() + seconds, reason))
         self.ctx.log("router", "cooldown", resource=rid, reason=reason, seconds=seconds)
 
     # actions ------------------------------------------------------------------------------------------
