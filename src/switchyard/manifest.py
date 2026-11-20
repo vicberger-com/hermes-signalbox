@@ -116,8 +116,14 @@ def cross_field(doc: Mapping[str, Any]) -> list[str]:
     raw = caps.get("request")
     requested: list[Any] = raw if isinstance(raw, list) else []
 
+    provides_backends = bool(_section(doc, "contributes").get("secret_backends"))
     for cap, field in (("net.outbound", "net_hosts"), ("secrets.read", "secrets")):
-        if (cap in requested) != bool(caps.get(field)):
+        listed = bool(caps.get(field))
+        if field == "secrets" and provides_backends and not listed:
+            listed = (
+                "secrets.read" in requested
+            )  # a backend provider needs the grant, not a name list (ADR-0002)
+        if (cap in requested) != listed:
             errors.append(f"$.capabilities: {cap!r} must be requested exactly when {field!r} is non-empty")
     if module.get("license_class") == "proprietary-connector" and module.get("isolation") != "subprocess":
         errors.append("$.module: a proprietary-connector must use isolation = 'subprocess'")

@@ -57,11 +57,14 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 ## 4. Acceptance tests (written before code)
 
-- [ ] A secret value never appears in any tool result, log line, audit record, panel or exception text (canary over every backend).
-- [ ] A locked or unavailable backend fails closed with `SecretUnavailable`; the next backend in order is tried only when the first does not have the name.
-- [ ] Rotation of a generated secret writes a new value, records `rotated_at`, and is audited by name only.
-- [ ] Age and expiry are reported by name in `secrets status` and the panel.
-- [ ] Only an in-process module from a trusted root that declares the backend can provide it to the broker.
+Automated in `tests/modules/test_secrets.py`, `tests/core/test_module_contract_v2.py` and
+`tests/core/test_process.py`.
+
+- [x] A secret value never appears in any tool result, log line, audit record, panel or exception text (canary over every backend).
+- [x] A locked or unavailable backend fails closed with `SecretUnavailable`; the next backend in order is tried only when the first does not have the name.
+- [x] Rotation of a generated secret writes a new value, records `rotated_at`, and is audited by name only.
+- [x] Age and expiry are reported by name in `secrets status` and the panel.
+- [x] Only an in-process module from a trusted root that declares the backend can provide it to the broker.
 
 ## 5. Retro (fill in after merge)
 

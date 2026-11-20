@@ -12,9 +12,11 @@ control for reviewed T1 modules, not a containment boundary (DESIGN.md section 4
 
 from __future__ import annotations
 
+import copy
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Protocol
 
 from switchyard.capabilities import PolicyEngine
@@ -93,6 +95,8 @@ class ContextServices:
     brokers: Mapping[str, object] = field(default_factory=dict)
     state: Callable[[str], object] | None = None  # module id -> namespaced store (``StateStore.module``)
     actions: MemoryActionRegistry | None = None
+    config: Callable[[str], Mapping[str, Any]] | None = None  # module id -> its [modules.<id>] settings
+    audit: Any = None  # AuditSink for ``ctx.audit``
     secret_backends: SecretBackendPort | None = None
 
 
@@ -177,6 +181,28 @@ class ModuleContext:
         if self._services.state is None:
             raise SwitchyardError("state store is not available in this host")
         return self._services.state(self.module_id)
+
+    @property
+    def config(self) -> Mapping[str, Any]:
+        """This module's settings from ``[modules.<id>]`` in the core ``config.toml`` (read-only copy)."""
+        self._open()
+        if self._services.config is None:
+            return MappingProxyType({})
+        return MappingProxyType(copy.deepcopy(dict(self._services.config(self.module_id))))
+
+    def audit(self, event: str, **detail: str) -> None:
+        """Append ``module.<id>.<event>`` to the audit log. Record names and outcomes, never secret values
+        (the audit sink redacts known values as a backstop)."""
+        self._open()
+        if not _EVENT_SUFFIX.match(event) or len(detail) > 16:
+            raise SwitchyardError(
+                f"audit event {event!r} must look like '<name>[.<name>]' with at most 16 fields"
+            )
+        if self._services.audit is None:
+            raise SwitchyardError("the audit log is not available in this host")
+        clean = {str(k)[:64]: str(v)[:256] for k, v in detail.items()}
+        self._services.audit.append(actor=self.module_id, action=f"module.{self.module_id}.{event}",
+                                    module=self.module_id, detail=clean)  # fmt: skip
 
     def health_report(self, ok: bool, detail: str = "") -> None:
         """Push a health state between ``health()`` polls. ``detail`` must not contain secret values."""
