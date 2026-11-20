@@ -238,3 +238,53 @@ def test_module_queries_have_a_work_budget_and_row_cap(tmp_path: Path) -> None:
         mod.execute(f"SELECT a.n FROM {t} a, {t} b")  # noqa: S608
     assert mod.execute("SELECT 1") == [(1,)]
     store.close()
+
+
+def test_h1_deadline_bounds_lock_and_busy_waits(tmp_path: Path) -> None:
+    """ADR-0013: a thread inside ``deadline(s)`` waits at most ``s`` in total for the store lock and for
+    SQLite locks held by other processes; the store-wide busy wait is restored afterwards."""
+    import threading
+    import time
+
+    store = _store(tmp_path)
+    mod = store.module("m1")
+    mod.create_table("t", [("k", "TEXT")], primary_key=["k"])
+    table = mod.table("t")
+    select, insert = "SELECT k FROM " + table, "INSERT INTO " + table + " VALUES (?)"  # noqa: S608
+    held, release = threading.Event(), threading.Event()
+
+    def hold() -> None:
+        with store._lock:
+            held.set()
+            release.wait(10)
+
+    t = threading.Thread(target=hold)
+    t.start()
+    held.wait(2)
+    try:
+        started = time.monotonic()
+        with mod.deadline(0.2) as limit, pytest.raises(StateError, match="busy"):
+            mod.execute(select)
+        assert time.monotonic() - started < 1.0 and limit.expired()
+    finally:
+        release.set()
+        t.join()
+    other = sqlite3.connect(str(tmp_path / "state.db"), isolation_level=None)
+    other.execute("BEGIN EXCLUSIVE")
+    try:
+        started = time.monotonic()
+        with store.deadline(0.3), pytest.raises(StateError, match=r"busy|locked"):
+            mod.execute(insert, ("a",))
+        assert time.monotonic() - started < 2.0
+        with store.deadline(0.3), store.deadline(5.0) as inner:  # nesting never extends the outer limit
+            assert inner.remaining() <= 0.31
+    finally:
+        other.execute("ROLLBACK")
+        other.close()
+    assert store.core_query("PRAGMA busy_timeout")[0][0] == 5000
+    with store.deadline(1.0):
+        mod.execute(insert, ("b",))
+    assert mod.execute(select) == [("b",)]
+    with store.deadline(0.0), pytest.raises(StateError, match="busy"):
+        store.core_query("SELECT 1")  # nothing left of the budget
+    store.close()

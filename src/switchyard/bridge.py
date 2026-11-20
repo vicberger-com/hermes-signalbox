@@ -5,6 +5,10 @@ the module's context closes. Observer hooks get metadata only (no message text);
 every callback runs on a worker thread
 bounded by ``timeout`` (the turn continues without it), and exceptions are caught and audited (class name
 only). An ``llm_request`` middleware can only change the request's ``model``: nothing else is adopted.
+
+ADR-0013: an ``llm_request`` middleware may register a ``fallback``, called when the middleware misses the
+deadline or fails, and gets a ``claim`` callable in its context. A late result may commit side effects
+(charges, records) only if ``claim()`` returns True, which it does only while the bridge still waits.
 """
 
 from __future__ import annotations
@@ -174,6 +178,7 @@ class HermesBridge:
         self.timeout = timeout
         self._pools: dict[str, concurrent.futures.ThreadPoolExecutor] = {}
         self._closed = False
+        self._fallbacks: dict[tuple[str, str], Callable[..., Any]] = {}
         self._delegation: tuple[str, Callable[..., Any], Callable[[], Any]] | None = None
         self._failures: dict[str, int] = {}
         self._paused: dict[str, float] = {}
@@ -207,9 +212,13 @@ class HermesBridge:
         with self._lock:
             self._hooks.setdefault(name, []).append((module_id, fn))
 
-    def add_middleware(self, module_id: str, kind: str, fn: Callable[..., Any]) -> None:
+    def add_middleware(
+        self, module_id: str, kind: str, fn: Callable[..., Any], fallback: Callable[..., Any] | None = None
+    ) -> None:
         with self._lock:
             self._middleware.setdefault(kind, []).append((module_id, fn))
+            if fallback is not None:
+                self._fallbacks[(module_id, kind)] = fallback
 
     def add_gate(self, module_id: str, fn: Callable[..., Any]) -> None:
         with self._lock:
@@ -235,6 +244,8 @@ class HermesBridge:
             for table in (self._hooks, self._middleware):
                 for key in list(table):
                     table[key] = [(m, f) for m, f in table[key] if m != module_id]
+            for owner in [k for k in self._fallbacks if k[0] == module_id]:
+                del self._fallbacks[owner]
 
     def registered(self, module_id: str) -> list[str]:
         with self._lock:
@@ -258,11 +269,27 @@ class HermesBridge:
             detail={"hook": what, "error": type(exc).__name__},
         )
 
-    def _run(self, module_id: str, what: str, fn: Callable[..., Any], *args: Any) -> tuple[bool, Any]:
-        """Call ``fn`` on a worker thread, waiting at most ``timeout`` seconds. Returns ``(ok, result)``."""
+    def _run(
+        self,
+        module_id: str,
+        what: str,
+        fn: Callable[..., Any],
+        *args: Any,
+        claim: _Claim | None = None,
+        pool: str | None = None,
+    ) -> tuple[bool, Any]:
+        """Call ``fn`` on a worker thread, waiting at most ``timeout`` seconds. Returns ``(ok, result)``.
+
+        With ``claim``: at the deadline the call is abandoned unless it has already claimed its result, in
+        which case the bridge waits one more ``timeout`` for it (the module is committing)."""
         try:
-            future = self._pool(module_id).submit(fn, *args)
-            return True, future.result(timeout=self.timeout)
+            future = self._pool(pool or module_id).submit(fn, *args)
+            try:
+                return True, future.result(timeout=self.timeout)
+            except concurrent.futures.TimeoutError:
+                if claim is None or claim.abandon():
+                    raise
+                return True, future.result(timeout=self.timeout)
         except concurrent.futures.TimeoutError:
             self._audit.append(
                 actor=CORE_ACTOR,
@@ -496,7 +523,23 @@ class HermesBridge:
             except Exception:  # pragma: no cover - snapshot was copyable a moment ago
                 return None
             given["model"] = model
-            ok, result = self._run(module_id, "middleware:llm_request", fn, given, dict(ctx))
+            claim = _Claim()
+            fallback_given = copy.deepcopy(given)
+            ok, result = self._run(
+                module_id, "middleware:llm_request", fn, given, {**ctx, "claim": claim.claim}, claim=claim
+            )
+            if not ok:
+                claim.abandon()
+                with self._lock:
+                    fallback = self._fallbacks.get((module_id, "llm_request"))
+                if fallback is None:
+                    continue
+                # ADR-0013: the module's own answer for a missed deadline, on a separate pool so a stuck
+                # route cannot starve it. Same rules as the middleware result.
+                ok, result = self._run(
+                    module_id, "middleware:llm_request:fallback", fallback, fallback_given, dict(ctx),
+                    pool=f"{module_id}#fallback",
+                )  # fmt: skip
             if not ok or result is None:
                 continue
             if not self._model_only(snapshot, result):
@@ -520,6 +563,28 @@ class HermesBridge:
         if not isinstance(model, str) or not model.strip() or len(model) > 200:
             return False
         return all(_same(after[k], before[k]) for k in before if k != "model")
+
+
+class _Claim:
+    """One middleware call's commit point (ADR-0013): the module claims before any side effect; the bridge
+    abandons at its deadline. Whichever comes first wins."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._state = 0  # 0 open, 1 claimed by the module, 2 abandoned by the bridge
+
+    def claim(self) -> bool:
+        with self._lock:
+            if self._state == 0:
+                self._state = 1
+            return self._state == 1
+
+    def abandon(self) -> bool:
+        """True if the call is now abandoned; False if the module claimed first."""
+        with self._lock:
+            if self._state == 0:
+                self._state = 2
+            return self._state == 2
 
 
 def _same(a: Any, b: Any) -> bool:

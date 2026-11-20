@@ -4,6 +4,17 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Security
+- Router: H1 C-1, C-4, C-8 (ADR-0013). A route that misses the bridge deadline fails closed: a remembered
+  free candidate is sent, or a paid configured model is charged as a paid pass-through; late route results
+  never charge or record. Cool-downs are never shortened by a later error. Every request shape is sized.
+
+### Changed
+- Bridge: `ctx.hermes_middleware` takes an optional `fallback`; middleware gets `context["claim"]`
+  (ADR-0013). State store: `ModuleState.deadline(seconds)` bounds a thread's store waits.
+- Router: a request with no recognised text key is sized as tier T5. With `hard_stop = true` the turn after
+  a slow route that let a paid model through is blocked once (`route timeout`). No operator step needed.
+
 ### Added
 - Bug-report and feature-request issue forms; wiki framework, page templates and generated wiki source with
   `tools/wiki_publish.py` (both merged after the v1.0.0 tag).

@@ -36,22 +36,6 @@ class Candidate:
     context: int | None
 
 
-def _text_size(content: Any) -> tuple[int, bool]:
-    if isinstance(content, str):
-        return len(content), False
-    size, image = 0, False
-    if isinstance(content, list):
-        for part in content:
-            if isinstance(part, dict):
-                kind = str(part.get("type", ""))
-                if "image" in kind:
-                    image = True
-                text = part.get("text")
-                if isinstance(text, str):
-                    size += len(text)
-    return size, image
-
-
 def tier_for(tokens: int) -> str:
     for tier, ceiling in zip(TIERS, TIER_CEILINGS, strict=False):
         if tokens <= ceiling:
@@ -59,19 +43,53 @@ def tier_for(tokens: int) -> str:
     return TIERS[-1]
 
 
+# Top-level keys that carry prompt text in the request shapes Hermes sends (H1 C-8): chat completions and
+# Anthropic/Bedrock ``messages`` (+ ``system``), Responses ``input`` (+ ``instructions``), legacy ``prompt``,
+# Gemini ``contents``. Inside them, these keys carry text or nested parts.
+TEXT_KEYS = ("messages", "input", "system", "instructions", "prompt", "contents")
+_NESTED_TEXT = frozenset({"content", "text", "parts", "output", "input", "instructions", "system"})
+_MAX_DEPTH = 32
+_LIST_ONLY = frozenset({"messages", "contents"})
+
+
+def _walk(value: Any, depth: int = 0) -> tuple[int, bool]:
+    """Characters of prompt text under ``value`` and whether it holds an image part."""
+    if isinstance(value, str):
+        return len(value), False
+    if depth > _MAX_DEPTH:
+        return 0, False
+    size, image = 0, False
+    if isinstance(value, list):
+        items: Iterable[Any] = value
+    elif isinstance(value, dict):
+        image = "image" in str(value.get("type", ""))
+        items = (v for k, v in value.items() if k in _NESTED_TEXT)
+    else:
+        return 0, False
+    for item in items:
+        part, has_image = _walk(item, depth + 1)
+        size += part
+        image = image or has_image
+    return size, image
+
+
 def need_for(request: Mapping[str, Any]) -> Need:
-    """Size a provider request (OpenAI-style ``messages`` and ``tools``). Never keeps any text."""
-    chars, vision = 0, False
-    messages = request.get("messages")
-    for message in messages if isinstance(messages, list) else ():
-        if isinstance(message, dict):
-            size, image = _text_size(message.get("content"))
+    """Size a provider request from every text-bearing key (``TEXT_KEYS``) and ``tools``. A request with
+    none of them in a usable form is an unknown shape and gets the largest tier. Never keeps any text."""
+    chars, vision, known = 0, False, False
+    for key in TEXT_KEYS:
+        value = request.get(key)
+        if isinstance(value, list) or (isinstance(value, str) and key not in _LIST_ONLY):
+            known = True
+            size, image = _walk(value)
             chars += size
             vision = vision or image
     tools = request.get("tools")
     has_tools = isinstance(tools, list) and bool(tools)
     if has_tools:
         chars += len(json.dumps(tools, default=str))
+    if not known:
+        return Need(tokens=TIER_CEILINGS[-1] + 1, tools=has_tools, vision=vision, tier=TIERS[-1])
     tokens = chars // 4 + 1
     return Need(tokens=tokens, tools=has_tools, vision=vision, tier=tier_for(tokens))
 

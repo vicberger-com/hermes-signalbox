@@ -9,7 +9,9 @@ Bridge: [ADR-0004](../../../../docs/adr/0004-hermes-bridge.md).
 1. Hermes calls the `llm_request` middleware. If the active provider is not in `providers`, or this turn
    already failed `max_attempts` times, the request passes through unchanged.
 2. The request is sized (estimated tokens = characters / 4, tools present, image input) and given a tier:
-   T1 up to 2 000 tokens, T2 8 000, T3 32 000, T4 128 000, T5 above.
+   T1 up to 2 000 tokens, T2 8 000, T3 32 000, T4 128 000, T5 above. Text is counted in every shape Hermes
+   sends (`messages`, `input`, `system`, `instructions`, `prompt`, `contents`); a request with none of these is
+   an unknown shape and is tier T5.
 3. Candidates are `resources.resolve {consumer}` rows of the active provider (`<provider>/<model>` ids), in
    pool order. Only `auto` resources are chosen automatically; a `manual` resource is used only when pinned.
 4. A candidate is skipped if it is cooling down, lacks the `tools` or `vision` tag the request needs, or its
@@ -34,6 +36,21 @@ turns that would go out paid, set `hard_stop = true`. After the turn's attempts 
 free-first even when paid is allowed. A configured model the registry does not know is outside the router's
 control: register it, or set Hermes's default to a free model.
 
+## When routing is slow (ADR-0013)
+
+The router routes within a 1 s state-store budget; the bridge allows 2 s. If no answer is ready in time, the
+router's fallback answers from memory, using the candidates remembered from the last registry answer for the
+consumer (up to 10 minutes old, cool-downs applied):
+
+- configured model is paid and a free or self-hosted `auto` candidate is known: that candidate is sent
+  (`module.router.timeout_fallback`);
+- otherwise the configured model goes out; if it is paid it is charged as a paid pass-through at once
+  (`module.router.timeout_passthrough`), and with `hard_stop = true` the next turn is blocked (`route timeout`);
+- if nothing was known yet, the next route settles it: charged then if the registry says paid
+  (`module.router.timeout_charged`).
+
+A route result that arrives after the deadline never charges and never changes the failover map.
+
 ## Failover
 
 The router remembers which resource it sent for each Hermes request id. `api_request_error` counts the failure
@@ -47,7 +64,8 @@ The router cannot change provider, base URL or credentials: cross-provider routi
 
 When the `meter` module reports `meter.exhausted` for a quota, the router cools the quota's scope down until
 the end of the quota period: one resource (`<provider>/<model>`), a whole provider (`provider:<id>`), or
-everything (`all`). `cooldown_clear {id}` lifts it early (use the scope as the id).
+everything (`all`). `cooldown_clear {id}` lifts it early (use the scope as the id). A later request error on
+the same resource never shortens a quota cool-down or replaces its reason.
 
 This is **steering, not a hard stop**: Hermes middleware can change a request's model but cannot refuse the
 request. If the configured model is inside an exhausted scope (or paid while paid is not allowed), the router
@@ -59,7 +77,9 @@ day.
 (ADR-0006): before each Hermes turn, if the registry knows the configured model, no routed choice exists, and
 that model is over an exhausted quota or is paid while paid is not allowed, the turn is blocked with a short
 core-written message (`quota exhausted` or `paid model not allowed`; `module.router.hard_stop` audited). A
-model the registry does not know, or a registry that is not running, never leads to a block.
+model the registry does not know, or a registry that is not running, never leads to a block. The gate also
+blocks the one turn after a slow route let a paid model through with no free fallback (`route timeout`,
+ADR-0013).
 
 ## Control surface
 

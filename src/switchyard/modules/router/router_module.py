@@ -6,6 +6,10 @@ self-hosted first; a paid resource only with the ``llm.paid`` grant, a rule for 
 daily budget left. A failed request (``api_request_error``) cools its resource down, and Hermes's next retry
 gets the next candidate; after ``max_attempts`` failures in one turn the router stops rewriting.
 
+A route that misses the bridge deadline fails closed (ADR-0013): ``route_timeout`` sends a free candidate
+remembered from an earlier route, or lets the configured model through and charges it if it is paid (with
+``hard_stop`` also blocking the next turn). A late route result never charges or records its own choice.
+
 Settings, ``[modules.router]``::
 
     consumer = "main"          # registry consumer whose pool is routed
@@ -16,6 +20,7 @@ Settings, ``[modules.router]``::
 
 from __future__ import annotations
 
+import contextlib
 import re
 import secrets as _random
 import threading
@@ -34,6 +39,9 @@ _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}\Z")
 _PROVIDER = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
 KEEP_DECISIONS = 1000
 _TURNS = 1000
+KNOWN_SECONDS = 600.0  # how long remembered candidates may serve the timeout fallback (ADR-0013)
+HOT_PATH_WAIT = 1.0  # total state-store wait per routed request; shorter than the bridge deadline (2 s)
+_MAX_OWED = 1000
 
 
 def _day(ts: float) -> str:
@@ -63,6 +71,15 @@ class RouterModule:
         self._warned: dict[str, str] = {}  # resource -> day a paid pass-through was last audited
         self._lock = threading.Lock()
         self._seq = 0
+        # ADR-0013: memory-only state for ``route_timeout``. ``_fast`` is never held across I/O, so the
+        # fallback answers while a slow route still holds ``_lock``.
+        self._fast = threading.Lock()
+        self._known: dict[tuple[str, str], tuple[float, tuple[Candidate, ...]]] = {}
+        self._cool_mem: dict[str, tuple[float, str]] = {}  # resource or scope -> (until, reason)
+        self._owed: list[tuple[str, str]] = []  # (day, resource): paid pass-throughs not yet written
+        self._unsettled: list[tuple[str, str, str]] = []  # (provider, consumer, model) sent, cost unknown
+        self._halt = False  # hard_stop: block the next turn after a slow route let a paid model through
+        self._notes: list[tuple[str, dict[str, str]]] = []  # audit records queued by route_timeout
 
     # lifecycle ----------------------------------------------------------------------------------------
 
@@ -110,7 +127,7 @@ class RouterModule:
         for name, spec in params.items():
             ctx.register_action(name, getattr(self, name), params=spec, read_only=name in read_only)
         ctx.register_panel("router.status", self.status)
-        ctx.hermes_middleware("llm_request", self.route)
+        ctx.hermes_middleware("llm_request", self.route, fallback=self.route_timeout)
         ctx.hermes_hook("api_request_error", self.on_error)
         ctx.subscribe("meter.exhausted", self.on_exhausted)
         if self.settings["hard_stop"]:
@@ -119,6 +136,9 @@ class RouterModule:
 
     def deactivate(self) -> None:
         self.ctx = None
+        with self._fast:
+            self._known.clear()
+            self._halt = False
 
     def health(self) -> tuple[bool, str]:
         if self.ctx is None:
@@ -135,17 +155,22 @@ class RouterModule:
         return str(self.ctx.state.table(name))
 
     def _cooling(self) -> dict[str, str]:
-        sql = f"SELECT resource, reason FROM {self._t('cooldowns')} WHERE until > ?"  # nosec B608
+        sql = f"SELECT resource, until, reason FROM {self._t('cooldowns')} WHERE until > ?"  # nosec B608
         rows = self._q(sql, (self.clock(),))
-        return {r[0]: r[1] for r in rows}
+        with self._fast:
+            self._cool_mem = {r[0]: (float(r[1]), str(r[2])) for r in rows}
+        return {r[0]: r[2] for r in rows}
 
     def _budget(self) -> int:
         rows = self._q(f"SELECT value FROM {self._t('kv')} WHERE key = 'paid_requests_per_day'")  # nosec B608
         return int(rows[0][0]) if rows else 0
 
     def _spent_today(self) -> int:
-        rows = self._q(f"SELECT paid FROM {self._t('spend')} WHERE day = ?", (_day(self.clock()),))  # nosec B608
-        return int(rows[0][0]) if rows else 0
+        day = _day(self.clock())
+        rows = self._q(f"SELECT paid FROM {self._t('spend')} WHERE day = ?", (day,))  # nosec B608
+        with self._fast:
+            owed = sum(1 for d, _ in self._owed if d == day)
+        return (int(rows[0][0]) if rows else 0) + owed
 
     def _paid_ok(self, consumer: str, tier: str) -> bool:
         if not self.ctx.has("llm.paid"):
@@ -155,16 +180,21 @@ class RouterModule:
             return False
         return self._spent_today() < self._budget()
 
-    def _candidates(self, provider: str, consumer: str | None = None) -> list[Candidate]:
+    def _candidates(
+        self, provider: str, consumer: str | None = None, strict: bool = False
+    ) -> list[Candidate]:
+        key = consumer or self.settings["consumer"]
         try:
-            resolved = self.ctx.call(
-                "resources", "resolve", {"consumer": consumer or self.settings["consumer"]}
-            )
+            resolved = self.ctx.call("resources", "resolve", {"consumer": key})
         except SwitchyardError:
+            if strict:
+                raise
             return []  # registry not running: pass requests through unchanged
         found = candidates_from(resolved.get("resources", []), provider)
         if not self.ctx.has("llm.free"):  # free and self-hosted resources need the llm.free grant
             found = [c for c in found if c.cost_class == "paid"]
+        with self._fast:  # remembered for route_timeout (ADR-0013); every resolve replaces it
+            self._known[(provider, key)] = (self.clock(), tuple(found))
         return found
 
     def _effective_cooling(self, provider: str, candidates: list[Candidate]) -> dict[str, str]:
@@ -190,15 +220,49 @@ class RouterModule:
             for (old,) in oldest:
                 self._q(f"DELETE FROM {t} WHERE id = ?", (old,))  # nosec B608
 
-    def _charge_paid(self, need: Need, chosen: Candidate) -> None:
-        day = _day(self.clock())
+    def _write_spend(self, day: str) -> None:
         spend = self._t("spend")
         sql = (f"INSERT INTO {spend} VALUES (?, 1) "  # nosec B608
                "ON CONFLICT(day) DO UPDATE SET paid = paid + 1")  # fmt: skip
         self._q(sql, (day,))
+
+    def _charge_paid(self, need: Need, chosen: Candidate) -> None:
+        self._write_spend(_day(self.clock()))
         self.ctx.audit(
             "paid_decision", consumer=self.settings["consumer"], tier=need.tier, resource=chosen.id
         )
+
+    def _settle(self) -> None:
+        """Write what ``route_timeout`` left behind (ADR-0013), under ``_lock``: its audit records, owed paid
+        pass-throughs, and configured models sent while nothing was known about them (charged now if the
+        registry says paid). Runs before every routing decision, so the budget always includes them. What
+        cannot be written now stays queued (bounded) for the next call."""
+        with self._fast:
+            notes, self._notes = self._notes, []
+            owed, self._owed = self._owed, []
+            unsettled, self._unsettled = self._unsettled, []
+        try:
+            # registry or store unavailable: retried on the next call; the budget still counts ``_owed``
+            with contextlib.suppress(SwitchyardError):
+                while notes:
+                    self.ctx.audit(notes[0][0], **notes[0][1])
+                    notes.pop(0)
+                while unsettled:
+                    provider, consumer, model = unsettled[0]
+                    found = self._candidates(provider, consumer, strict=True)
+                    current = next((c for c in found if c.model == model), None)
+                    if current is not None and current.cost_class == "paid":
+                        owed.append((_day(self.clock()), current.id))
+                        self.ctx.audit("timeout_charged", consumer=consumer, resource=current.id[:200])
+                    unsettled.pop(0)
+                while owed:
+                    self._write_spend(owed[0][0])
+                    owed.pop(0)
+        finally:
+            with self._fast:
+                self._notes = (notes + self._notes)[-_MAX_OWED:]
+                self._owed = (owed + self._owed)[-_MAX_OWED:]
+                self._unsettled = (unsettled + self._unsettled)[-_MAX_OWED:]
 
     # Hermes callbacks ---------------------------------------------------------------------------------
 
@@ -227,28 +291,108 @@ class RouterModule:
         # the same paid rules, budget charge, quotas and failover as the main session.
         consumer = str(context.get("delegated_consumer") or "") or None
         free_only = bool(context.get("delegated_free_only"))
+        claim = context.get("claim")
         with self._lock:  # choice and paid-budget charge are one step (concurrent Hermes requests)
-            chosen, need, reason = self._decide(
-                request, str(provider), str(context.get("turn_id") or ""), consumer, free_only
-            )
-            if chosen is not None and chosen.cost_class == "paid":
-                self._charge_paid(need, chosen)
-            elif chosen is None:
-                # The configured model goes out unchanged. If it is a known paid resource, count it: the
-                # budget shows real paid use even when nothing free could take the request (R1 review).
-                current = next((c for c in self._candidates(str(provider), consumer)
-                                if c.model == request.get("model")), None)  # fmt: skip
-                if current is not None and current.cost_class == "paid":
-                    self._charge_paid(need, current)
+            try:
+                with self.ctx.state.deadline(HOT_PATH_WAIT) as limit:  # ADR-0013: below the bridge deadline
+                    self._settle()
+                    chosen, need, reason = self._decide(
+                        request, str(provider), str(context.get("turn_id") or ""), consumer, free_only
+                    )
+                    paying = chosen if chosen is not None and chosen.cost_class == "paid" else None
+                    if chosen is None:
+                        # The configured model goes out unchanged. If it is a known paid resource, count it:
+                        # the budget shows real paid use even when nothing free could take it (R1 review).
+                        current = next((c for c in self._candidates(str(provider), consumer)
+                                        if c.model == request.get("model")), None)  # fmt: skip
+                        if current is not None and current.cost_class == "paid":
+                            paying = current
+                    # ADR-0013: commit only while the bridge still waits for this answer. Too late, the
+                    # request already went out as route_timeout decided: never charge or record this choice.
+                    claimed = claim() if callable(claim) else True
+                    on_time = claimed and not limit.expired()
+                    if on_time and paying is not None:
+                        self._charge_paid(need, paying)
+            except SwitchyardError:
+                if callable(claim) and not claim():
+                    self._settle()  # the bridge gave up already: settle what route_timeout left behind
+                raise
+            if not on_time:
+                if claimed:  # the bridge still waits: fail now, so it uses route_timeout at once
+                    raise SwitchyardError("route exceeded its state wait budget")
+                self._settle()  # off the hot path now: write what route_timeout left behind
+                return None
         if chosen is None:
             return None
-        self._sent[str(context.get("api_request_id") or "")] = chosen.id
-        while len(self._sent) > _TURNS:
-            self._sent.popitem(last=False)
+        self._remember_sent(str(context.get("api_request_id") or ""), chosen.id)
         if chosen.model == request.get("model"):
             return None
         self.ctx.log("router", "route", tier=need.tier, chosen=chosen.id, reason=reason)
         return {**request, "model": chosen.model}
+
+    def _remember_sent(self, request_id: str, resource: str) -> None:
+        with self._fast:
+            self._sent[request_id] = resource
+            while len(self._sent) > _TURNS:
+                self._sent.popitem(last=False)
+
+    def route_timeout(self, request: dict[str, Any], context: dict[str, Any]) -> dict[str, Any] | None:
+        """Bridge fallback when ``route`` missed its deadline or failed (ADR-0013). Memory only: no state
+        store, no audit write (both may be what is slow); its records are written by the next ``_settle``.
+
+        1. The configured model is a known paid resource and a free candidate is remembered for this
+           consumer: send that (``timeout_fallback``).
+        2. Otherwise the configured model goes out. A known paid one is charged as paid pass-through
+           (``timeout_passthrough``); with ``hard_stop`` the next turn is also blocked. A model the router
+           knew nothing about is settled by the next route: charged then if the registry says paid.
+        """
+        provider = context.get("provider")
+        if self.ctx is None or provider not in self.settings["providers"]:
+            return None
+        provider = str(provider)
+        consumer = str(context.get("delegated_consumer") or "") or self.settings["consumer"]
+        model = str(request.get("model") or "")
+        now = self.clock()
+        with self._fast:
+            entry = self._known.get((provider, consumer))
+            known = entry[1] if entry is not None and now - entry[0] <= KNOWN_SECONDS else None
+            cooling = {k for k, (until, _) in self._cool_mem.items() if until > now}
+        current = next((c for c in known or () if c.model == model), None)
+        if known is None or current is None or current.cost_class != "paid":
+            # Nothing known: settled by the next route. Free, self-hosted or unregistered: nothing to charge
+            # (unregistered models are never blocked, M6 review).
+            with self._fast:
+                if known is None:
+                    self._unsettled = [*self._unsettled, (provider, consumer, model)][-_MAX_OWED:]
+            unknown = known is None
+            self._note("timeout_passthrough", consumer=consumer, resource=f"{provider}/{model}"[:200],
+                       known="no" if unknown else "yes", charged="later" if unknown else "no")  # fmt: skip
+            return None
+        usable: list[Candidate] = []
+        if "all" not in cooling and f"provider:{provider}" not in cooling:
+            usable = [
+                c for c in known if c.cost_class != "paid" and c.state == "auto" and c.id not in cooling
+            ]
+        need = need_for(request)
+        fit = [c for c in usable if unfit(c, need, cooling={}, paid_ok=False) is None]
+        if fit or usable:
+            fallback = (fit or usable)[0]
+            self._remember_sent(str(context.get("api_request_id") or ""), fallback.id)
+            self._note("timeout_fallback", consumer=consumer, configured=current.id[:200],
+                       resource=fallback.id[:200])  # fmt: skip
+            return {**request, "model": fallback.model}
+        halt = bool(self.settings["hard_stop"])
+        with self._fast:
+            self._owed = [*self._owed, (_day(now), current.id)][-_MAX_OWED:]
+            self._halt = self._halt or halt
+        self._note("timeout_passthrough", consumer=consumer, resource=current.id[:200], known="yes",
+                   charged="yes", hard_stop="next turn" if halt else "off")  # fmt: skip
+        return None
+
+    def _note(self, event: str, **detail: str) -> None:
+        """Queue an audit record for ``_settle`` (route_timeout must not wait on the audit log)."""
+        with self._fast:
+            self._notes = [*self._notes, (event, detail)][-_MAX_OWED:]
 
     def _decide(
         self,
@@ -334,6 +478,11 @@ class RouterModule:
         is over an exhausted quota or is paid while paid is not allowed. Sized as the smallest tier."""
         if self.ctx is None:
             return None
+        with self._fast:
+            halt, self._halt = self._halt, False
+        if halt:  # ADR-0013: a slow route let a paid model through without a free fallback
+            self.ctx.audit("hard_stop", consumer=self.settings["consumer"], reason="route timeout")
+            return "route_timeout"
         model = str(meta.get("model") or "")
         need = Need(tokens=1, tools=False, vision=False, tier="T1")
         # Hermes's pre_llm_call carries no provider: find the routed provider whose registry knows the
@@ -358,7 +507,8 @@ class RouterModule:
     def _sent_model(self, kwargs: dict[str, Any]) -> str | None:
         """The resource a failed request actually used: what ``route`` sent for this request id, else the
         model in Hermes's sanitized payload ``{"method", "body": {...}}``, else the configured model."""
-        rid = self._sent.get(str(kwargs.get("api_request_id") or ""))
+        with self._fast:
+            rid = self._sent.get(str(kwargs.get("api_request_id") or ""))
         if rid is not None:
             return rid
         raw = kwargs.get("request")
@@ -389,9 +539,19 @@ class RouterModule:
         elif isinstance(status, int) and status != 429 and status < 500:
             return  # 400, 413, 422 ...: caused by the request, not the resource; counts as an attempt only
         reason = f"http {status}" if isinstance(status, int) else "error"
-        sql = f"INSERT OR REPLACE INTO {self._t('cooldowns')} VALUES (?, ?, ?)"  # nosec B608
+        # H1 C-4: an error cooldown never shortens a longer one, and never replaces an active quota reason
+        sql = (f"INSERT INTO {self._t('cooldowns')} VALUES (?, ?, ?) "  # nosec B608
+               "ON CONFLICT(resource) DO UPDATE SET reason = CASE WHEN until >= excluded.until "
+               "THEN reason ELSE excluded.reason END, until = MAX(until, excluded.until)")  # fmt: skip
         self._q(sql, (rid, self.clock() + seconds, reason))
+        self._cool_note(rid, self.clock() + seconds, reason)
         self.ctx.log("router", "cooldown", resource=rid, reason=reason, seconds=seconds)
+
+    def _cool_note(self, key: str, until: float, reason: str) -> None:
+        with self._fast:
+            old = self._cool_mem.get(key)
+            if old is None or old[0] < until:
+                self._cool_mem[key] = (until, reason)
 
     def on_exhausted(self, event: Any) -> None:
         """``meter.exhausted``: cool the quota's scope down until the end of the quota period."""
@@ -406,8 +566,13 @@ class RouterModule:
         except ValueError:
             return
         until = min(until, self.clock() + 32 * 86_400)
-        sql = f"INSERT OR REPLACE INTO {self._t('cooldowns')} VALUES (?, ?, ?)"  # nosec B608
-        self._q(sql, (scope[:200], until, f"quota {str(data.get('quota'))[:64]} exhausted"))
+        reason = f"quota {str(data.get('quota'))[:64]} exhausted"
+        # H1 C-4: the quota reason wins; the cooldown keeps the later of the two ends
+        sql = (f"INSERT INTO {self._t('cooldowns')} VALUES (?, ?, ?) "  # nosec B608
+               "ON CONFLICT(resource) DO UPDATE SET reason = excluded.reason, "
+               "until = MAX(until, excluded.until)")  # fmt: skip
+        self._q(sql, (scope[:200], until, reason))
+        self._cool_note(scope[:200], until, reason)
         self.ctx.log("router", "quota_cooldown", scope=scope, until=end)
 
     # actions ------------------------------------------------------------------------------------------
@@ -499,4 +664,6 @@ class RouterModule:
     def cooldown_clear(self, id: str) -> dict[str, Any]:
         _check(_ID, id, "resource id")
         self._q(f"DELETE FROM {self._t('cooldowns')} WHERE resource = ?", (id,))  # nosec B608
+        with self._fast:
+            self._cool_mem.pop(id, None)
         return {"cleared": id}

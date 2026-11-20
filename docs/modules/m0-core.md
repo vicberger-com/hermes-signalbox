@@ -281,7 +281,11 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
   name (or `middleware:<kind>`) in `contributes.hooks`. The adapter registers one forwarder per hook and the
   `llm_request` middleware with Hermes (`provides_hooks`, `provides_middleware` in `plugin.yaml`). Callbacks get
   copies; exceptions are audited as `module.hook_failed`; a middleware result that changes anything other than
-  `model` is dropped (`module.middleware_rejected`).
+  `model` is dropped (`module.middleware_rejected`). ADR-0013: `ctx.hermes_middleware(kind, fn, fallback=)`
+  registers a fallback the bridge calls when `fn` misses the deadline or raises; `fn` gets `context["claim"]`
+  and commits side effects only after `claim()` returned True (False once the bridge gave up).
+- `ModuleState.deadline(seconds)` (ADR-0013): inside the block the thread waits at most `seconds` in total for
+  the store (lock and SQLite busy waits); a longer wait raises `StateError`. The store-wide wait stays 5 s.
 - `ctx.call(module_id, action, args)`: another module's read-only action, actor `module:<caller>`.
 - Manifest `capabilities.optional` (M4): a subset of `request` that `start_auto` does not wait for; the module
   checks it at run time with `ctx.has`.

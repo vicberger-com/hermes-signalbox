@@ -308,16 +308,23 @@ class ModuleContext:
             raise SwitchyardError("the Hermes bridge is not available in this host")
         self._services.bridge.set_delegation(self.module_id, route, roles)
 
-    def hermes_middleware(self, kind: str, fn: Callable[[dict[str, Any], dict[str, Any]], Any]) -> None:
+    def hermes_middleware(
+        self,
+        kind: str,
+        fn: Callable[[dict[str, Any], dict[str, Any]], Any],
+        fallback: Callable[[dict[str, Any], dict[str, Any]], Any] | None = None,
+    ) -> None:
         """Register Hermes middleware: ``fn(request, context) -> new request | None``.
 
-        Needs ``hermes.hooks``; only the ``model`` key may change (ADR-0004).
+        Needs ``hermes.hooks``; only the ``model`` key may change (ADR-0004). ``fallback`` (same signature)
+        answers when ``fn`` misses the bridge deadline or fails; it must be fast and do no I/O that can
+        block. ``context["claim"]()`` must return True before ``fn`` commits any side effect (ADR-0013).
         """
         from switchyard.bridge import MIDDLEWARE_KINDS
 
         if kind not in MIDDLEWARE_KINDS:
             raise SwitchyardError(f"unsupported middleware {kind!r}; supported: {sorted(MIDDLEWARE_KINDS)}")
-        self._bridge_check(f"middleware:{kind}").add_middleware(self.module_id, kind, fn)
+        self._bridge_check(f"middleware:{kind}").add_middleware(self.module_id, kind, fn, fallback)
 
     def health_report(self, ok: bool, detail: str = "") -> None:
         """Push a health state between ``health()`` polls. ``detail`` must not contain secret values."""

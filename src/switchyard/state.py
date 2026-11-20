@@ -12,11 +12,13 @@ Module ids and table names may not contain ``__``, so no id can forge another mo
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import sqlite3
 import threading
-from collections.abc import Sequence
+import time
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
@@ -35,6 +37,20 @@ _TABLE_ACTIONS = frozenset(
 _DENIED_FUNCTIONS = frozenset({"load_extension", "readfile", "writefile", "edit", "fts3_tokenizer"})
 
 Migration = tuple[int, str]
+BUSY_TIMEOUT_MS = 5000  # store-wide wait for SQLite locks held by other processes
+
+
+class Deadline:
+    """A thread's total wait budget for the store (ADR-0013): see ``StateStore.deadline``."""
+
+    def __init__(self, end: float) -> None:
+        self.end = end
+
+    def remaining(self) -> float:
+        return max(0.0, self.end - time.monotonic())
+
+    def expired(self) -> bool:
+        return time.monotonic() >= self.end
 
 
 def load_migrations() -> list[Migration]:
@@ -75,12 +91,58 @@ class StateStore:
         self._path = path
         self._backup_dir = backup_dir
         self._lock = threading.RLock()
+        self._local = threading.local()
+        self._busy_ms = BUSY_TIMEOUT_MS
         self._conn = sqlite3.connect(str(path), isolation_level=None, check_same_thread=False)
         for pragma in (
             "journal_mode = WAL", "synchronous = NORMAL", "foreign_keys = ON",
-            "busy_timeout = 5000", "trusted_schema = OFF",
+            f"busy_timeout = {BUSY_TIMEOUT_MS}", "trusted_schema = OFF",
         ):  # fmt: skip
             self._conn.execute(f"PRAGMA {pragma}")
+
+    # wait budgets -------------------------------------------------------------------------------------
+
+    @contextlib.contextmanager
+    def deadline(self, seconds: float) -> Iterator[Deadline]:
+        """Bound the total time this thread waits for the store inside the block: for the store lock (other
+        threads) and for SQLite locks (other processes). A statement that would wait longer raises
+        ``StateError`` (\"busy\"). Nested blocks never extend an outer limit. Used on Hermes hot paths, where
+        the bridge deadline is shorter than the store-wide busy wait (ADR-0013)."""
+        outer: Deadline | None = getattr(self._local, "deadline", None)
+        end = time.monotonic() + max(0.0, float(seconds))
+        current = Deadline(end if outer is None else min(end, outer.end))
+        self._local.deadline = current
+        try:
+            yield current
+        finally:
+            self._local.deadline = outer
+
+    @contextlib.contextmanager
+    def _locked(self) -> Iterator[None]:
+        limit: Deadline | None = getattr(self._local, "deadline", None)
+        if limit is None:
+            with self._lock:
+                yield
+            return
+        if not self._lock.acquire(timeout=limit.remaining()):
+            raise StateError("state store busy: the wait budget is used up")
+        try:
+            wait_ms = min(int(limit.remaining() * 1000), BUSY_TIMEOUT_MS)
+            if wait_ms <= 0:
+                raise StateError("state store busy: the wait budget is used up")
+            previous = self._busy_ms
+            self._set_busy(wait_ms)
+            try:
+                yield
+            finally:
+                self._set_busy(previous)
+        finally:
+            self._lock.release()
+
+    def _set_busy(self, wait_ms: int) -> None:
+        if wait_ms != self._busy_ms:
+            self._conn.execute(f"PRAGMA busy_timeout = {int(wait_ms)}")
+            self._busy_ms = wait_ms
 
     # core access --------------------------------------------------------------------------------------
 
@@ -90,11 +152,11 @@ class StateStore:
 
     def core_query(self, sql: str, params: Sequence[Any] = ()) -> list[tuple[Any, ...]]:
         """Run one statement with full access. Core code only; never pass module-supplied SQL."""
-        with self._lock:
+        with self._locked():
             return self._conn.execute(sql, params).fetchall()
 
     def core_execute(self, sql: str, params: Sequence[Any] = ()) -> None:
-        with self._lock:
+        with self._locked():
             self._conn.execute(sql, params)
 
     def close(self) -> None:
@@ -143,7 +205,7 @@ class StateStore:
             budget[0] += 1
             return 1 if budget[0] > MAX_WORK_STEPS else 0  # non-zero aborts the statement
 
-        with self._lock:
+        with self._locked():
             self._conn.set_authorizer(authorizer)
             self._conn.set_progress_handler(progress, PROGRESS_EVERY)
             try:
@@ -196,6 +258,10 @@ class ModuleState:
         self._id = module_id
         self._prefix = f"m_{module_id}__"
         self._denied: str | None = None
+
+    def deadline(self, seconds: float) -> contextlib.AbstractContextManager[Deadline]:
+        """Bound this thread's total store wait inside the block (see ``StateStore.deadline``)."""
+        return self._store.deadline(seconds)
 
     def table(self, name: str) -> str:
         """Full table name for ``name``; use it in SQL passed to ``execute``."""

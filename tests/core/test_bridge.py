@@ -293,3 +293,71 @@ def test_gates_block_with_a_core_sentence_and_fail_open() -> None:
     release.set()
     bridge.close()
     assert bridge.dispatch_gate({}) is None  # closed: nothing runs, nothing blocks
+
+
+def test_h1_middleware_fallback_and_claim(tmp_path: Path) -> None:
+    """ADR-0013: a middleware that misses the deadline or fails gets its fallback; a late result can only
+    commit while the bridge still waits for it."""
+    import threading
+    import time
+
+    from switchyard.bridge import HermesBridge
+    from switchyard.capabilities import AuditSink
+
+    records: list[dict[str, Any]] = []
+
+    class Sink(AuditSink):
+        def append(self, **kw: Any) -> Any:
+            records.append(kw)
+
+    bridge = HermesBridge(Sink(), timeout=0.2)
+    req = {"model": "m1", "messages": []}
+    late: dict[str, Any] = {}
+    done = threading.Event()
+
+    def slow(request: dict[str, Any], context: dict[str, Any]) -> dict[str, Any] | None:
+        time.sleep(0.4)
+        late["claimed"] = context["claim"]()
+        done.set()
+        return {**request, "model": "late"} if late["claimed"] else None
+
+    def fallback(request: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+        assert "claim" not in context
+        return {**request, "model": "fb"}
+
+    bridge.add_middleware("a", "llm_request", slow, fallback=fallback)
+    assert bridge.dispatch_llm_request(req, {"provider": "p"}) == {**req, "model": "fb"}
+    assert done.wait(2) and late["claimed"] is False  # the late result may not commit
+    assert "module.hook_timeout" in [r["action"] for r in records]
+    bridge.remove_all("a")
+
+    def commits_then_slow(request: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+        assert context["claim"]() is True
+        time.sleep(0.3)  # committed: the bridge waits for the result
+        return {**request, "model": "committed"}
+
+    bridge.add_middleware("b", "llm_request", commits_then_slow, fallback=fallback)
+    assert bridge.dispatch_llm_request(req, {})["model"] == "committed"
+    bridge.remove_all("b")
+
+    def broken(request: dict[str, Any], context: dict[str, Any]) -> None:
+        raise RuntimeError("bug")
+
+    bridge.add_middleware("c", "llm_request", broken, fallback=fallback)
+    assert bridge.dispatch_llm_request(req, {})["model"] == "fb"  # a failure also gets the fallback
+    bridge.remove_all("c")
+
+    def bad_fallback(request: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+        return {**request, "model": "fb", "temperature": 2}
+
+    bridge.add_middleware("d", "llm_request", broken, fallback=bad_fallback)
+    assert bridge.dispatch_llm_request(req, {}) is None  # same model-only rule for fallbacks
+    assert records[-1]["action"] == "module.middleware_rejected"
+    bridge.remove_all("d")
+    bridge.add_middleware("e", "llm_request", broken, fallback=broken)
+    assert bridge.dispatch_llm_request(req, {}) is None
+    bridge.remove_all("e")
+    assert bridge.registered("e") == [] and not bridge._fallbacks
+    bridge.add_middleware("f", "llm_request", lambda r, c: {**r, "model": "fast"}, fallback=fallback)
+    assert bridge.dispatch_llm_request(req, {})["model"] == "fast"  # on time: no fallback
+    bridge.close()
