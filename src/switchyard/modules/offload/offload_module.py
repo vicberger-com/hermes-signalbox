@@ -17,6 +17,7 @@ Settings, ``[modules.offload]``::
 from __future__ import annotations
 
 import json
+import tempfile
 import threading
 import urllib.parse
 from dataclasses import dataclass
@@ -77,7 +78,14 @@ CONNECTORS = {
     )
 }
 OPEN_CLASSES = ("open", "local")
-ARGV = {"claude": ["claude", "-p", "--output-format", "text"], "codex": ["codex", "exec", "-"]}
+# Agent CLIs run without tools where the CLI allows it, in an empty working directory (M11 review): the
+# declared data-sent limit only means something if the agent cannot read local files on its own. Claude Code:
+# ``--tools ""`` disables every tool. Codex has no no-tools mode; its read-only sandbox can still read files,
+# which the README states plainly, and the connector stays off until allowed by name.
+ARGV = {
+    "claude": ["claude", "-p", "--output-format", "text", "--tools", ""],
+    "codex": ["codex", "exec", "--sandbox", "read-only", "--skip-git-repo-check", "-"],
+}
 
 
 def _loopback_url(value: object, key: str) -> str:
@@ -85,8 +93,19 @@ def _loopback_url(value: object, key: str) -> str:
         raise SwitchyardError(f"[modules.offload] {key} must be text")
     if not value:
         return ""
-    parts = urllib.parse.urlsplit(value)
-    if parts.scheme != "http" or parts.hostname not in LOOPBACK or parts.username or parts.password:
+    try:
+        parts = urllib.parse.urlsplit(value)
+        port = parts.port  # raises on a bad port (M11 review)
+    except ValueError:
+        raise SwitchyardError(f"[modules.offload] {key} is malformed") from None
+    if (
+        parts.scheme != "http"
+        or parts.hostname not in LOOPBACK
+        or parts.username
+        or parts.password
+        or "[" in parts.netloc
+        or port == 0
+    ):
         raise SwitchyardError(f"[modules.offload] {key} must be an http://127.0.0.1 or http://localhost URL")
     return value
 
@@ -217,7 +236,10 @@ class OffloadModule:
         prompt = data.get("prompt")
         if not isinstance(prompt, str) or not prompt.strip():
             raise SwitchyardError("prompt must be non-empty text")
-        done = self.ctx.spawn.run(ARGV[spec.target], input=prompt, timeout=timeout, max_output=MAX_RESULT * 4)
+        with tempfile.TemporaryDirectory(prefix="switchyard-offload-") as empty:
+            done = self.ctx.spawn.run(
+                ARGV[spec.target], input=prompt, timeout=timeout, max_output=MAX_RESULT * 4, cwd=empty
+            )
         if done.returncode != 0:
             raise SwitchyardError(f"{spec.name} exited with {done.returncode}")
         return done.stdout[:MAX_RESULT]

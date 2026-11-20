@@ -4,11 +4,20 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-20
+
+Phase M11: offload connectors.
+
 ### Added
 - ADR-0010: `net.outbound` broker (`ctx.net.request`): manifest host list, no redirects or proxies, capped bodies,
   audited by host and status only.
 - Bundled `offload` module (M11): JevK5, n8n, Claude Code and Codex connectors with declared license class, target
   and data sent; non-open connectors off until allowed by name; payload fields enforced.
+
+### Security
+- M11 security review (`src/switchyard/modules/offload/README.md`): Claude Code runs with no tools and agent CLIs
+  in an empty working directory (process broker `cwd`); total request deadline; short responses and malformed
+  URLs are failures.
 
 ## [0.11.0] - 2026-11-20
 

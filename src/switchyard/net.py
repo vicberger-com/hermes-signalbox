@@ -9,7 +9,9 @@ paths, headers and bodies can carry secrets and are never recorded.
 
 from __future__ import annotations
 
+import http.client
 import json as jsonlib
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -43,6 +45,23 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _read_until(resp: Any, deadline: float) -> bytes:
+    """Read at most ``MAX_BODY_IN + 1`` bytes, in chunks, within a total deadline (a trickling server cannot
+    hold the call beyond ``timeout``; M11 review)."""
+    chunks: list[bytes] = []
+    size = 0
+    while size <= MAX_BODY_IN:
+        if time.monotonic() > deadline:
+            raise TimeoutError("total timeout")
+        reader = getattr(resp, "read1", None) or resp.read  # read1: what has arrived, not a full block
+        chunk = reader(min(65536, MAX_BODY_IN + 1 - size))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+    return b"".join(chunks)
+
+
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
 
 
@@ -67,10 +86,14 @@ class NetBroker:
         method = method.upper()
         if method not in METHODS:
             raise SwitchyardError(f"method must be one of {list(METHODS)}")
-        parts = urllib.parse.urlsplit(url)
+        try:  # malformed ports and brackets raise ValueError in urllib (M11 review)
+            parts = urllib.parse.urlsplit(url)
+            port = parts.port
+        except ValueError:
+            raise SwitchyardError("url is malformed") from None
         if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password:
             raise SwitchyardError("url must be http(s)://host[:port]/path without credentials")
-        host = parts.hostname.lower() + (f":{parts.port}" if parts.port else "")
+        host = parts.hostname.lower() + (f":{port}" if port else "")
         self._policy.require_host(module_id, host)
         data = None
         all_headers = {k: v for k, v in (headers or {}).items() if "\n" not in k + v and "\r" not in k + v}
@@ -81,14 +104,18 @@ class NetBroker:
             all_headers.setdefault("Content-Type", "application/json")
         req = urllib.request.Request(url, data=data, method=method, headers=all_headers)  # noqa: S310 - scheme checked
         status = 0
+        deadline = time.monotonic() + min(max(timeout, 0.5), MAX_TIMEOUT_S)
         try:
             with _OPENER.open(req, timeout=min(max(timeout, 0.5), MAX_TIMEOUT_S)) as resp:  # nosec B310
                 status = resp.status
-                raw = resp.read(MAX_BODY_IN + 1)
+                raw = _read_until(resp, deadline)
+                expected = resp.headers.get("Content-Length")
+                if expected and expected.isdigit() and len(raw) < min(int(expected), MAX_BODY_IN + 1):
+                    raise http.client.IncompleteRead(raw)  # closed early: not a complete answer (M11 review)
         except urllib.error.HTTPError as exc:
             status = exc.code
-            raw = exc.read(MAX_BODY_IN + 1) if exc.fp is not None else b""
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raw = _read_until(exc, deadline) if exc.fp is not None else b""
+        except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
             self._record(module_id, host, method, type(exc).__name__)
             raise SwitchyardError(f"request to {host} failed: {type(exc).__name__}") from None
         self._record(module_id, host, method, str(status))

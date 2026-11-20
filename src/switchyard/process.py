@@ -89,6 +89,7 @@ class ProcessBroker:
         input: str | None = None,
         timeout: float = DEFAULT_TIMEOUT_S,
         max_output: int = DEFAULT_MAX_OUTPUT,
+        cwd: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         if not argv or not all(isinstance(a, str) for a in argv):
             raise SwitchyardError("argv must be a non-empty list of strings")
@@ -112,6 +113,7 @@ class ProcessBroker:
                     stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
                     stdout=out,
                     stderr=err,
+                    cwd=cwd,
                     start_new_session=os.name != "nt",
                     creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
                     if os.name == "nt"
