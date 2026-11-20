@@ -1,0 +1,144 @@
+"""``Core``: builds and owns every core component for one data directory (spec sections 2 and 3).
+
+Adapters (CLI, control API, Hermes plugin) hold a ``Core`` and call ``Core.run(noun, verb, params,
+actor=...)``; they never reach into components directly. Startup verifies the audit chain against the head
+anchor kept in ``state.db`` (updated on every append); a failed verification is recorded
+(``audit.verify_failed``) and exposed as ``audit_status`` while the core keeps running (fail closed applies to
+modules, not to the control plane that must report the problem).
+"""
+
+from __future__ import annotations
+
+import threading
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from types import TracebackType
+from typing import Any
+
+import switchyard
+from switchyard.audit import AuditLog, AuditRecord, VerifyResult
+from switchyard.capabilities import CORE_ACTOR, PolicyEngine
+from switchyard.config import CoreConfig, load_config
+from switchyard.context import MemoryPanelRegistry
+from switchyard.errors import SwitchyardError
+from switchyard.events import EventBus
+from switchyard.hostinfo import capacity_metrics
+from switchyard.lifecycle import ModuleManager
+from switchyard.logs import JsonlLogSink
+from switchyard.ops import lookup
+from switchyard.paths import ensure_data_dir, resolve_data_dir
+from switchyard.scheduler import Scheduler
+from switchyard.secrets import Redactor, SecretsBroker
+from switchyard.state import SqliteGrantStore, StateStore
+
+BUILTIN_MODULES = Path(switchyard.__file__).resolve().parent / "modules"
+_HEAD_KEY = "audit.head"
+
+
+class AnchoredAudit:
+    """``AuditSink`` that writes to the log and stores the new head in ``state.db`` after every append."""
+
+    def __init__(self, log: AuditLog, store: StateStore) -> None:
+        self.log = log
+        self._store = store
+
+    def append(self, *, actor: str, action: str, module: str, detail: Mapping[str, str]) -> AuditRecord:
+        record = self.log.append(actor=actor, action=action, module=module, detail=detail)
+        self._store.core_execute(
+            "INSERT INTO meta (key, value) VALUES (?, ?) "
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            (_HEAD_KEY, f"{record.seq}:{record.hash}"),
+        )
+        return record
+
+    def stored_head(self) -> tuple[int, str] | None:
+        rows = self._store.core_query("SELECT value FROM meta WHERE key = ?", (_HEAD_KEY,))
+        if not rows:
+            return None
+        seq, _, digest = str(rows[0][0]).partition(":")
+        return int(seq), digest
+
+
+class Core:
+    def __init__(
+        self,
+        *,
+        data_dir: Path | None = None,
+        hermes_dir: Path | None = None,
+        trusted_roots: Sequence[Path] | None = None,
+        module_roots: Sequence[Path] | None = None,
+        secret_backends: Sequence[Any] = (),
+    ) -> None:
+        initial = resolve_data_dir(configured=data_dir, hermes_dir=hermes_dir)
+        self.config: CoreConfig = load_config(initial / "config.toml")
+        self.data_dir = ensure_data_dir(self.config.data_dir or initial)
+        self.redactor = Redactor()
+        self.audit_log = AuditLog(self.data_dir / "audit", redact=self.redactor.redact)
+        self.store = StateStore(self.data_dir / "state.db", backup_dir=self.data_dir / "backup")
+        self.store.migrate()
+        self.audit = AnchoredAudit(self.audit_log, self.store)
+        self.audit_status = self.verify_audit()
+        if not self.audit_status.ok:
+            self.audit.append(
+                actor=CORE_ACTOR,
+                action="audit.verify_failed",
+                module="",
+                detail={"reason": self.audit_status.reason, "seq": str(self.audit_status.first_bad_seq)},
+            )
+        self.policy = PolicyEngine(SqliteGrantStore(self.store), self.audit)
+        self.bus = EventBus(self.audit)
+        self.scheduler = Scheduler(self.bus, self.audit)
+        self.logs = JsonlLogSink(self.data_dir / "logs", redact=self.redactor.redact)
+        self.panels = MemoryPanelRegistry()
+        self.secrets = SecretsBroker(list(secret_backends), self.policy, self.audit, self.redactor)
+        trusted = list(trusted_roots) if trusted_roots is not None else [BUILTIN_MODULES]
+        roots = (
+            list(module_roots) if module_roots is not None else [BUILTIN_MODULES, self.data_dir / "modules"]
+        )
+        self.manager = ModuleManager(
+            policy=self.policy, audit=self.audit, bus=self.bus, logs=self.logs, panels=self.panels,
+            trusted_roots=trusted, scheduler=self.scheduler, store=self.store,
+            brokers={"secrets.read": self.secrets},
+        )  # fmt: skip
+        self.manager.discover(roots)
+        self._lock = threading.RLock()
+        self._closed = False
+
+    def verify_audit(self) -> VerifyResult:
+        return self.audit_log.verify(expected_head=self.audit.stored_head())
+
+    def run(self, noun: str, verb: str, params: Mapping[str, Any], *, actor: str) -> Any:
+        """Run one operation from the shared table. Raises ``UsageError`` or the operation's own error."""
+        operation = lookup(noun, verb)
+        clean = operation.validate(params)
+        with self._lock:
+            if self._closed:
+                raise SwitchyardError("core is closed")
+            return operation.fn(self, clean, actor)
+
+    def tick(self) -> None:
+        """Periodic work: time triggers, idle stop, capacity metrics for capacity triggers."""
+        with self._lock:
+            if self._closed:
+                return
+            self.scheduler.tick()
+            self.manager.tick()
+            for metric, value in capacity_metrics(self.data_dir).items():
+                self.scheduler.observe(metric, value)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            for module_id in self.manager.ids():
+                self.manager.deactivate(module_id, actor=CORE_ACTOR, reason="shutdown")
+            self._closed = True
+            self.store.close()
+
+    def __enter__(self) -> Core:
+        return self
+
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
+    ) -> None:
+        self.close()

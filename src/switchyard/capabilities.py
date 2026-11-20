@@ -34,7 +34,7 @@ CORE_ACTOR = "core"
 class AuditSink(Protocol):
     """Where policy decisions go. ``AuditLog`` implements it; ``detail`` holds names, never values."""
 
-    def append(self, *, actor: str, action: str, module: str, detail: Mapping[str, str]) -> None: ...
+    def append(self, *, actor: str, action: str, module: str, detail: Mapping[str, str]) -> object: ...
 
 
 class GrantStore(Protocol):

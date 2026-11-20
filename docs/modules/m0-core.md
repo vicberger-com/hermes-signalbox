@@ -173,6 +173,19 @@ any `Origin` header (including `null`) is refused, since the only client is the 
 operations. Responses never echo request text into headers; a header writer rejects CR/LF. Client reads are
 capped at 1 MiB.
 
+### Core and operations
+
+`Core(data_dir, hermes_dir, trusted_roots, module_roots, secret_backends)` builds every component for one data
+directory and is the only object adapters hold. Data dir: resolved per section 2, then `config.toml` there may
+redirect it once. `AnchoredAudit` writes the audit head to `meta['audit.head']` after every append; startup runs
+`verify(expected_head=...)` and on failure records `audit.verify_failed` and exposes `audit_status` (the core keeps
+running so it can report). Trusted and module roots default to the package's `switchyard/modules` (trusted) plus
+`<data_dir>/modules` (untrusted, so subprocess only). `Core.run(noun, verb, params, actor)` dispatches through
+`switchyard.ops.OPERATIONS`; each `Operation` has typed parameters (`UsageError` on unknown, missing or mistyped
+values), a description, and an `offline` flag for operations that are safe without a running daemon.
+`Core.tick()` drives time triggers, idle stop and capacity metrics. Operations: `module list|show|grant|revoke|mode|
+activate|deactivate|health|panel|remove`, `audit verify|tail`, `host profile`, `config show`.
+
 ### CLI
 
 `switchyard [--data-dir D] [--json] <noun> <verb> [args]`. Nouns: `module`, `audit`, `host`, `api`, `config`.
