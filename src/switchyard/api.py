@@ -210,33 +210,68 @@ class _Handler(BaseHTTPRequestHandler):
         self._dispatch(route.group(1), route.group(2), params)
 
     def _dispatch(self, noun: str, verb: str, params: dict[str, Any]) -> None:
+        core = self.control.core
+        redact = core.redactor.redact
+        actor = self.control.actor_for(noun, verb, params)
+        if actor is None:
+            self._fail(403, "not_allowed", f"{noun} {verb} is not available on this API (use the CLI)")
+            return
         try:
-            core = self.control.core
-            result = core.redactor.redact_obj(core.run(noun, verb, params, actor="api"))  # M9: panels too
+            result = core.redactor.redact_obj(core.run(noun, verb, params, actor=actor))  # M9: panels too
         except UsageError as exc:
-            self._fail(400, "usage", str(exc))
+            self._fail(400, "usage", redact(str(exc)))
         except CapabilityDenied as exc:
-            self._fail(403, "capability_denied", str(exc))
+            self._fail(403, "capability_denied", redact(str(exc)))
         except SwitchyardError as exc:
-            self._fail(409, type(exc).__name__, str(exc))
+            self._fail(409, type(exc).__name__, redact(str(exc)))
         except Exception as exc:  # never echo unexpected messages: they may carry data
             self._fail(500, type(exc).__name__)
         else:
             self._reply(200, {"ok": True, "result": result})
 
 
+# Operations the dashboard profile serves (M9 review): reads, module lifecycle on/off, reports, and the inbox
+# actions. Grants, modes, installs, updates, removal and config are CLI-only. Any other module action runs as
+# the model actor, so only read-only actions succeed.
+DASHBOARD_OPS = frozenset({
+    ("module", "list"), ("module", "show"), ("module", "panel"), ("module", "activate"),
+    ("module", "deactivate"), ("module", "action"), ("report", "show"), ("audit", "tail"),
+    ("audit", "verify"), ("host", "profile"),
+})  # fmt: skip
+DASHBOARD_ACTIONS = frozenset({("inbox", "list"), ("inbox", "ack"), ("inbox", "ack_all")})
+
+
+class _Server(ThreadingHTTPServer):
+    allow_reuse_address = False  # Windows SO_REUSEADDR would let a second socket bind a held port (M9 review)
+
+
 class ControlServer:
-    def __init__(self, core: Any, *, port: int = 0, host: str = LOOPBACK) -> None:
+    def __init__(self, core: Any, *, port: int = 0, host: str = LOOPBACK, profile: str = "full") -> None:
         if host != LOOPBACK:
             raise SwitchyardError("the control API binds to loopback (127.0.0.1) only")
+        if profile not in ("full", "dashboard"):
+            raise SwitchyardError("profile must be 'full' or 'dashboard'")
         self.core = core
         self.host = host
+        self.profile = profile
         self.token = secrets.token_urlsafe(32)
         handler = type("Handler", (_Handler,), {"control": self})
-        self._httpd = ThreadingHTTPServer((host, port), handler)
+        self._httpd = _Server((host, port), handler)
         self._httpd.daemon_threads = True
         self.port: int = self._httpd.server_address[1]
         self._thread: threading.Thread | None = None
+
+    def actor_for(self, noun: str, verb: str, params: dict[str, Any]) -> str | None:
+        """Who a request runs as, or ``None`` when this server does not offer it. ``switchyard serve`` (full)
+        is the operator's own CLI transport; the copy Hermes starts for the dashboard is ``dashboard``: a
+        token reachable from inside Hermes must not grant capabilities or change config (M9 review)."""
+        if self.profile == "full":
+            return "api"
+        if (noun, verb) not in DASHBOARD_OPS:
+            return None
+        if (noun, verb) == ("module", "action"):
+            return "api" if (params.get("id"), params.get("action")) in DASHBOARD_ACTIONS else "hermes"
+        return "api"
 
     def _files(self) -> tuple[Path, Path]:
         return self.core.data_dir / "api.port", self.core.data_dir / "api.token"

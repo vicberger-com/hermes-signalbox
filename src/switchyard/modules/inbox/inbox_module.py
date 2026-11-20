@@ -99,6 +99,8 @@ class InboxModule:
             return
         data = dict(getattr(event, "data", {}) or {})
         event_type = str(getattr(event, "type", ""))
+        if event_type == "core.notify" and getattr(event, "source", "") != "core":
+            return  # only the notify broker may publish it
         default, title = SOURCES.get(event_type, ("info", event_type))
         severity = data.get("severity") if data.get("severity") in SEVERITIES else default
         if SEVERITIES.index(severity) < SEVERITIES.index(self.min_severity):
@@ -118,8 +120,16 @@ class InboxModule:
                 (secrets.token_hex(8), self.clock(), module, event_type, severity, title, detail),
             )
             count = self.ctx.state.execute(f"SELECT count(*) FROM {t}")[0][0]  # nosec B608
-            if count > KEEP:  # acked items go first
-                sql = f"DELETE FROM {t} WHERE id IN (SELECT id FROM {t} ORDER BY state = 'open', at LIMIT ?)"  # nosec B608
+            if count > KEEP:  # acked first, then least severe, then oldest (M9 review: a flood of low items
+                # must not evict an unacknowledged critical alert)
+                rank = (
+                    "CASE severity WHEN 'info' THEN 0 WHEN 'low' THEN 1 WHEN 'medium' THEN 2 "
+                    "WHEN 'high' THEN 3 ELSE 4 END"
+                )
+                sql = (
+                    f"DELETE FROM {t} WHERE id IN (SELECT id FROM {t} "  # nosec B608
+                    f"ORDER BY state = 'open', {rank}, at LIMIT ?)"
+                )
                 self.ctx.state.execute(sql, (count - KEEP,))
 
     def list(self, state: str = "open", limit: int = 50) -> dict[str, Any]:

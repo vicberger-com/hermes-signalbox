@@ -45,7 +45,7 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 | Panel or report shows a secret value | API responses redacted; reports redacted; notify redacts | `test_notify_reaches_the_inbox_redacted_and_bounded`, `test_reports` |
 | Unauthenticated access | Backend only under Hermes dashboard auth; static bundle holds no data; control API token on disk, loopback only | `test_dashboard_bundle_is_accessible_and_local` |
 | Outbound telemetry | Bundle has no external URLs and only uses the SDK's fetch to its own routes | same |
-| Dashboard escalates privileges | Fixed allow-list of operations; no grants, installs or config | `test_dashboard_backend_proxy` |
+| Dashboard escalates privileges | The API Hermes starts uses the dashboard profile (fixed operations, enforced in the server, not only in the proxy); no grants, installs or config | `test_dashboard_api_profile_refuses_privileged_ops`, `test_dashboard_backend_proxy` |
 | Path or parameter injection | Module ids, panel names and inbox ids validated before use | same |
 | Model reads module-written notification text | Inbox `list` is human-only | `test_alert_events_min_severity_ack_and_bounds` |
 | Notification flood | Fields capped and single-line; inbox capped at 1000 | same |
@@ -62,3 +62,8 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| An allow-list in the client is enough | Anything that can read the token can call the server directly: enforce the allow-list in the server | Every local API |
+| Oldest-first pruning is fair | Floods evict what matters; prune by importance first | Inbox, any bounded alert store |
+| Redact after formatting | Caps can split a secret; redact the full text first | Every redacted field |
+| `.gitignore` patterns are harmless | `dist/` hid the dashboard bundle from the repository; CI caught it | Shipped static assets |
+

@@ -4,10 +4,19 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-20
+
+Phase M9: dashboard, reporting and notifications.
+
 ### Added
 - ADR-0009: `notify` broker (`ctx.notify.send`), `report show {kind}` (health, usage, security, changes), control API
   started by the Hermes adapter when `[api] enabled`, API responses redacted.
 - Bundled `inbox` module (M9) and a Switchyard dashboard tab (`dashboard/`: modules, inbox, reports).
+
+### Security
+- M9 security review (`src/switchyard/modules/inbox/README.md`): the API Hermes starts serves a dashboard profile
+  only (no grants or config); severity-aware inbox pruning; redact before truncating; redacted API errors;
+  reserved module ids; no address reuse on the API port; a failed API start no longer stops the tick.
 
 ## [0.9.0] - 2026-11-20
 

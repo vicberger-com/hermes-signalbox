@@ -45,6 +45,8 @@ _SUPPORTED = _ANNOTATIONS | {
     "properties", "required", "additionalProperties",
 }  # fmt: skip
 
+RESERVED_IDS = frozenset({"core", "hermes", "api", "cli", "switchyard", "dashboard"})
+
 
 @cache
 def load_schema() -> dict[str, Any]:
@@ -138,6 +140,8 @@ def cross_field(doc: Mapping[str, Any]) -> list[str]:
         errors.append("$.lifecycle: idle_stop_seconds > 0 requires activation = 'auto'")
     if "__" in str(module.get("id", "")):
         errors.append("$.module.id: must not contain '__'")
+    if module.get("id") in RESERVED_IDS:  # event sources and actors the core uses (M9 review)
+        errors.append(f"$.module.id: {module.get('id')!r} is reserved")
     return errors
 
 

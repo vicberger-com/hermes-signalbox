@@ -25,6 +25,11 @@ Notifications below `min_severity` (default `low`) are dropped. Nothing leaves t
 
 ## Dashboard
 
+The control API that Hermes starts for the dashboard serves only a dashboard profile: module list, show, panels,
+activate/deactivate, reports, audit reads and the inbox actions. Other module actions run with the model's
+rights (read-only only). Grants, modes, installs, updates, removal and config are refused there; use the CLI
+(`switchyard serve` keeps the full API for it).
+
 Set `[api] enabled = true` in Switchyard's `config.toml` and restart Hermes; the **Switchyard** tab then shows
 modules (state, health, activate/deactivate), the inbox and reports. Grants, installs and config changes stay in
 the CLI.
@@ -32,3 +37,22 @@ the CLI.
 ## State and removal
 
 Table `items` (last 1000; acknowledged items are removed first). Removed with the module unless `keep_data`.
+
+## Security review (M9 gate)
+
+Reviewed 2026-11-20 by a fresh subagent with the M9 diff, the threat table and the Hermes v0.23.2 sources.
+
+| Finding | Disposition |
+|---|---|
+| (high) The API Hermes starts accepted every operation for anyone holding its token (for example the model through a terminal tool reading `api.token`), including grants | **Fixed.** Hermes starts it with the dashboard profile: fixed operations, inbox actions, other module actions with model rights; grants and config refused |
+| (medium) A flood of low notifications evicted unacknowledged critical ones | **Fixed.** Pruning removes acknowledged, then least severe, then oldest |
+| (low) Truncation before redaction could keep part of a secret | **Fixed.** Redact, then cap |
+| (low) API error messages were not redacted | **Fixed** |
+| (low) A module with id `core` could publish `core.notify` | **Fixed.** Reserved ids (`core`, `hermes`, `api`, `cli`, `switchyard`, `dashboard`); the inbox also checks the source |
+| (low) The dashboard backend ignored a `data_dir` in `config.toml` | **Fixed** |
+| (low) Windows address reuse could let a second socket bind the API port | **Fixed.** `allow_reuse_address = False` |
+| (low) A busy API port stopped the Switchyard tick | **Fixed.** Start failure is audited; Switchyard keeps running |
+
+CSRF on the dashboard backend was checked and is handled by Hermes (session token header; gated mode refuses
+cross-site cookie writes).
+

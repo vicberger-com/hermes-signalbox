@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -22,12 +23,19 @@ _KINDS = ("health", "usage", "security", "changes")
 
 
 def _data_dir() -> Path:
+    """Resolve the data directory the way the core does: ``SWITCHYARD_DATA_DIR``, else the Hermes plugin data
+    directory, then a ``data_dir`` set in its ``config.toml`` (M9 review)."""
     override = os.environ.get("SWITCHYARD_DATA_DIR", "")
     if override:
         return Path(override)
     from plugins.plugin_storage import plugin_data_dir
 
-    return plugin_data_dir("switchyard")
+    base = plugin_data_dir("switchyard")
+    try:
+        configured = tomllib.loads((base / "config.toml").read_text(encoding="utf-8")).get("data_dir")
+    except (OSError, ValueError):
+        configured = None
+    return Path(configured) if isinstance(configured, str) and Path(configured).is_absolute() else base
 
 
 def _call(noun: str, verb: str, params: dict[str, Any]) -> Any:
