@@ -383,3 +383,58 @@ def test_wincred_is_locked_off_windows() -> None:
     assert not w.available()
     with pytest.raises(B.SecretLocked):
         w.get("api.key")
+
+
+class ReadOnly:
+    name = "ro"
+
+    def __init__(self, held: dict[str, str], locked: bool = False) -> None:
+        self.held = held
+        self.locked = locked
+
+    def available(self) -> bool:
+        return True
+
+    def get(self, name: str) -> str:
+        if self.locked:
+            raise B.SecretLocked("locked")
+        return self.held[name]
+
+
+def test_rotate_refuses_when_an_earlier_backend_still_serves_the_name() -> None:
+    vault = Writable()
+    m = _module_with([ReadOnly({"api": "old"}), vault])
+    with pytest.raises(SwitchyardError, match="served by 'ro'"):
+        m.rotate("api")
+    assert vault.values == {}
+    m = _module_with([ReadOnly({}, locked=True), vault])
+    with pytest.raises(SwitchyardError, match="cannot check 'ro'"):
+        m.rotate("api")
+    m = _module_with([ReadOnly({}), vault])
+    assert m.rotate("api")["backend"] == "vault"
+
+
+def test_rotate_does_not_move_a_secret_off_its_recorded_backend() -> None:
+    vault = Writable()
+    m = _module_with([vault])
+    m.rotate("api")
+    vault.available = lambda: False  # type: ignore[method-assign]
+    other = Writable()
+    other.name = "other"
+    m.backends = [vault, other]
+    with pytest.raises(SwitchyardError, match="recorded backend 'vault'"):
+        m.rotate("api")
+    assert other.values == {}
+
+
+def test_expiry_warning_days_is_capped(tmp_path: Path) -> None:
+    data = tmp_path / "d"
+    data.mkdir()
+    (data / "config.toml").write_text(
+        "[modules.secrets]\nexpiry_warning_days = 999999999999\n", encoding="utf-8"
+    )
+    with Core(data_dir=data, hosting=True) as c:
+        for cap in ("secrets.read", "process.spawn", "ui.panel"):
+            c.run("module", "grant", {"id": "secrets", "capability": cap}, actor="t")
+        c.run("module", "activate", {"id": "secrets"}, actor="t")
+        assert c.run("module", "show", {"id": "secrets"}, actor="t")["status"] == "failed"

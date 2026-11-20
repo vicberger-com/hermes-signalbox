@@ -30,6 +30,7 @@ from switchyard.capabilities import CORE_ACTOR, AuditSink
 from switchyard.errors import ManifestError, UpdateError
 from switchyard.lifecycle import ModuleManager, ModuleStatus
 from switchyard.manifest import load_manifest
+from switchyard.process import find_program
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 GIT_TIMEOUT_S = 300
@@ -47,7 +48,7 @@ def _check_ref(ref: str) -> None:
 
 def git_usable(git: str = "git") -> bool:
     """True if this process can run ``git`` (some sandboxed installs cannot)."""
-    exe = shutil.which(git)
+    exe = find_program(git)
     if exe is None:
         return False
     try:
@@ -65,7 +66,7 @@ class GitFetcher:
         self._allow_file = allow_file_protocol
 
     def _run(self, args: list[str], cwd: Path) -> str:
-        exe = shutil.which(self._git)
+        exe = find_program(self._git)
         if exe is None:
             raise UpdateError("git executable not found")
         env = {k: v for k in _GIT_ENV_ALLOW if (v := os.environ.get(k)) is not None}

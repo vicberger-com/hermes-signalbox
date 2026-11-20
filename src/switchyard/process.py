@@ -27,6 +27,24 @@ DEFAULT_TIMEOUT_S = 30.0
 MAX_TIMEOUT_S = 600.0
 
 
+def find_program(name: str) -> str | None:
+    """Absolute path of ``name`` from PATH, never from the working directory.
+
+    On Windows ``shutil.which`` looks in the current directory first, so a ``bw.cmd`` planted in a folder the
+    user starts from would be chosen over the real one. Results that are relative or live in the working
+    directory are refused.
+    """
+    exe = shutil.which(name)
+    if exe is None or not os.path.isabs(exe):
+        return None
+    try:
+        if Path(exe).resolve().parent == Path.cwd().resolve():
+            return None
+    except OSError:
+        return None
+    return exe
+
+
 class ProcessBroker:
     def __init__(self, policy: PolicyEngine, audit: AuditSink) -> None:
         self._policy = policy
@@ -45,7 +63,7 @@ class ProcessBroker:
             raise SwitchyardError("argv must be a non-empty list of strings")
         program = Path(argv[0]).name
         self._policy.require(module_id, "process.spawn", program=program)
-        exe = shutil.which(argv[0])
+        exe = find_program(argv[0])
         if exe is None:
             raise SwitchyardError(f"program {program!r} not found")
         child_env = {k: v for k in BASE_ENV if (v := os.environ.get(k)) is not None}

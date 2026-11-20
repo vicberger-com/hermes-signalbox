@@ -117,6 +117,8 @@ def cross_field(doc: Mapping[str, Any]) -> list[str]:
     requested: list[Any] = raw if isinstance(raw, list) else []
 
     provides_backends = bool(_section(doc, "contributes").get("secret_backends"))
+    if provides_backends and "secrets.read" not in requested:
+        errors.append("$.contributes: a module with 'secret_backends' must request 'secrets.read'")
     for cap, field in (("net.outbound", "net_hosts"), ("secrets.read", "secrets")):
         listed = bool(caps.get(field))
         if field == "secrets" and provides_backends and not listed:

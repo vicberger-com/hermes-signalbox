@@ -125,3 +125,15 @@ def test_module_id_with_double_underscore_is_rejected(tmp_path: Path) -> None:
     _rewrite(d, 'id = "example"', 'id = "ex__ample"')
     with pytest.raises(ManifestError, match="__"):
         load_manifest(d)
+
+
+def test_backend_provider_must_request_secrets_read() -> None:
+    from switchyard.manifest import cross_field
+
+    doc = {
+        "capabilities": {"request": ["ui.panel"], "secrets": []},
+        "contributes": {"secret_backends": ["x"]},
+    }
+    assert any("secret_backends" in e for e in cross_field(doc))
+    doc["capabilities"]["request"] = ["secrets.read"]
+    assert cross_field(doc) == []

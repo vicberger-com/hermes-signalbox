@@ -73,11 +73,12 @@ def _restrict_windows_acl(path: Path) -> None:
     Fails closed: the token file is deleted.
     """
     import getpass
-    import shutil
     import subprocess  # nosec B404
 
     user = getpass.getuser()
-    exe = shutil.which("icacls")
+    from switchyard.process import find_program
+
+    exe = find_program("icacls")
     try:
         if exe is None:
             raise OSError("icacls not found")
@@ -126,7 +127,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _drain(self) -> None:
         """Discard an unread request body within the size limit before an early reply; replying with unread
         bytes in the socket makes some stacks (Windows) reset the connection before the client reads."""
-        if self.command != "POST" or getattr(self, "_body_read", False):
+        if getattr(self, "_body_read", False):
             return
         self._body_read = True
         try:
@@ -145,6 +146,11 @@ class _Handler(BaseHTTPRequestHandler):
             self._fail(403, "forbidden", "cross-origin requests are not accepted")
             return False
         return True
+
+    def _unsupported(self) -> None:
+        self._fail(501, "not_implemented")
+
+    do_PUT = do_PATCH = do_DELETE = do_OPTIONS = _unsupported  # drain the body, reply 501 as JSON
 
     def do_GET(self) -> None:
         if not self._origin_ok():

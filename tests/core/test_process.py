@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -52,3 +53,19 @@ def test_timeout_missing_program_and_bad_argv(broker: tuple[ProcessBroker, Polic
         pb.run("demo", ["definitely-not-a-program-xyz"])
     with pytest.raises(SwitchyardError, match="argv"):
         pb.run("demo", [])
+
+
+def test_helper_planted_in_the_working_directory_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from switchyard.process import find_program
+
+    name = "planted-helper-xyz"
+    script = tmp_path / (name + (".cmd" if sys.platform == "win32" else ""))
+    script.write_text("@echo off\n" if sys.platform == "win32" else "#!/bin/sh\n", encoding="utf-8")
+    script.chmod(0o755)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
+    assert find_program(name) is None  # in the working directory, even when PATH lists it
+    assert find_program(sys.executable) is not None
+    assert find_program("definitely-not-a-program-xyz") is None

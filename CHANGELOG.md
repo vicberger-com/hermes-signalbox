@@ -4,6 +4,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-19
+
+Phase M1: secrets.
+
 ### Added
 - Module actions (`ctx.register_action`, operation `module action`; the Hermes model tool runs read-only
   actions only) and module-provided secret backends (`ctx.provide_secret_backend`,
@@ -13,6 +17,15 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   rotation of generated values; `secrets.status` panel. No new dependencies.
 - `ctx.config`, `ctx.spawn` (process broker), `ctx.audit`; `run_contract(settings=...)`; `[modules.<id>]`
   tables in `config.toml`. Auto modules wait for their grants instead of failing.
+
+### Security
+- M1 security review (`src/switchyard/modules/secrets/README.md`): helper programs are never taken from the
+  working directory (Windows `shutil.which` searched it first, exposing `BW_SESSION` to a planted `bw.cmd`);
+  rotation refuses when an earlier backend still serves the name; action results are redacted as values;
+  stricter manifest, settings and argument checks.
+
+### Fixed
+- The control API answers `PUT`, `PATCH`, `DELETE` and `OPTIONS` with a JSON 501 after reading the body.
 
 ## [0.1.0] - 2026-11-19
 
