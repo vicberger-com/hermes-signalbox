@@ -35,7 +35,7 @@ from switchyard.errors import ManifestError
 MANIFEST_NAME = "module.toml"
 MAX_MANIFEST_BYTES = 64 * 1024
 CONTRIBUTION_KINDS: tuple[str, ...] = (
-    "hooks", "tools", "commands", "panels", "policies", "triggers", "log_streams",
+    "hooks", "tools", "commands", "panels", "policies", "triggers", "log_streams", "secret_backends",
 )  # fmt: skip
 
 _TYPES: dict[str, type] = {"string": str, "integer": int, "boolean": bool, "array": list, "object": dict}

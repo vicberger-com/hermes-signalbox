@@ -4,6 +4,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- Module actions (`ctx.register_action`, operation `module action`; the Hermes model tool runs read-only
+  actions only) and module-provided secret backends (`ctx.provide_secret_backend`,
+  `contributes.secret_backends`; trusted in-process modules only). ADR-0002.
+
 ## [0.1.0] - 2026-11-19
 
 Phase M0: the core framework.

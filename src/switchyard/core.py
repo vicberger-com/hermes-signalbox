@@ -19,7 +19,7 @@ import switchyard
 from switchyard.audit import AuditLog, AuditRecord, VerifyResult
 from switchyard.capabilities import CORE_ACTOR, PolicyEngine
 from switchyard.config import CoreConfig, load_config
-from switchyard.context import MemoryPanelRegistry
+from switchyard.context import MemoryActionRegistry, MemoryPanelRegistry
 from switchyard.errors import SwitchyardError
 from switchyard.events import EventBus
 from switchyard.hostinfo import capacity_metrics
@@ -99,6 +99,7 @@ class Core:
         self.scheduler = Scheduler(self.bus, self.audit)
         self.logs = JsonlLogSink(self.data_dir / "logs", redact=self.redactor.redact)
         self.panels = MemoryPanelRegistry()
+        self.actions = MemoryActionRegistry()
         self.secrets = SecretsBroker(list(secret_backends), self.policy, self.audit, self.redactor)
         trusted = list(trusted_roots) if trusted_roots is not None else [BUILTIN_MODULES]
         roots = (
@@ -107,7 +108,7 @@ class Core:
         self.manager = ModuleManager(
             policy=self.policy, audit=self.audit, bus=self.bus, logs=self.logs, panels=self.panels,
             trusted_roots=trusted, scheduler=self.scheduler, store=self.store,
-            brokers={"secrets.read": self.secrets},
+            brokers={"secrets.read": self.secrets}, actions=self.actions, secret_backends=self.secrets,
         )  # fmt: skip
         self.manager.discover(roots)
         self.updates = UpdateController(self.manager, self.audit, self.data_dir, fetcher or GitFetcher())

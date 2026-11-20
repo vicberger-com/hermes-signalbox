@@ -42,6 +42,46 @@ class EventBusPort(Protocol):
     def unsubscribe_all(self, owner: str) -> None: ...
 
 
+_ACTION_NAME = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
+ACTION_PARAM_KINDS = (bool, int, str)
+
+
+@dataclass(frozen=True)
+class Action:
+    module_id: str
+    name: str
+    handler: Callable[..., Any]
+    params: Mapping[str, type]
+    read_only: bool
+
+
+class MemoryActionRegistry:
+    """Module actions (ADR-0002), keyed by ``(module_id, name)``."""
+
+    def __init__(self) -> None:
+        self._actions: dict[tuple[str, str], Action] = {}
+
+    def add(self, action: Action) -> None:
+        self._actions[(action.module_id, action.name)] = action
+
+    def remove_all(self, module_id: str) -> None:
+        self._actions = {k: v for k, v in self._actions.items() if k[0] != module_id}
+
+    def names(self, module_id: str) -> list[str]:
+        return sorted(n for m, n in self._actions if m == module_id)
+
+    def get(self, module_id: str, name: str) -> Action:
+        action = self._actions.get((module_id, name))
+        if action is None:
+            raise SwitchyardError(f"unknown action {name!r} for module {module_id!r} (is it running?)")
+        return action
+
+
+class SecretBackendPort(Protocol):
+    def add_backend(self, owner: str, backend: Any) -> None: ...
+    def remove_backends(self, owner: str) -> None: ...
+
+
 @dataclass(frozen=True)
 class ContextServices:
     """Core services a context is built from. ``brokers`` maps a capability id to its broker facade."""
@@ -52,6 +92,8 @@ class ContextServices:
     bus: EventBusPort
     brokers: Mapping[str, object] = field(default_factory=dict)
     state: Callable[[str], object] | None = None  # module id -> namespaced store (``StateStore.module``)
+    actions: MemoryActionRegistry | None = None
+    secret_backends: SecretBackendPort | None = None
 
 
 class MemoryPanelRegistry:
@@ -141,7 +183,48 @@ class ModuleContext:
         self._open()
         self._last_health = (ok, detail)
 
+    def register_action(
+        self,
+        name: str,
+        handler: Callable[..., Any],
+        *,
+        params: Mapping[str, type] | None = None,
+        read_only: bool = False,
+    ) -> None:
+        """Expose ``handler`` as ``module action`` (ADR-0002). ``name`` must be in ``contributes.commands``;
+        ``params`` maps argument names to ``bool``, ``int`` or ``str``. Only ``read_only`` actions are offered
+        to the Hermes model tool."""
+        self._open()
+        if not _ACTION_NAME.match(name) or name not in self._manifest.contributes["commands"]:
+            raise SwitchyardError(
+                f"action {name!r} is not declared in contributes.commands of {self.module_id!r}"
+            )
+        spec = dict(params or {})
+        for key, kind in spec.items():
+            if not _ACTION_NAME.match(key) or kind not in ACTION_PARAM_KINDS:
+                raise SwitchyardError(f"action {name!r}: parameter {key!r} must be bool, int or str")
+        if self._services.actions is None:
+            raise SwitchyardError("module actions are not available in this host")
+        self._services.actions.add(Action(self.module_id, name, handler, spec, bool(read_only)))
+
     # capability-gated ---------------------------------------------------------------------------------
+
+    def provide_secret_backend(self, backend: Any) -> None:
+        """Add a secret backend to the core broker (ADR-0002).
+
+        Only for in-process modules from a trusted root, granted ``secrets.read``, for a backend name declared
+        in ``contributes.secret_backends``.
+        """
+        self._open()
+        if self._manifest.isolation != "in-process":
+            raise SwitchyardError("only in-process modules from a trusted root may provide secret backends")
+        self._services.policy.require(self.module_id, "secrets.read")
+        name = getattr(backend, "name", None)
+        if not isinstance(name, str) or name not in self._manifest.contributes["secret_backends"]:
+            raise SwitchyardError(f"secret backend {name!r} is not declared by module {self.module_id!r}")
+        if self._services.secret_backends is None:
+            raise SwitchyardError("the secrets broker is not available in this host")
+        self._services.secret_backends.add_backend(self.module_id, backend)
 
     def _broker(self, capability: str) -> object:
         self._open()
@@ -181,3 +264,7 @@ class ModuleContext:
         self._closed = True
         self._services.panels.remove_all(self.module_id)
         self._services.bus.unsubscribe_all(self.module_id)
+        if self._services.actions is not None:
+            self._services.actions.remove_all(self.module_id)
+        if self._services.secret_backends is not None:
+            self._services.secret_backends.remove_backends(self.module_id)

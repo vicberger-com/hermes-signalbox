@@ -158,9 +158,29 @@ class SecretsBroker:
         self, backends: list[Any], policy: PolicyEngine, audit: AuditSink, redactor: Redactor
     ) -> None:
         self._backends = list(backends)
+        self._owned: dict[str, list[Any]] = {}  # module id -> backends it provided (ADR-0002)
         self._policy = policy
         self._audit = audit
         self._redactor = redactor
+
+    def add_backend(self, owner: str, backend: Any) -> None:
+        if backend.name in self.backend_names():
+            raise SwitchyardError(f"secret backend {backend.name!r} is already provided")
+        self._backends.append(backend)
+        self._owned.setdefault(owner, []).append(backend)
+        self._audit.append(
+            actor="core", action="secret.backend_added", module=owner, detail={"backend": backend.name}
+        )
+
+    def remove_backends(self, owner: str) -> None:
+        for backend in self._owned.pop(owner, []):
+            self._backends = [b for b in self._backends if b is not backend]
+            self._audit.append(
+                actor="core", action="secret.backend_removed", module=owner, detail={"backend": backend.name}
+            )
+
+    def backend_names(self) -> list[str]:
+        return [str(b.name) for b in self._backends]
 
     def _resolve(self, module_id: str, name: str) -> tuple[str, str]:
         for backend in self._backends:

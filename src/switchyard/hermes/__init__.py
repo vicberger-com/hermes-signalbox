@@ -35,12 +35,13 @@ from typing import Any
 from switchyard.capabilities import CORE_ACTOR
 from switchyard.core import Core
 from switchyard.errors import SwitchyardError
-from switchyard.ops import OPERATIONS, UsageError
+from switchyard.ops import MODEL_ACTOR, OPERATIONS, UsageError
 from switchyard.secrets import DEFAULT_PATTERNS
 
-ACTOR = "hermes"
+ACTOR = MODEL_ACTOR  # model-initiated tool calls
+USER_ACTOR = "hermes-user"  # the /switchyard slash command, typed by the user
 TICK_SECONDS = 15.0
-MODEL_TOOL_ACTIONS = ("list", "show", "activate", "deactivate", "health")
+MODEL_TOOL_ACTIONS = ("list", "show", "activate", "deactivate", "health", "run")
 _LITERAL_PREFIX = re.compile(r"[A-Za-z0-9_-]{2}")
 
 _current: HermesAdapter | None = None
@@ -57,11 +58,14 @@ def _schema(name: str, description: str, properties: dict[str, Any], required: l
 
 MODULES_SCHEMA = _schema(
     "switchyard_modules",
-    "Inspect and run Switchyard modules. Actions: list, show, activate, deactivate, health. Granting "
-    "capabilities is a user decision made with /switchyard, not available here.",
+    "Inspect and run Switchyard modules. Actions: list, show, activate, deactivate, health, and run (a "
+    "module's read-only action, named by 'name' with 'args'). Granting capabilities is a user decision made "
+    "with /switchyard, not available here.",
     {
         "action": {"type": "string", "enum": list(MODEL_TOOL_ACTIONS)},
         "id": {"type": "string", "description": "module id (all actions except list)"},
+        "name": {"type": "string", "description": "module action name (run only)"},
+        "args": {"type": "object", "description": "module action arguments (run only)"},
     },
     ["action"],
 )
@@ -72,6 +76,10 @@ AUDIT_SCHEMA = _schema(
     ["action"],
 )
 HOST_SCHEMA = _schema("switchyard_host", "Show this host's Switchyard capacity profile.", {}, [])
+
+
+def _bool_or_str(value: str) -> bool | str:
+    return {"true": True, "false": False}.get(value.lower(), value)
 
 
 def _ok(result: Any) -> str:
@@ -142,9 +150,9 @@ class HermesAdapter:
 
     # model tools --------------------------------------------------------------------------------------
 
-    def _call(self, noun: str, verb: str, params: dict[str, Any]) -> str:
+    def _call(self, noun: str, verb: str, params: dict[str, Any], actor: str = ACTOR) -> str:
         try:
-            text = _ok(self.core.run(noun, verb, params, actor=ACTOR))
+            text = _ok(self.core.run(noun, verb, params, actor=actor))
         except Exception as exc:
             text = _error(exc)
         return self.core.redactor.redact(text)
@@ -153,6 +161,9 @@ class HermesAdapter:
         action = args.get("action")
         if action not in MODEL_TOOL_ACTIONS:
             return _error(UsageError(f"action must be one of {list(MODEL_TOOL_ACTIONS)}"))
+        if action == "run":
+            params = {"action": args.get("name")} | {k: v for k, v in args.items() if k in ("id", "args")}
+            return self._call("module", "action", params)
         params = {k: v for k, v in args.items() if k == "id"}
         return self._call("module", str(action), params)
 
@@ -185,21 +196,30 @@ class HermesAdapter:
         if operation is None:
             return f"error: unknown operation '{noun} {verb}'"
         params: dict[str, Any] = {}
+        extra: dict[str, Any] = {}  # key=value pairs that are not operation parameters go to an ``args`` dict
         for word in rest:
             if "=" not in word:
                 if "id" in operation.params and "id" not in params:
                     params["id"] = word
                     continue
+                if "action" in operation.params and "action" not in params:
+                    params["action"] = word
+                    continue
                 return f"error: expected key=value, got {word!r}"
             key, _, value = word.partition("=")
             spec = operation.params.get(key)
+            if spec is None and "args" in operation.params:
+                extra[key] = int(value) if value.lstrip("-").isdigit() else _bool_or_str(value)
+                continue
             if spec is not None and spec.kind is bool:
                 params[key] = value.lower() in ("1", "true", "yes")
             elif spec is not None and spec.kind is int and value.lstrip("-").isdigit():
                 params[key] = int(value)
             else:
                 params[key] = value
-        reply = json.loads(self._call(noun, verb, params))
+        if extra:
+            params["args"] = extra
+        reply = json.loads(self._call(noun, verb, params, actor=USER_ACTOR))
         if not reply["ok"]:
             return f"error: {reply['message'] or reply['error']}"
         return json.dumps(reply["result"], indent=2, default=str)

@@ -8,6 +8,7 @@ data directory when no daemon is running (they do not need a live module instanc
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -21,6 +22,10 @@ if TYPE_CHECKING:
 
 class UsageError(SwitchyardError):
     """The operation or its parameters are invalid."""
+
+
+# The actor the Hermes adapter uses for model-initiated tool calls. Human paths use other actors.
+MODEL_ACTOR = "hermes"
 
 
 @dataclass(frozen=True)
@@ -183,6 +188,45 @@ def _module_panel(core: Core, p: dict[str, Any], actor: str) -> Any:
 def _module_remove(core: Core, p: dict[str, Any], actor: str) -> Any:
     core.manager.remove(p["id"], actor=actor, keep_data=p["keep_data"])
     return {"removed": p["id"]}
+
+
+@op(
+    "module", "action", "Run an action a running module registered (ADR-0002).", id=ID,
+    action=Param(str, help="action name"), args=Param(dict, required=False, help="action arguments (JSON)"),
+)  # fmt: skip
+def _module_action(core: Core, p: dict[str, Any], actor: str) -> Any:
+    _require_host(core)
+    action = core.actions.get(p["id"], p["action"])
+    if actor == MODEL_ACTOR and not action.read_only:
+        raise SwitchyardError(f"action {action.name!r} is not read-only; run it from /switchyard or the CLI")
+    raw = p["args"] or {}
+    unknown = sorted(set(raw) - set(action.params))
+    if unknown:
+        raise UsageError(f"unknown argument(s) {unknown} for action {action.name!r}")
+    args: dict[str, Any] = {}
+    for name, kind in action.params.items():
+        if name not in raw:
+            continue
+        value = raw[name]
+        if not isinstance(value, kind) or (kind is int and isinstance(value, bool)):
+            raise UsageError(f"argument {name!r} must be {kind.__name__}")
+        args[name] = value
+    core.audit.append(actor=actor, action="module.action", module=p["id"], detail={"action": action.name})
+    try:
+        result = action.handler(**args)
+    except TypeError as exc:
+        if "missing" in str(exc) and "argument" in str(exc):
+            raise UsageError(f"missing argument for action {action.name!r}") from None
+        raise SwitchyardError(f"action {action.name!r} failed: TypeError") from None
+    except SwitchyardError:
+        raise
+    except Exception as exc:
+        raise SwitchyardError(f"action {action.name!r} failed: {type(exc).__name__}") from None
+    try:
+        text = json.dumps(result)
+    except (TypeError, ValueError):
+        raise SwitchyardError(f"action {action.name!r} returned data that is not JSON") from None
+    return json.loads(core.redactor.redact(text))
 
 
 @op("module", "update", "Update a git-installed module to a pinned commit; rolls back if it fails.",
