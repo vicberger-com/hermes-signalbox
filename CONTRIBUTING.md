@@ -42,9 +42,13 @@ Applies to people and agents alike. Agents also follow [AGENTS.md](AGENTS.md).
 
 ## Local setup
 
+Tooling is pinned with hashes in `requirements-dev.txt`. Regenerate it after changing the extras in
+`pyproject.toml`: `uv pip compile pyproject.toml --extra dev --extra security --universal --generate-hashes -o requirements-dev.txt`.
+
 ```bash
 python -m venv .venv && . .venv/bin/activate    # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+pip install --require-hashes -r requirements-dev.txt
+pip install --no-deps --no-build-isolation -e .
 pre-commit install
 python -m pytest -q
 ```
