@@ -2,7 +2,7 @@
 
 Items that match a stop condition in `AGENTS.md`. Each names the manual action needed.
 
-## B-H1-1 (2026-11-20): tag protection and the release environment need the repository owner — OPEN
+## B-H1-1 (2026-11-20): tag protection and the release environment need the repository owner — RESOLVED 2026-11-20
 
 Stop condition: a GitHub setting only the owner can change. The repository token gets HTTP 403 for creating a
 ruleset and an environment. Everything else in WP3 is done: the release workflow refuses a tag that is not an
@@ -42,3 +42,7 @@ and security updates, secret scanning, push protection and validity checks are e
 0, secret scanning 0, code scanning 7, all OpenSSF Scorecard posture checks, dispositioned in
 `docs/qa/14-r1-prework.md` section 4. The token gained read access to alerts and administration.
 
+
+B-H1-1 resolution (checked with the repository token, 2026-11-20): environment `release` with deployment limited
+to tag rule `v*.*.*`; tag ruleset `Release tags` (id 27771453) active on `refs/tags/v*` with rules deletion,
+non_fast_forward and update, no bypass actors. Tag creation stays allowed, so release tags can still be pushed.

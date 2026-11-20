@@ -39,7 +39,7 @@ from switchyard.context import (
     PanelRegistry,
     SecretBackendPort,
 )
-from switchyard.errors import ManifestError, SwitchyardError
+from switchyard.errors import CapabilityDenied, ManifestError, SwitchyardError
 from switchyard.events import EventBus
 from switchyard.host_t2 import T2Module
 from switchyard.manifest import MANIFEST_NAME, Manifest, load_manifest
@@ -303,6 +303,20 @@ class ModuleManager:
             if e.status is ModuleStatus.ACTIVE:
                 e.last_used = self._clock()
                 return
+            # H1 A-5: no module code runs (no import, no activate) until every required capability is granted,
+            # whoever asks. The module stays as it was; nothing is marked failed.
+            missing = sorted(e.manifest.requested - e.manifest.optional - self._policy.granted(module_id))
+            if missing:
+                self._audit.append(
+                    actor=CORE_ACTOR,
+                    action="policy.denied",
+                    module=module_id,
+                    detail={"capability": ",".join(missing), "operation": "module activate", "actor": actor},
+                )
+                raise CapabilityDenied(
+                    f"module {module_id!r} cannot start: not granted {', '.join(missing)} "
+                    f"(grant with 'module grant {module_id} --capability <name>')"
+                )
             try:
                 if e.manifest.isolation == "subprocess":
                     instance = self._t2_factory(e.manifest)

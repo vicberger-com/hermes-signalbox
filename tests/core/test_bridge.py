@@ -80,8 +80,10 @@ def core(tmp_path: Path) -> Any:
 
 
 def test_hooks_need_the_grant(core: Core) -> None:
-    core.run("module", "activate", {"id": "watch"}, actor="t")
-    assert core.run("module", "show", {"id": "watch"}, actor="t")["status"] == "failed"
+    with pytest.raises(CapabilityDenied, match=r"hermes\.hooks"):  # H1 A-5: refused before module code runs
+        core.run("module", "activate", {"id": "watch"}, actor="t")
+    assert core.run("module", "show", {"id": "watch"}, actor="t")["status"] == "verified"
+    assert core.bridge.registered("watch") == []
 
 
 def test_bridge_dispatch_isolation_and_model_only_rewrites(core: Core) -> None:

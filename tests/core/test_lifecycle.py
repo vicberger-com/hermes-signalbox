@@ -14,7 +14,7 @@ from sy_testing import GOOD, RecordingAudit, write_module
 
 from switchyard.capabilities import MemoryGrantStore, PolicyEngine
 from switchyard.context import MemoryPanelRegistry
-from switchyard.errors import SwitchyardError
+from switchyard.errors import CapabilityDenied, SwitchyardError
 from switchyard.events import Event, EventBus
 from switchyard.lifecycle import ModuleManager, ModuleStatus
 from switchyard.logs import JsonlLogSink
@@ -130,10 +130,12 @@ def test_ungranted_capability_fails_the_module_closed(env: Env) -> None:
     shutil.copytree(ROOT / "templates" / "module", env.trusted / "example",
                     ignore=shutil.ignore_patterns("__pycache__", "tests"))  # fmt: skip
     env.manager.discover([env.trusted])
-    env.manager.activate("example", actor="user")  # register_panel needs ui.panel, not granted
+    # H1 A-5: a required capability that is not granted stops activation before any module code runs
+    with pytest.raises(CapabilityDenied, match=r"ui.panel"):
+        env.manager.activate("example", actor="user")
     info = env.manager.info("example")
-    assert info.state is ModuleStatus.FAILED and info.error == "CapabilityDenied"
-    assert {"policy.denied", "module.failed"} <= set(env.audit.actions())
+    assert info.state is ModuleStatus.VERIFIED and info.error is None
+    assert "policy.denied" in env.audit.actions() and "module.failed" not in env.audit.actions()
     assert env.panels.panels("example") == []
 
 

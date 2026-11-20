@@ -10,7 +10,7 @@ import pytest
 from sy_testing import write_module
 
 from switchyard.core import Core
-from switchyard.errors import SwitchyardError
+from switchyard.errors import CapabilityDenied, SwitchyardError
 from switchyard.ops import MODEL_ACTOR, UsageError
 
 CANARY = "canary-" + "b4ck3nd-value"
@@ -114,8 +114,8 @@ def test_trusted_module_provides_a_backend_other_modules_use(core: Core) -> None
 
 def test_backend_needs_declaration_grant_and_in_process(core: Core, tmp_path: Path) -> None:
     core.run("module", "revoke", {"id": "prov", "capability": "secrets.read"}, actor="t")
-    core.run("module", "activate", {"id": "prov"}, actor="t")
-    assert core.run("module", "show", {"id": "prov"}, actor="t")["status"] == "failed"
+    with pytest.raises(CapabilityDenied, match=r"secrets.read"):  # H1 A-5
+        core.run("module", "activate", {"id": "prov"}, actor="t")
     assert core.secrets.backend_names() == []
 
 
@@ -125,7 +125,8 @@ def test_undeclared_backend_is_refused(tmp_path: Path) -> None:
     _secrets_request(prov)
     _declare(prov, backends=["other"], commands=["status", "bump", "leak", "crash"])
     with Core(data_dir=tmp_path / "data", trusted_roots=[root], module_roots=[root], hosting=True) as c:
-        c.run("module", "grant", {"id": "prov", "capability": "secrets.read"}, actor="t")
+        for cap in ("secrets.read", "ui.panel"):  # every required grant, so the backend rule is what fails
+            c.run("module", "grant", {"id": "prov", "capability": cap}, actor="t")
         c.run("module", "activate", {"id": "prov"}, actor="t")
         info = c.run("module", "show", {"id": "prov"}, actor="t")
         assert info["status"] == "failed" and c.secrets.backend_names() == []

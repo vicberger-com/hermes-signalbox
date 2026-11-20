@@ -61,6 +61,13 @@ def _int_setting(cfg: dict[str, Any], key: str, default: int, low: int, high: in
     return value
 
 
+def _unregistered(provider: str, model: str) -> Candidate:
+    """A delegated child's model the registry does not know (H1 C-7): treated as paid, so it is gated and
+    counted like one. The main session keeps the M6 rule (unknown models are never blocked)."""
+    return Candidate(id=f"{provider}/{model}"[:200], model=model, cost_class="paid", state="manual",
+                     tags=frozenset(), context=None)  # fmt: skip
+
+
 class RouterModule:
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self.ctx: Any = None
@@ -305,6 +312,8 @@ class RouterModule:
                         # the budget shows real paid use even when nothing free could take it (R1 review).
                         current = next((c for c in self._candidates(str(provider), consumer)
                                         if c.model == request.get("model")), None)  # fmt: skip
+                        if current is None and consumer:  # H1 C-7: unregistered persona model, counted
+                            current = _unregistered(str(provider), str(request.get("model") or ""))
                         if current is not None and current.cost_class == "paid":
                             paying = current
                     # ADR-0013: commit only while the bridge still waits for this answer. Too late, the
@@ -358,6 +367,8 @@ class RouterModule:
             known = entry[1] if entry is not None and now - entry[0] <= KNOWN_SECONDS else None
             cooling = {k for k, (until, _) in self._cool_mem.items() if until > now}
         current = next((c for c in known or () if c.model == model), None)
+        if current is None and known is not None and context.get("delegated_consumer"):
+            current = _unregistered(provider, model)  # H1 C-7, same rule on the timeout path
         if known is None or current is None or current.cost_class != "paid":
             # Nothing known: settled by the next route. Free, self-hosted or unregistered: nothing to charge
             # (unregistered models are never blocked, M6 review).
@@ -458,6 +469,10 @@ class RouterModule:
             candidates = [*candidates, *(c for c in self._candidates(provider) if c.id not in seen)]
         cooling = self._effective_cooling(provider, candidates)
         current = next((c for c in candidates if c.model == model), None)
+        if current is None and consumer:
+            current = _unregistered(
+                provider, model
+            )  # H1 C-7: a delegated child's unknown model counts as paid
         rid = current.id if current else f"{provider}/{model}"
         raw = self._cooling()
         quota_hit = any(k in raw and raw[k].startswith("quota") for k in ("all", f"provider:{provider}", rid))

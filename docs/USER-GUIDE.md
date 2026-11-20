@@ -99,7 +99,8 @@ Restart the hosting process after editing them.
 ## 4. What the model may do
 
 Hermes's model gets three tools: `switchyard_modules` (list, show, activate, health, and read-only module
-actions), `switchyard_audit` (verify, tail) and `switchyard_host`. Everything else (grants, modes, removal,
+actions), `switchyard_audit` (verify, tail) and `switchyard_host`. The model may start only modules you set to
+`auto` mode whose required capabilities you granted; a module you keep `manual` is yours to start. Everything else (grants, modes, removal,
 deactivation, updates, budgets, settings, acknowledgements) is for you only, and the core refuses it for the
 model actor. Module output reaches the model labelled as untrusted data.
 

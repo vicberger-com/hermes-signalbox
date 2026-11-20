@@ -2,10 +2,10 @@
 
 A thin layer over ``Core.run``; the core never imports Hermes. What it registers:
 
-* **Model tools** (toolset ``switchyard``): ``switchyard_modules`` (list, show, activate, deactivate,
-  health), ``switchyard_audit`` (verify, tail), ``switchyard_host``. The model can **not** grant or revoke
-  capabilities, change modes or remove modules: a prompt-injected model could otherwise widen its own access.
-  Those stay on human-initiated paths.
+* **Model tools** (toolset ``switchyard``): ``switchyard_modules`` (list, show, activate, health, run),
+  ``switchyard_audit`` (verify, tail), ``switchyard_host``. The model can **not** grant or revoke
+  capabilities, change modes, stop or remove modules, or start a module the operator keeps ``manual`` (H1
+  C-6): a prompt-injected model could otherwise widen its own access. Those stay on human-initiated paths.
 * **Slash command** ``/switchyard <noun> <verb> [id] [key=value ...]``: every operation, for the user.
 * **CLI command** ``hermes switchyard ...``: the full ``switchyard`` CLI against the plugin's data directory.
 * **Idle task** ``switchyard-audit-verify`` (daily): re-verifies the audit chain.
@@ -72,7 +72,8 @@ MODULES_SCHEMA = _schema(
     "switchyard_modules",
     "Inspect and run Switchyard modules. Actions: list, show, activate, health, and run (a "
     "module's read-only action, named by 'name' with 'args'). Granting capabilities is a user decision made "
-    "with /switchyard, not available here.",
+    "with /switchyard, not available here. 'activate' starts only modules in auto mode whose required "
+    "capabilities the user has granted.",
     {
         "action": {"type": "string", "enum": list(MODEL_TOOL_ACTIONS)},
         "id": {"type": "string", "description": "module id (all actions except list)"},

@@ -117,6 +117,7 @@ def test_failed_modules_audit_chain_and_isolated_checks(
     core: Core, tmp_path: Path, clock: Clock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     grant(core, "router", "hermes.hooks")
+    grant(core, "router", "ui.panel")  # every required grant: the bad setting is what fails
     data = core.data_dir
     (data / "config.toml").write_text("[modules.router]\nmax_attempts = 0\n", encoding="utf-8")
     core.config = type(core.config)(**{**core.config.__dict__, "modules": {"router": {"max_attempts": 0}}})

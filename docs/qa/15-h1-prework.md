@@ -130,6 +130,9 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 | D-12 | Fixed | #80 | Per-OS skip allow-list enforced in CI; FileLock timeout test runs on every OS |
 | D-23 | Fixed | #80 | CI matrix 3.11 to 3.14; leaking SQLite connections in tests closed |
 | D-24 | Fixed | #80 | `tools/release_notes.py` feeds `--notes-file`; compare links in the CHANGELOG; post-tag changes under `[Unreleased]` |
+| A-5 | Fixed | WP5 | Activation refuses while required grants are missing, before importing module code; no `granted` state added, DESIGN and m0-core lifecycle text corrected |
+| C-6 | Fixed | WP5 | `module activate` refuses the model actor unless the mode is `auto` (`policy.denied`, reason `mode manual`) |
+| C-7 | Fixed | WP5 | Reproduced: an unregistered persona model went out uncharged. Delegated requests now treat unknown models as paid (steer to free, else counted pass-through); main session unchanged (M6 rule) |
 | D-25 | Fixed | #80 | `hatchling>=1.27,<2` in `[build-system]` |
 | D-2 | Fixed | WP4 | `find_runnable` tries each `PATH` candidate with `--version`; `[tools] git` override; `config show` names it; git tests run on this workstation |
 | D-15 | Fixed | WP4 | Test forces an absolute working-directory hit on every OS; shared `_outside_cwd` check also guards `program_candidates` |
@@ -140,6 +143,7 @@ Changes visible to existing users (complete this list; it becomes the `### Chang
 - A module cannot be activated while a required capability is not granted (WP5).
 - Commands that return a failed result exit with status 1; an unknown capability name exits with status 2 (WP2).
 - The classifier changes from Production/Stable to Beta (WP10).
+- For delegated subagents, a model the registry does not know is treated as paid (WP5, C-7).
 - A request with no recognised text key is routed as tier T5 (WP1). With `hard_stop`, the turn after a slow
   route that let a paid model through is blocked once (WP1).
 

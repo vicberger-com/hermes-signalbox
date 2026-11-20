@@ -296,6 +296,7 @@ def test_secret_canary_never_appears_in_any_output(
     seen: list[str] = []
     for capability in ("ui.panel", "secrets.read"):
         seen.append(ctx.commands["switchyard"](f"module grant probe capability={capability}"))
+    seen.append(ctx.commands["switchyard"]("module mode probe mode=auto"))  # H1 C-6: model starts auto only
     seen.append(ctx.tools["switchyard_modules"]({"action": "activate", "id": "probe"}))
     assert json.loads(seen[-1])["result"]["untrusted_data"]["status"] == "active"
     assert api.request("module", "panel", {"id": "probe", "panel": "probe.status"}) == {"length": len(CANARY)}

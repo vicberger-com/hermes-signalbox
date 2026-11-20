@@ -310,7 +310,8 @@ def test_settings_and_optional_fs(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         (data / "config.toml").write_text(f"[modules.meter]\n{bad}\n", encoding="utf-8")
         c = Core(data_dir=data, hosting=True)
         try:
-            c.run("module", "grant", {"id": "meter", "capability": "hermes.hooks"}, actor="t")
+            for cap in ("hermes.hooks", "ui.panel"):  # every required grant: the bad setting is what fails
+                c.run("module", "grant", {"id": "meter", "capability": cap}, actor="t")
             c.run("module", "activate", {"id": "meter"}, actor="t")
             assert c.run("module", "show", {"id": "meter"}, actor="t")["status"] == "failed", bad
         finally:
