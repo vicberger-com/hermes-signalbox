@@ -73,9 +73,7 @@ def test_contract_suite() -> None:
 
 
 def test_import_is_reviewed_and_never_enables(core: Core) -> None:
-    preview = act(
-        core, "import_preview", actor="hermes", source="models.dev"
-    )  # read-only: the model may preview
+    preview = act(core, "import_preview", actor="hermes")  # read-only: the model may preview
     assert (preview["added"], preview["changed"], preview["removed"]) == (3, 0, 0)
     assert act(core, "list")["count"] == 0  # nothing applied yet
     with pytest.raises(SwitchyardError, match="read-only"):
@@ -97,7 +95,7 @@ def test_import_is_reviewed_and_never_enables(core: Core) -> None:
 
 
 def test_reimport_diff_keeps_user_choices(core: Core, tmp_path: Path) -> None:
-    act(core, "import_apply", import_id=act(core, "import_preview", source="models.dev")["import_id"])
+    act(core, "import_apply", import_id=act(core, "import_preview")["import_id"])
     act(core, "set_state", id="openrouter/big/paid", state="manual")
     act(core, "set_priority", id="openrouter/big/paid", priority=5)
     act(core, "tag", id="openrouter/big/paid", tag="mine")
@@ -106,7 +104,7 @@ def test_reimport_diff_keeps_user_choices(core: Core, tmp_path: Path) -> None:
     del changed["ollama"]
     cache = tmp_path / "models_dev_cache.json"
     cache.write_text(json.dumps(changed), encoding="utf-8")
-    preview = act(core, "import_preview", source="models.dev")
+    preview = act(core, "import_preview")
     assert (preview["added"], preview["changed"], preview["removed"]) == (0, 1, 1)
     act(core, "import_apply", import_id=preview["import_id"])
     big = act(core, "show", id="openrouter/big/paid")
@@ -116,11 +114,16 @@ def test_reimport_diff_keeps_user_choices(core: Core, tmp_path: Path) -> None:
         and big["priority"] == 5
         and "mine" in big["tags"]
     )
-    assert "stale" in act(core, "show", id="ollama/qwen3")["tags"]
+    qwen = act(core, "show", id="ollama/qwen3")
+    assert "stale" in qwen["tags"] and qwen["user_tags"] == []
+    cache.write_text(json.dumps(MODELS_DEV), encoding="utf-8")  # listed again: stale clears
+    act(core, "import_apply", import_id=act(core, "import_preview")["import_id"])
+    assert "stale" not in act(core, "show", id="ollama/qwen3")["tags"]
+    assert "mine" in act(core, "show", id="openrouter/big/paid")["tags"]
 
 
 def test_filters_pools_bindings_and_resolve(core: Core) -> None:
-    act(core, "import_apply", import_id=act(core, "import_preview", source="models.dev")["import_id"])
+    act(core, "import_apply", import_id=act(core, "import_preview")["import_id"])
     assert [r["id"] for r in act(core, "list", cost_class="free")["resources"]] == [
         "openrouter/meta/llama-4:free"
     ]
@@ -165,8 +168,8 @@ def test_filters_pools_bindings_and_resolve(core: Core) -> None:
         ("pool_create", {"name": "Bad Name"}), ("bind", {"consumer": "anyone", "pool": "p"}),
         ("bind", {"consumer": "main", "pool": "missing"}), ("tag", {"id": "nope", "tag": "x"}),
         ("resolve", {"consumer": "x y"}), ("import_apply", {"import_id": "zz"}),
-        ("import_discard", {"import_id": "abcdefabcdef"}), ("import_preview", {"source": "web"}),
-        ("import_preview", {"source": "file"}), ("list", {"limit": 0}), ("list", {"tag": "BAD TAG"}),
+        ("import_discard", {"import_id": "abcdefabcdef"}), ("import_preview", {"path": "/etc/passwd"}),
+        ("import_file", {"path": "relative.json"}), ("list", {"limit": 0}), ("list", {"tag": "BAD TAG"}),
         ("pool_add", {"pool": "missing", "id": "x"}),
     ],
 )  # fmt: skip
@@ -180,14 +183,15 @@ def test_file_import_and_hostile_files(core: Core, tmp_path: Path) -> None:
     entry = {"id": "local/agent", "kind": "agent", "cost_class": "self-hosted", "tags": ["ok", "BAD"],
              "limits": {"context": -1}}  # fmt: skip
     good.write_text(json.dumps({"resources": [entry]}), encoding="utf-8")
-    preview = act(core, "import_preview", source="file", path=str(good))
+    preview = act(core, "import_file", path=str(good))
     act(core, "import_apply", import_id=preview["import_id"])
     row = act(core, "show", id="local/agent")
     assert (
         row["kind"] == "agent"
         and row["tags"] == ["ok"]
         and row["limits"] == {}
-        and row["source"] == "file:catalog.json"
+        and row["source"].startswith("file:")
+        and row["source"].endswith(":catalog.json")
     )
     hostile = (
         {"resources": "x"},
@@ -200,13 +204,22 @@ def test_file_import_and_hostile_files(core: Core, tmp_path: Path) -> None:
         path = tmp_path / f"bad{i}.json"
         path.write_text(json.dumps(bad), encoding="utf-8")
         with pytest.raises(SwitchyardError):
-            act(core, "import_preview", source="file", path=str(path))
-    discard = act(core, "import_preview", source="file", path=str(good))
+            act(core, "import_file", path=str(path))
+    discard = act(core, "import_file", path=str(good))
     assert act(core, "import_discard", import_id=discard["import_id"])["discarded"] is True
-    for _ in range(5):
-        act(core, "import_preview", source="file", path=str(good))
+    first = act(core, "import_file", path=str(good))["import_id"]
+    second = act(core, "import_file", path=str(good))["import_id"]  # same source replaces the pending preview
+    with pytest.raises(SwitchyardError, match="no pending import"):
+        act(core, "import_apply", import_id=first)
+    assert second != first
+    for i in range(4):
+        other = tmp_path / f"cat{i}.json"
+        other.write_text(good.read_text(encoding="utf-8"), encoding="utf-8")
+        act(core, "import_file", path=str(other))
+    extra = tmp_path / "cat9.json"
+    extra.write_text(good.read_text(encoding="utf-8"), encoding="utf-8")
     with pytest.raises(SwitchyardError, match="pending"):
-        act(core, "import_preview", source="file", path=str(good))
+        act(core, "import_file", path=str(extra))
     assert (
         len(
             core.run("module", "panel", {"id": "resources", "panel": "resources.status"}, actor="t")[
@@ -245,3 +258,27 @@ def test_bad_settings(tmp_path: Path) -> None:
                 c.run("module", "grant", {"id": "resources", "capability": cap}, actor="t")
             c.run("module", "activate", {"id": "resources"}, actor="t")
             assert c.run("module", "show", {"id": "resources"}, actor="t")["status"] == "failed"
+
+
+def test_model_cannot_choose_files(core: Core, tmp_path: Path) -> None:
+    secret = tmp_path / "private.json"
+    secret.write_text(json.dumps({"resources": [{"id": "x/y", "name": "private-name"}]}), encoding="utf-8")
+    with pytest.raises(SwitchyardError, match="read-only"):
+        act(core, "import_file", actor="hermes", path=str(secret))
+    preview = act(core, "import_preview", actor="hermes")
+    assert set(preview["sample_ids"]) == {"added", "changed", "removed"}
+    assert all(isinstance(i, str) for i in preview["sample_ids"]["added"])
+
+
+def test_tag_filter_treats_underscore_literally_and_tag_cap(core: Core, tmp_path: Path) -> None:
+    act(core, "import_apply", import_id=act(core, "import_preview")["import_id"])
+    act(core, "tag", id="ollama/qwen3", tag="axb")
+    assert act(core, "list", tag="a_b")["count"] == 0
+    act(core, "tag", id="ollama/qwen3", tag="a_b")
+    assert act(core, "list", tag="a_b")["count"] == 1
+    many = tmp_path / "many.json"
+    many.write_text(
+        json.dumps({"resources": [{"id": "t/x", "tags": [f"t{i}" for i in range(40)]}]}), encoding="utf-8"
+    )
+    with pytest.raises(SwitchyardError, match="tags"):
+        act(core, "import_file", path=str(many))

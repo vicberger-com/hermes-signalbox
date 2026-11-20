@@ -4,12 +4,22 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-19
+
+Phase M2: resource registry and pools.
+
 ### Added
 - `ctx.fs` file-read broker for `fs.read` (ADR-0003): absolute regular files only, size-capped, JSON depth
   limit, audited by path.
 - M2 bundled `resources` module: registry of models, endpoints, agents and tools; pools; consumer bindings;
   `resolve`; reviewed imports (preview, then human apply) from the Hermes models.dev cache and catalog files;
   imported resources start disabled.
+
+### Security
+- M2 security review (`src/switchyard/modules/resources/README.md`): `ctx.fs` refuses UNC and device paths on
+  Windows and checks the grant before any file-system call (a UNC path could leak NTLM credentials); the model
+  can no longer choose import paths; JSON is screened before parsing; one pending import per source; failed
+  reads are audited.
 
 ## [0.2.0] - 2026-11-19
 
