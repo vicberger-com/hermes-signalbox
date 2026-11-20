@@ -31,7 +31,7 @@ packages = ["src/switchyard"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "templates/module/tests"]
-pythonpath = ["tools", "templates/module"]
+pythonpath = ["tools", "templates/module", "tests"]
 addopts = "-q --strict-markers --import-mode=importlib --cov=switchyard --cov-branch --cov-report=term-missing:skip-covered"
 
 [tool.coverage.report]

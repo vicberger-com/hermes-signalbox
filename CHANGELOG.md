@@ -7,6 +7,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 ### Added
 - `switchyard` package (phase M0, part 1): data-directory resolution, core configuration (`config.toml`),
   manifest loader returning a typed `Manifest` with entry-path containment checks, error hierarchy.
+- Policy engine (default deny, manifest-bounded grants, `deny:<capability>` module policies, host and
+  secret-name allow-lists, audited decisions) and `ModuleContext` (declared streams and panels only,
+  namespaced events, capability-gated brokers, `close()` revokes the context).
 - Coverage gate (90%) on `src/switchyard`; mypy strict and bandit now include `src/`.
 
 ### Changed
