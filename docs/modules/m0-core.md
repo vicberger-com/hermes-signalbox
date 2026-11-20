@@ -62,16 +62,22 @@ class PolicyEngine:
     def revoke(self, module_id: str, capability: str, *, actor: str) -> None     # audited
     def granted(self, module_id: str) -> frozenset[str]
     def require(self, module_id: str, capability: str, **detail: str) -> None    # raises CapabilityDenied; denial audited
+    def require_host(self, module_id: str, host: str) -> None                    # net.outbound + net_hosts allow-list
+    def require_secret(self, module_id: str, name: str) -> None                  # secrets.read + secrets allow-list
 ```
 
 A grant is effective only if the capability is also in the manifest's `request` list; `contributes.policies` can
-only remove. Grants persist in `state.db`.
+only remove. M0 policy grammar: `deny:<capability>`; any other rule is a manifest error. Grants persist through a
+`GrantStore` (SQLite in `state.db`; `MemoryGrantStore` for tests). Decisions go to an `AuditSink`. Allowed checks
+are not audited; grants, revokes, refused grants and denials are.
 
 ### ModuleContext
 
-Built per module at activation. Members always present: `module_id`, `log(stream, event, **fields)`,
-`register_panel(panel_id, render)`, `emit(event)`, `subscribe(type, handler)`, `state` (namespaced store),
-`health_report(ok, detail)`. Capability-gated members raise `CapabilityDenied` when ungranted: `secrets`
+Built per module at activation from `ContextServices(policy, logs, panels, bus, brokers)`. Members always present:
+`module_id`, `log(stream, event, **fields)` (declared `log_streams` only), `register_panel(panel_id, render)`
+(declared `panels` only, needs `ui.panel`), `emit(type, data)` (type must be `<module_id>.<name>`, so a module
+cannot spoof core events), `subscribe(type, handler)`, `state` (namespaced store, added with the state store),
+`health_report(ok, detail)`. `close()` removes panels and subscriptions and makes every member raise. Capability-gated members raise `CapabilityDenied` when ungranted: `secrets`
 (`secrets.read`), `net` (`net.outbound`, host allow-list), `schedule` (`schedule`), `spawn` (`process.spawn`).
 The context never exposes the core, other modules or the policy engine.
 
