@@ -131,11 +131,17 @@ Release signature verification of T1 modules is deferred until a signing key exi
 
 ### T2 subprocess host
 
-Child started with `[sys.executable, "-I", "-m", "switchyard.host_t2_child", <module_dir>]`, cwd = module dir,
-environment reduced to an allow-list (`PATH`, `SYSTEMROOT`, `TEMP`, `TMP`, `HOME`/`USERPROFILE`, `LANG`) plus
-`SWITCHYARD_T2=1`. Framing: 4-byte big-endian length + UTF-8 JSON-RPC 2.0, max frame 1 MiB. Calls time out (default 10 s);
-an oversize frame, invalid JSON, or timeout kills the child and marks the module stopped. Context calls from the
-child are proxied and go through the same `PolicyEngine.require`.
+Child started with `[sys.executable, "-I", "-m", "switchyard.host_t2_child"]`, cwd = module dir, stderr discarded,
+environment reduced to an allow-list (`PATH`, `SYSTEMROOT`, `SYSTEMDRIVE`, `WINDIR`, `TEMP`, `TMP`, `TMPDIR`, `HOME`,
+`USERPROFILE`, `LANG`, `LC_ALL`) plus `SWITCHYARD_T2=1`; module `print()` goes to stderr. Framing (`switchyard.rpc`):
+4-byte big-endian length + UTF-8 JSON-RPC 2.0, max frame 1 MiB both ways. One symmetric `Channel` on both sides serves
+nested calls while waiting for its own response (depth 16). Parent calls time out (default 10 s); a timeout, protocol
+violation or child exit kills the child and fails the module closed (`T2Timeout`, `ProtocolError`). `T2Module` presents
+`activate/deactivate/health`, so `ModuleManager` drives T1 and T2 identically (`t2_factory`). Child `ctx.*` calls are
+replayed on the module's real `ModuleContext`; state operations are limited to `table`, `create_table`, `execute`,
+`kv_get`, `kv_set`; capability brokers are policy-checked and then refused in M0 (objects cannot cross the boundary).
+Errors cross with the exception class only; core errors (`CapabilityDenied`, `StateError`) also carry their message and
+are rebuilt as the same class in the child.
 
 ### Secrets broker (interface only in M0)
 

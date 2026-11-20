@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import textwrap
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -88,3 +89,64 @@ class RecordingAudit:
 @pytest.fixture
 def audit() -> RecordingAudit:
     return RecordingAudit()
+
+
+GOOD = """
+class Mod:
+    def __init__(self):
+        self.ctx = None
+    def activate(self, ctx):
+        self.ctx = ctx
+        ctx.log("{id}", "activated")
+    def deactivate(self):
+        self.ctx = None
+    def health(self):
+        return (self.ctx is not None, "ok")
+"""
+
+
+def write_module(
+    root: Path,
+    module_id: str,
+    code: str = GOOD,
+    *,
+    request: tuple[str, ...] = (),
+    activation: str = "manual",
+    idle: int = 0,
+    isolation: str = "in-process",
+    entry: str = "mod:Mod",
+    extra_files: dict[str, str] | None = None,
+) -> Path:
+    d = root / module_id
+    d.mkdir(parents=True)
+    module_file = entry.split(":")[0].replace(".", "/")
+    target = d / f"{module_file}.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(textwrap.dedent(code).replace("{id}", module_id), encoding="utf-8")
+    for name, text in (extra_files or {}).items():
+        (d / name).parent.mkdir(parents=True, exist_ok=True)
+        (d / name).write_text(textwrap.dedent(text), encoding="utf-8")
+    idle_line = f"idle_stop_seconds = {idle}\n" if idle else ""
+    (d / "module.toml").write_text(
+        f"""schema = 1
+[module]
+id = "{module_id}"
+name = "{module_id}"
+version = "0.1.0"
+license = "Apache-2.0"
+license_class = "open"
+summary = "test"
+requires_core = ">=0.1,<1"
+isolation = "{isolation}"
+entry = "{entry}"
+[capabilities]
+request = {json.dumps(list(request))}
+[contributes]
+panels = ["{module_id}.status"]
+log_streams = ["{module_id}"]
+[lifecycle]
+activation = "{activation}"
+{idle_line}""",
+        encoding="utf-8",
+    )
+    return d

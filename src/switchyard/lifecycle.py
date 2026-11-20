@@ -34,6 +34,7 @@ from switchyard.capabilities import CORE_ACTOR, AuditSink, PolicyEngine
 from switchyard.context import ContextServices, LogSink, ModuleContext, PanelRegistry
 from switchyard.errors import ManifestError, SwitchyardError
 from switchyard.events import EventBus
+from switchyard.host_t2 import T2Module
 from switchyard.manifest import MANIFEST_NAME, Manifest, load_manifest
 from switchyard.scheduler import Scheduler
 from switchyard.state import StateStore
@@ -78,6 +79,12 @@ class _Entry:
     last_used: float = 0.0
 
 
+def _error_name(exc: BaseException) -> str:
+    """Exception class name; for errors raised inside a T2 child, the child's original class."""
+    remote = getattr(exc, "remote_type", None)
+    return remote if isinstance(remote, str) else type(exc).__name__
+
+
 def _utc() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -96,6 +103,7 @@ class ModuleManager:
         store: StateStore | None = None,
         brokers: Mapping[str, object] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        t2_factory: Callable[[Manifest], Any] = T2Module,
     ) -> None:
         self._policy = policy
         self._audit = audit
@@ -104,6 +112,7 @@ class ModuleManager:
         self._store = store
         self._trusted = [p.resolve() for p in trusted_roots]
         self._clock = clock
+        self._t2_factory = t2_factory
         self._entries: dict[str, _Entry] = {}
         self._lock = threading.RLock()
         self._services = ContextServices(
@@ -253,10 +262,11 @@ class ModuleManager:
             if e.status is ModuleStatus.ACTIVE:
                 e.last_used = self._clock()
                 return
-            if e.manifest.isolation == "subprocess":
-                raise SwitchyardError("the subprocess host (T2) is not available in this build")
             try:
-                instance = self._instantiate(e.manifest)
+                if e.manifest.isolation == "subprocess":
+                    instance = self._t2_factory(e.manifest)
+                else:
+                    instance = self._instantiate(e.manifest)
             except Exception as exc:
                 self._fail(e, exc)
                 return
@@ -290,12 +300,12 @@ class ModuleManager:
                         actor=CORE_ACTOR,
                         action="module.deactivate_failed",
                         module=e.manifest.id,
-                        detail={"error": type(cleanup_exc).__name__},
+                        detail={"error": _error_name(cleanup_exc)},
                     )
             self._cleanup(e)
-            e.status, e.error = ModuleStatus.FAILED, type(exc).__name__
+            e.status, e.error = ModuleStatus.FAILED, _error_name(exc)
             self._persist(e)
-        self._record("module.failed", e.manifest.id, CORE_ACTOR, error=type(exc).__name__)
+        self._record("module.failed", e.manifest.id, CORE_ACTOR, error=_error_name(exc))
 
     def _on_handler_error(self, owner: str, exc: BaseException) -> None:
         with self._lock:
@@ -316,7 +326,7 @@ class ModuleManager:
                     actor=CORE_ACTOR,
                     action="module.deactivate_failed",
                     module=module_id,
-                    detail={"error": type(exc).__name__},
+                    detail={"error": _error_name(exc)},
                 )
             finally:
                 self._cleanup(e)
@@ -336,7 +346,7 @@ class ModuleManager:
             result = instance.health()
         except Exception as exc:
             self._fail(e, exc)
-            return False, f"health check raised {type(exc).__name__}"
+            return False, f"health check raised {_error_name(exc)}"
         return self._normalise_health(result)
 
     @staticmethod

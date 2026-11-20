@@ -19,6 +19,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Module lifecycle manager (T1): discovery with trust roots, per-module import packages, fail-closed
   activation and health, idle stop for auto modules, persistent modes, removal with or without data;
   JSON Lines log sink with redaction; panel registry; `ctx.state`.
+- T2 subprocess host: length-prefixed JSON-RPC over stdio (1 MiB frames), scrubbed child environment,
+  per-call timeouts, child killed on any protocol violation; module context proxied through the same
+  policy and confinement checks as in-process modules.
 - Coverage gate (90%) on `src/switchyard`; mypy strict and bandit now include `src/`.
 
 ### Changed
