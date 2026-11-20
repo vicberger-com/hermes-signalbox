@@ -5,8 +5,8 @@ module never writes text the model reads, and the core always keeps errors, exit
 
 Rules, in order, for output longer than ``min_chars``:
 
-1. Runs of identical (or identical-after-digits) consecutive lines keep their first line only, e.g. progress
-   lines and repeated downloads.
+1. Runs of identical consecutive lines keep their first line only. Progress-shaped lines (percentages,
+   ``n/m`` counters, transfer rates) also collapse when only their numbers differ.
 2. If more than ``max_lines`` remain, keep the first ``head`` and the last ``tail`` lines.
 
 Settings, ``[modules.trimmer]``::
@@ -28,6 +28,14 @@ from typing import Any
 from switchyard.errors import SwitchyardError
 
 _DIGITS = re.compile(r"\d+")
+# Only progress-shaped lines collapse when their numbers differ; other lines collapse only when identical,
+# so a changed value (``returned 1`` among ``returned 0``) is never hidden (M8 review).
+_PROGRESS = re.compile(
+    r"(?i)\d+(?:\.\d+)?\s*%|\b\d+\s*/\s*\d+\b|\beta\b|[kMG]i?B/s|\bit/s\b|^\s*\[\s*\d+/\d+\]"
+)
+# Results of file-writing tools carry Hermes's security-guidance warnings; Hermes keeps only the first
+# transform result, so these are never trimmed.
+WRITE_TOOLS = frozenset({"write_file", "patch", "edit_file", "apply_patch", "str_replace", "create_file"})
 _TOOL = re.compile(r"[A-Za-z0-9_.:-]{1,64}\Z")
 
 
@@ -43,7 +51,8 @@ def plan(lines: Sequence[str], max_lines: int, head: int, tail: int) -> list[lis
     kept: list[int] = []
     previous = None
     for i, line in enumerate(lines):
-        shape = _DIGITS.sub("#", line.strip())
+        stripped = line.strip()
+        shape = _DIGITS.sub("#", stripped) if _PROGRESS.search(stripped) else stripped
         if shape and shape == previous:
             continue
         previous = shape
@@ -78,6 +87,10 @@ class TrimmerModule:
             or not all(isinstance(t, str) and _TOOL.match(t) for t in tools)
         ):
             raise SwitchyardError("[modules.trimmer] tools must be a list of tool names")
+        if WRITE_TOOLS & set(tools):
+            raise SwitchyardError(
+                f"[modules.trimmer] file-writing tools cannot be trimmed: {sorted(WRITE_TOOLS & set(tools))}"
+            )
         self.settings = {
             "min_chars": _int_setting(cfg, "min_chars", 4000, 500, 1_000_000),
             "max_lines": _int_setting(cfg, "max_lines", 200, 20, 100_000),

@@ -15,44 +15,69 @@ from collections.abc import Iterable
 MAX_INPUT_CHARS = 4_000_000
 MAX_RANGES = 10_000
 MAX_KEEP_EXTRA = 2_000
+LONG_LINE = 4_000  # longer lines are always kept, never regex-scanned (M8 review: bounded work per line)
 
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
-# Lines that are never dropped (acceptance: errors, exit codes and paths).
+_EXT = "py|js|mjs|ts|tsx|jsx|go|rs|java|kt|c|cc|cpp|h|hpp|rb|php|cs|toml|yaml|yml|json|md|sh|ps1|sql|html|css"
+# Lines that are never dropped (acceptance: errors, exit codes and paths). Every branch is linear-time: no
+# nested or overlapping quantifiers (M8 review).
 MUST_KEEP = re.compile(
-    r"(?i)(\b(error|errors|exception|traceback|fatal|fail|failed|failure|failures|panic|denied|refused|"
-    r"warning|warn|critical|abort(ed)?|segmentation fault|killed|timeout|timed out|not found|"
-    r"exit (code|status)|returncode|return code)\b"
+    r"(?i)\b(?:error|errors|err!|exception|traceback|fatal|fail|failed|failure|failures|panic|denied|refused|"
+    r"warning|warn|critical|abort|aborted|segmentation fault|killed|timeout|timed out|not found|"
+    r"exit code|exit status|exited|returncode|return code)\b"
+    r"|\bERR!"
+    r"|^E: "  # apt
+    r"|\brc\s*[=:]\s*-?\d"
     r"|\b[EFW]\d{3,4}\b"  # linters: E501, F401, W605
-    r"|(?<![\w/.:])(?:[A-Za-z]:[\\/]|\.{0,2}/|~/)[^\s:\"']*[\\/]?[^\s:\"']+"  # absolute, ~/ and ./ paths
-    r"|\b[\w.-]+\.(py|js|ts|tsx|go|rs|java|c|cc|cpp|h|rb|php|cs|toml|yaml|yml|json|md|sh|ps1):\d+)"
+    r"|(?<![\w/.:~])(?:[A-Za-z]:[\\/]|\.{1,2}/|~/|/)[^\s:\"']+"  # absolute, ~/ and ./ paths (not URLs)
+    rf"|(?<![\w.-])[\w-]+(?:\.[\w-]+)*\.(?:{_EXT}):\d+",  # file:line
+    re.MULTILINE,
 )
 
 
+def _keep_line(line: str) -> bool:
+    return len(line) > LONG_LINE or MUST_KEEP.search(line) is not None
+
+
 def normalise(text: str) -> str:
-    """Strip ANSI sequences and collapse carriage-return redraws (keeps each line's final state)."""
+    """Strip ANSI sequences and collapse carriage-return redraws to their last non-empty state. A line whose
+    overwritten parts contained a must-keep match is kept whole (CRs shown as spaces), so collapsing never
+    hides an error (M8 review)."""
     text = _ANSI.sub("", text)
-    if "\r" in text:
-        text = "\n".join(
-            line.rsplit("\r", 1)[-1] if line.strip("\r") else ""
-            for line in text.replace("\r\n", "\n").split("\n")
-        )
-    return text
+    if "\r" not in text:
+        return text
+    out = []
+    for line in text.split("\n"):
+        if line.endswith("\r"):
+            line = line[:-1]
+        if "\r" not in line:
+            out.append(line)
+            continue
+        parts = [p for p in line.split("\r") if p]
+        if not parts:
+            out.append("")
+        elif any(_keep_line(p) for p in parts[:-1]):
+            out.append(" ".join(parts))
+        else:
+            out.append(parts[-1])
+    return "\n".join(out)
 
 
-def must_keep(lines: list[str]) -> set[int]:
+def must_keep(lines: list[str]) -> set[int] | None:
+    """Indices of lines that must survive; ``None`` when there are too many to promise that (fail open)."""
     out: set[int] = set()
     for i, line in enumerate(lines):
-        if MUST_KEEP.search(line):
+        if _keep_line(line):
             out.add(i)
-            if len(out) >= MAX_KEEP_EXTRA:
-                break
+            if len(out) > MAX_KEEP_EXTRA:
+                return None
     return out
 
 
 def rebuild(lines: list[str], ranges: Iterable[object]) -> str | None:
     """Keep ``ranges`` (``[start, end)`` line indices) plus must-keep lines. ``None`` when the ranges are
-    invalid or nothing would be removed."""
-    keep: set[int] = set()
+    invalid, too many lines must be kept, or nothing would be removed. Work is O(R log R + N)."""
+    spans: list[tuple[int, int]] = []
     for count, item in enumerate(ranges, 1):
         if count > MAX_RANGES:
             return None
@@ -63,14 +88,27 @@ def rebuild(lines: list[str], ranges: Iterable[object]) -> str | None:
         ):
             return None
         start, end = max(0, item[0]), min(len(lines), item[1])
-        keep.update(range(start, end))
-    keep |= must_keep(lines)
-    if len(keep) >= len(lines):
+        if start < end:
+            spans.append((start, end))
+    forced = must_keep(lines)
+    if forced is None:
+        return None
+    keep = bytearray(len(lines))
+    spans.sort()
+    reach = 0
+    for start, end in spans:  # coalesced: each line is marked at most once
+        start = max(start, reach)
+        if start < end:
+            keep[start:end] = b"\x01" * (end - start)
+            reach = end
+    for i in forced:
+        keep[i] = 1
+    if all(keep):
         return None
     out: list[str] = []
     gap = 0
     for i, line in enumerate(lines):
-        if i in keep:
+        if keep[i]:
             if gap:
                 out.append(f"[switchyard: {gap} lines omitted]")
                 gap = 0

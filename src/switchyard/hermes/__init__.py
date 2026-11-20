@@ -83,6 +83,23 @@ AUDIT_SCHEMA = _schema(
 HOST_SCHEMA = _schema("switchyard_host", "Show this host's Switchyard capacity profile.", {}, [])
 
 
+_TRIM_FIELDS = ("output", "content", "stdout", "stderr", "result", "text")
+
+
+class _DuplicateKeyError(ValueError):
+    pass
+
+
+def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Duplicate keys would be silently merged by re-encoding: leave such results alone (M8 review)."""
+    out: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in out:
+            raise _DuplicateKeyError("duplicate key")
+        out[key] = value
+    return out
+
+
 def _bool_or_str(value: str) -> bool | str:
     return {"true": True, "false": False}.get(value.lower(), value)
 
@@ -190,19 +207,23 @@ class HermesAdapter:
                 "task_id": kwargs.get("task_id"),
             }
             try:
-                data = json.loads(result)
+                data = json.loads(result, object_pairs_hook=_no_duplicate_keys)
+            except _DuplicateKeyError:
+                return None
             except ValueError:
                 return self.core.bridge.dispatch_transform("tool_result", result, meta)
             if not isinstance(data, dict):
                 return None
-            changed = False
-            for key in ("output", "content", "stdout", "stderr", "result", "text"):
-                value = data.get(key)
-                if isinstance(value, str):
-                    new = self.core.bridge.dispatch_transform("tool_result", value, meta)
-                    if new is not None:
-                        data[key], changed = new, True
-            return json.dumps(data, ensure_ascii=False) if changed else None
+            # one module call per tool result (M8 review): the longest eligible string field
+            fields = [k for k in _TRIM_FIELDS if isinstance(data.get(k), str)]
+            if not fields:
+                return None
+            key = max(fields, key=lambda k: len(data[k]))
+            new = self.core.bridge.dispatch_transform("tool_result", data[key], meta)
+            if new is None:
+                return None
+            data[key] = new
+            return json.dumps(data, ensure_ascii=False)
         except Exception:
             return None
 
