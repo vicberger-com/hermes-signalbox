@@ -169,7 +169,10 @@ config. `capacity_metrics(data_dir)` gives `disk.free_ratio` and (where known) `
 Token: `secrets.token_urlsafe(32)` written to `api.token` with user-only permissions, rotated per start.
 Request checks, in order: method `POST` (or `GET /v1/health`); `Host` is `127.0.0.1:<port>` or `localhost:<port>`;
 any `Origin` header (including `null`) is refused, since the only client is the CLI; `Authorization: Bearer` compared with
-`hmac.compare_digest`; `Content-Type: application/json`; body <= 64 KiB. Routes `POST /v1/<noun>/<verb>` map 1:1 to CLI
+`hmac.compare_digest`; `Content-Type: application/json`; no `Transfer-Encoding`; body <= 64 KiB, checked before
+reading. `GET /v1/health` needs no token. Status codes: 400 usage, 401 token, 403 Host/Origin/denied, 404 route,
+409 operation error, 411/413/415 framing, 500 unexpected (class name only). Socket timeout 10 s; request lines are
+never logged; `Server: switchyard`. Routes `POST /v1/<noun>/<verb>` map 1:1 to CLI
 operations. Responses never echo request text into headers; a header writer rejects CR/LF. Client reads are
 capped at 1 MiB.
 
@@ -188,8 +191,11 @@ activate|deactivate|health|panel|remove`, `audit verify|tail`, `host profile`, `
 
 ### CLI
 
-`switchyard [--data-dir D] [--json] <noun> <verb> [args]`. Nouns: `module`, `audit`, `host`, `api`, `config`.
-Exit 0 success, 1 operation error, 2 usage error, 3 denied.
+`switchyard [--data-dir D] [--json] <noun> <verb> [id] [--param value]`, generated from the operations table, plus
+`switchyard api serve [--port N]` and `switchyard version`. With a daemon running for the data dir every operation goes
+through the API; otherwise `offline` operations run directly and live ones (activate, deactivate, health, panel) ask for
+the daemon. `api serve` runs `start_auto()`, then `Core.tick()` every second until interrupted. Exit 0 success,
+1 operation error, 2 usage error, 3 denied.
 
 ### Hermes adapter
 
