@@ -10,6 +10,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Policy engine (default deny, manifest-bounded grants, `deny:<capability>` module policies, host and
   secret-name allow-lists, audited decisions) and `ModuleContext` (declared streams and panels only,
   namespaced events, capability-gated brokers, `close()` revokes the context).
+- State store (SQLite WAL, transactional numbered migrations with backup, persistent grants, module tables
+  confined by the SQLite authorizer) and hash-chained audit log (fsync per record, rotation, head anchor
+  for truncation detection, redaction, fail-closed on a torn last record).
 - Coverage gate (90%) on `src/switchyard`; mypy strict and bandit now include `src/`.
 
 ### Changed
@@ -17,6 +20,7 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   `tools/validate_manifest.py` is now a thin CLI over `switchyard.manifest`.
 
 ### Fixed
+- Module ids containing `__` are rejected; they could have collided with another module's state tables.
 - Schema `pattern` checks used Python's `$`, which accepts a trailing newline; they now follow JSON Schema
   semantics (a module id such as `"example\n"` is rejected).
 

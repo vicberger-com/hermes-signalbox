@@ -11,6 +11,7 @@ Cross-field rules enforced in addition to the schema:
 * ``license_class = "proprietary-connector"`` requires ``isolation = "subprocess"``.
 * ``update.source = "git"`` requires ``update.url`` and a full commit SHA in ``update.ref``.
 * ``lifecycle.idle_stop_seconds`` above zero requires ``activation = "auto"``.
+* ``module.id`` may not contain ``__`` (it would collide with state-store table prefixes ``m_<id>__``).
 
 Core checks in ``load_manifest``: file size limit, no empty dotted parts in ``entry``, and the entry module
 file must exist inside the module directory after resolving symlinks.
@@ -124,6 +125,8 @@ def cross_field(doc: Mapping[str, Any]) -> list[str]:
         errors.append("$.update: source = 'git' requires 'url' and a full commit SHA in 'ref'")
     if life.get("idle_stop_seconds", 0) and life.get("activation") != "auto":
         errors.append("$.lifecycle: idle_stop_seconds > 0 requires activation = 'auto'")
+    if "__" in str(module.get("id", "")):
+        errors.append("$.module.id: must not contain '__'")
     return errors
 
 

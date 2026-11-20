@@ -118,3 +118,10 @@ def test_module_id_with_trailing_newline_is_rejected(tmp_path: Path) -> None:
     _rewrite(d, 'id = "example"', 'id = "example\\n"')
     with pytest.raises(ManifestError, match="id"):
         load_manifest(d)
+
+
+def test_module_id_with_double_underscore_is_rejected(tmp_path: Path) -> None:
+    d = _copy_template(tmp_path)
+    _rewrite(d, 'id = "example"', 'id = "ex__ample"')
+    with pytest.raises(ManifestError, match="__"):
+        load_manifest(d)
