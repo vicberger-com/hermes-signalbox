@@ -7,6 +7,7 @@ never copies a matched secret: gitleaks runs with ``--redact`` and only its rule
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -33,6 +34,14 @@ def _sev(value: object, default: str = "medium") -> str:
     return text if text in SEVERITIES else default
 
 
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def clean(text: object, limit: int) -> str:
+    """One line, no control characters (repository text reaches operator views), capped."""
+    return " ".join(_CONTROL.sub(" ", str(text or "")).split())[:limit]
+
+
 def _f(rule: object, severity: str, path: object, line: object, title: object) -> dict[str, Any]:
     return {
         "rule": str(rule or "")[:120],
@@ -54,9 +63,7 @@ def _json(text: str) -> Any:
 
 def parse_gitleaks(out: str) -> list[dict[str, Any]]:
     data = _json(out)
-    if data is None:
-        return []
-    if not isinstance(data, list):
+    if not isinstance(data, list):  # gitleaks prints [] when clean; no output means it failed (M10 review)
         raise ParseError("gitleaks: expected a list")
     return [
         _f(d.get("RuleID"), "high", d.get("File"), d.get("StartLine"), d.get("Description"))
@@ -107,9 +114,7 @@ def parse_pip_audit(out: str) -> list[dict[str, Any]]:
 
 def parse_osv(out: str) -> list[dict[str, Any]]:
     data = _json(out)
-    if data is None:
-        return []
-    if not isinstance(data, dict):
+    if not isinstance(data, dict):  # no output means it failed (M10 review)
         raise ParseError("osv-scanner: expected an object")
     found = []
     for result in data.get("results") or []:
@@ -130,20 +135,25 @@ def parse_osv(out: str) -> list[dict[str, Any]]:
 
 
 def parse_semgrep(out: str) -> list[dict[str, Any]]:
+    """The rule id is the title: semgrep messages can interpolate matched source, including secrets
+    (M10 review)."""
     data = _json(out)
     if not isinstance(data, dict) or not isinstance(data.get("results"), list):
         raise ParseError("semgrep: expected results")
-    return [
-        _f(
-            r.get("check_id"),
-            _sev((r.get("extra") or {}).get("severity")),
-            r.get("path"),
-            (r.get("start") or {}).get("line"),
-            (r.get("extra") or {}).get("message"),
-        )
-        for r in data["results"]
-        if isinstance(r, dict)
-    ]
+    found = []
+    for r in data["results"]:
+        if isinstance(r, dict):
+            rule = r.get("check_id")
+            found.append(
+                _f(
+                    rule,
+                    _sev((r.get("extra") or {}).get("severity")),
+                    r.get("path"),
+                    (r.get("start") or {}).get("line"),
+                    str(rule or "").rsplit(".", 1)[-1],
+                )
+            )
+    return found
 
 
 def parse_trivy(out: str) -> list[dict[str, Any]]:

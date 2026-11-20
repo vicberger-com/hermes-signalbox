@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -99,7 +100,10 @@ def test_parsers_on_recorded_outputs() -> None:
     assert parsers.parse_semgrep((FIX / "semgrep.json").read_text("utf-8"))[0]["severity"] == "high"
     trivy = parsers.parse_trivy((FIX / "trivy.json").read_text("utf-8"))
     assert {f["severity"] for f in trivy} == {"high", "critical"} and "AKIA" not in str(trivy)
-    assert parsers.parse_gitleaks("") == [] and parsers.parse_osv("") == []
+    assert parsers.parse_gitleaks("[]") == [] and parsers.parse_osv('{"results": []}') == []
+    for parse in (parsers.parse_gitleaks, parsers.parse_osv):  # no output is a failure, not an all-clear
+        with pytest.raises(parsers.ParseError):
+            parse("")
     for parse in (parsers.parse_bandit, parsers.parse_semgrep, parsers.parse_trivy, parsers.parse_pip_audit):
         with pytest.raises(parsers.ParseError):
             parse("not json")
@@ -189,3 +193,79 @@ def test_settings_and_permissions(tmp_path: Path, fakes: Path) -> None:
         assert "scanner.scan" in c.scheduler.ids()
     finally:
         c.close()
+
+
+def test_review_regressions(core: Core, fakes: Path, tmp_path: Path) -> None:
+    import threading
+
+    # gitleaks exits 1 on fatal errors too: no JSON means failure, not an all-clear
+    sc(core, "run_now")
+    fake_tool(fakes, "gitleaks", None, code=1, text="")
+    sc(core, "run_now")
+    rules = {f["rule"] for f in sc(core, "findings", limit=1000)["findings"]}
+    assert "gitleaks:failed" in rules and "aws-access-token" in rules  # earlier findings stay open
+    # non-UTF-8 output decodes leniently; too many findings is a failure that resolves nothing
+    many = tmp_path / "many.json"
+    many.write_text(
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "check_id": f"r{i}",
+                        "path": "a.py",
+                        "start": {"line": i},
+                        "extra": {"severity": "INFO", "message": "secret=hunter2"},
+                    }
+                    for i in range(2500)
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_tool(fakes, "semgrep", many, code=1)
+    sc(core, "run_now")
+    failed = {f["rule"]: f for f in sc(core, "findings", limit=1000)["findings"] if f["scanner"] == "scanner"}
+    assert "truncated" in failed["semgrep:failed"]["title"]
+    assert [
+        f for f in sc(core, "findings", limit=1000)["findings"] if f["scanner"] == "semgrep"
+    ]  # not resolved
+    # semgrep titles never carry the message (it can interpolate matched values)
+    assert all("hunter2" not in str(f) for f in sc(core, "findings", state="all", limit=1000)["findings"])
+    # scanners removed from config are resolved, not left open forever
+    inst = core.manager._entry("scanner").instance
+    inst.settings["scanners"] = ["bandit"]
+    sc(core, "run_now")
+    assert not [
+        f for f in sc(core, "findings", limit=1000)["findings"] if f["scanner"] in ("semgrep", "trivy")
+    ]
+    # one scan at a time
+    inst._scanning.acquire()
+    try:
+        assert sc(core, "run_now") == {"skipped": "a scan is already running"}
+    finally:
+        inst._scanning.release()
+    t = threading.Thread(target=inst.scan_all)
+    t.start()
+    t.join(60)
+    # control characters from repository text never reach announcements
+    assert parsers.clean("pkg\x1b[31m\nname", 50) == "pkg [31m name"
+
+
+def test_process_broker_bounds(core: Core, tmp_path: Path, fakes: Path) -> None:
+    import time
+
+    script = tmp_path / "slow.py"
+    script.write_text(
+        "import subprocess, sys, time\n"
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
+        "sys.stdout.buffer.write(b'caf\\xe9 ' + b'x' * 5000)\nsys.stdout.flush()\n"
+        "time.sleep(float(sys.argv[1]))\n",
+        encoding="utf-8",
+    )
+    spawn = core.manager._entry("scanner").instance.ctx.spawn
+    started = time.monotonic()
+    with pytest.raises(SwitchyardError, match="timed out"):
+        spawn.run([sys.executable, str(script), "30"], timeout=1)
+    assert time.monotonic() - started < 15  # a grandchild holding output no longer blocks the timeout
+    done = spawn.run([sys.executable, str(script), "0"], timeout=20, max_output=100)
+    assert done.stdout.startswith("caf\ufffd") and len(done.stdout) == 100 and done.truncated

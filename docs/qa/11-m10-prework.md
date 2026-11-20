@@ -48,7 +48,7 @@ The skills audit is covered by adding Hermes skill directories to `targets`.
 | Threat | Control | Test |
 |---|---|---|
 | A scanner failure goes unnoticed | Missing program, timeout, unexpected exit and unparsable output become `scanner:<name>:failed` findings and are announced | `test_scanner_failure_is_reported_never_silent` |
-| Found secrets copied into the store, dashboard or model | gitleaks `--redact`; parsers keep rule and location, never matches | `test_parsers_on_recorded_outputs` |
+| Found secrets copied into the store, dashboard or model | gitleaks `--redact`; parsers keep rule and location, never matches; semgrep rule ids only (messages can quote source) | `test_parsers_on_recorded_outputs` |
 | Option injection through config | `targets` must be absolute paths; `semgrep_config` may not start with `-`; argv lists, no shell | `test_settings_and_permissions` |
 | Model reads finding details or triggers scans | `findings` and `run_now` are human-only; `report` holds counts | same |
 | Huge scanner output | 20 MB output cap, 2000 findings per run, bounded fields | parsers |
@@ -63,3 +63,7 @@ The skills audit is covered by adding Hermes skill directories to `targets`.
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| `subprocess.run(timeout=...)` bounds a child | On Windows it waits for any grandchild holding the pipe; use files and kill the tree | Process broker, every external tool |
+| A known exit code means a known outcome | gitleaks exits 1 for leaks and for fatal errors; require the expected output shape too | Every external tool adapter |
+| Capping results is harmless | A capped result must not be treated as complete (it resolved real findings) | Any bounded import or scan |
+

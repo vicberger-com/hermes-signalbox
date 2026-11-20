@@ -4,10 +4,20 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-20
+
+Phase M10: security testing connectors.
+
 ### Added
 - Bundled `scanner` module (M10): gitleaks, bandit, pip-audit, osv-scanner, semgrep and trivy as external processes
   on a schedule or on demand; normalised, de-duplicated findings; failures reported as findings; alerts via
   `notify`.
+
+### Security
+- M10 security review (`src/switchyard/modules/scanner/README.md`): the process broker writes output to files,
+  caps it, decodes leniently and kills the whole process tree on timeout; empty output, oversize output and too
+  many findings are failures; semgrep messages are not stored; one scan at a time; skipped scheduled runs are
+  audited.
 
 ## [0.10.0] - 2026-11-20
 

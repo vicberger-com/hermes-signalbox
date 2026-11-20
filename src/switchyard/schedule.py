@@ -41,8 +41,13 @@ class ScheduleBroker:
         stall the tick, and a job still running from last time is skipped rather than stacked."""
         with self._lock:
             previous = self._inflight.get(trigger_id)
-            if previous is not None and not previous.done():
-                return
+            skipped = previous is not None and not previous.done()
+        if skipped:  # a job still running from last time is visible, not silent (M10 review)
+            self._audit.append(
+                actor=CORE_ACTOR, action="module.job_skipped", module=module_id, detail={"job": trigger_id}
+            )
+            return
+        with self._lock:
             pool = self._pools.get(module_id)
             if pool is None:
                 pool = concurrent.futures.ThreadPoolExecutor(
