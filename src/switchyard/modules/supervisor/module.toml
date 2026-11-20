@@ -1,0 +1,27 @@
+# Bundled module M6: supervisor. Spec: README.md in this directory.
+schema = 1
+
+[module]
+id = "supervisor"
+name = "Supervisor"
+version = "0.7.0"
+license = "Apache-2.0"
+license_class = "open"
+summary = "Scheduled deterministic checks (failed modules, audit chain, quotas, ruled-out models); de-duplicated findings and alerts; no LLM calls."
+requires_core = ">=0.1,<1"
+isolation = "in-process"
+entry = "supervisor_module:SupervisorModule"
+
+[capabilities]
+request = ["schedule", "core.read", "ui.panel"]
+
+[contributes]
+commands = ["report", "findings", "ack", "run_now"]
+panels = ["supervisor.status"]
+log_streams = ["supervisor"]
+
+[lifecycle]
+activation = "auto"
+
+[update]
+source = "bundled"

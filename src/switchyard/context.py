@@ -237,6 +237,12 @@ class ModuleContext:
             raise SwitchyardError(f"unsupported Hermes hook {name!r}; supported: {sorted(OBSERVER_HOOKS)}")
         self._bridge_check(name).add_hook(self.module_id, name, fn)
 
+    def hermes_gate(self, fn: Callable[[dict[str, Any]], str | None]) -> None:
+        """Register a turn gate (ADR-0006): ``fn(metadata) -> reason | None`` runs before each Hermes turn; a
+        reason blocks the turn with that message. Needs ``hermes.hooks`` and ``gate:pre_llm_call`` declared in
+        ``contributes.hooks``."""
+        self._bridge_check("gate:pre_llm_call").add_gate(self.module_id, fn)
+
     def hermes_middleware(self, kind: str, fn: Callable[[dict[str, Any], dict[str, Any]], Any]) -> None:
         """Register Hermes middleware: ``fn(request, context) -> new request | None``.
 
@@ -324,6 +330,11 @@ class ModuleContext:
     def fs(self) -> object:
         """File-read facade (ADR-0003). Needs ``fs.read``."""
         return self._broker("fs.read")
+
+    @property
+    def core(self) -> object:
+        """Read-only view of module states and the audit chain (ADR-0006). Needs ``core.read``."""
+        return self._broker("core.read")
 
     @property
     def hermes_config(self) -> object:

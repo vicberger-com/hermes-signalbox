@@ -140,12 +140,18 @@ class HermesAdapter:
             self._thread.start()
 
     def _forwarder(self, name: str) -> Any:
-        def forward(**kwargs: Any) -> None:
+        def forward(**kwargs: Any) -> Any:
             try:
-                if self.core.hosting:
-                    self.core.bridge.dispatch_hook(name, kwargs)
+                if not self.core.hosting:
+                    return None
+                self.core.bridge.dispatch_hook(name, kwargs)
+                if name == "pre_llm_call":  # ADR-0006: a module gate may block the turn
+                    reason = self.core.bridge.dispatch_gate(kwargs)
+                    if reason:
+                        return {"action": "block", "message": reason}
             except Exception as exc:  # never break a Hermes turn
                 del exc
+            return None
 
         forward.__name__ = f"switchyard_{name}"
         return forward

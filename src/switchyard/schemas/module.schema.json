@@ -37,7 +37,7 @@
             "enum": [
               "fs.read", "fs.write", "net.outbound", "secrets.read", "process.spawn",
               "hermes.hooks", "hermes.tools", "hermes.config.write",
-              "llm.free", "llm.paid", "ui.panel", "schedule", "notify"
+              "llm.free", "llm.paid", "ui.panel", "schedule", "notify", "core.read"
             ]
           }
         },

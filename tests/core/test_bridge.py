@@ -246,3 +246,28 @@ def test_observer_payloads_hold_no_text() -> None:
     assert later == {"status_code": 429, "base_url": "https://api.example.com:8443"}
     assert metadata_only({"base_url": "not a url"}) == {"base_url": ""}
     assert metadata_only({"base_url": "http://[bad"}) == {}
+
+
+def test_gates_block_with_a_prefixed_reason_and_fail_open() -> None:
+    from switchyard.bridge import HermesBridge
+
+    records: list[dict[str, Any]] = []
+
+    class Sink:
+        def append(self, **kw: Any) -> None:
+            records.append(kw)
+
+    bridge = HermesBridge(Sink(), timeout=0.5)  # type: ignore[arg-type]
+    bridge.add_gate("broken", lambda meta: 1 / 0)
+    bridge.add_gate("quiet", lambda meta: None)
+    assert bridge.dispatch_gate({"turn_id": "t"}) is None  # a failing gate does not block
+    bridge.add_gate("stopper", lambda meta: f"over   quota\n{meta.get('user_message', 'no text')}")
+    assert (
+        bridge.dispatch_gate({"turn_id": "t", "user_message": "secret"})
+        == "[switchyard/stopper] over quota no text"
+    )
+    assert records[-1]["action"] == "module.gate_blocked"
+    assert bridge.registered("stopper") == ["gate:pre_llm_call"]
+    bridge.remove_all("stopper")
+    assert bridge.dispatch_gate({}) is None
+    bridge.close()

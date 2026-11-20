@@ -262,3 +262,15 @@ def test_config_port_uses_the_public_hermes_api(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setitem(sys.modules, "agent", types.ModuleType("agent"))
     monkeypatch.setitem(sys.modules, "agent.skill_utils", skill_utils)
     assert port.essential() == frozenset({"hermes-agent", "other"})
+
+
+def test_pre_llm_call_gate_blocks_the_turn(ctx: FakeCtx, monkeypatch: pytest.MonkeyPatch) -> None:
+    register(ctx)
+    bridge = adapter_mod.current().core.bridge
+    assert ctx.hooks["pre_llm_call"](user_message="hi") is None
+    monkeypatch.setattr(bridge, "dispatch_gate", lambda kw: "[switchyard/router] stop")
+    assert ctx.hooks["pre_llm_call"](user_message="hi") == {
+        "action": "block",
+        "message": "[switchyard/router] stop",
+    }
+    assert ctx.hooks["post_llm_call"](user_message="hi") is None  # only pre_llm_call can block

@@ -143,6 +143,10 @@ class HermesBridge:
         with self._lock:
             self._middleware.setdefault(kind, []).append((module_id, fn))
 
+    def add_gate(self, module_id: str, fn: Callable[..., Any]) -> None:
+        with self._lock:
+            self._middleware.setdefault("gate:pre_llm_call", []).append((module_id, fn))
+
     def remove_all(self, module_id: str) -> None:
         with self._lock:
             for table in (self._hooks, self._middleware):
@@ -153,7 +157,7 @@ class HermesBridge:
         with self._lock:
             hooks = [n for n, entries in self._hooks.items() if any(m == module_id for m, _ in entries)]
             mids = [
-                f"middleware:{k}"
+                k if k.startswith("gate:") else f"middleware:{k}"
                 for k, entries in self._middleware.items()
                 if any(m == module_id for m, _ in entries)
             ]
@@ -190,6 +194,21 @@ class HermesBridge:
             entries = list(self._hooks.get(name, ()))
         for module_id, fn in entries:
             self._run(module_id, name, fn, metadata_only(kwargs))
+
+    def dispatch_gate(self, kwargs: Mapping[str, Any]) -> str | None:
+        """Run ``pre_llm_call`` gates (ADR-0006) on metadata. The first gate that returns a non-empty reason
+        blocks the turn; the result is ``"[switchyard/<module>] <reason>"``. A gate that fails or times out
+        does not block (fail open, audited): a bug must not stop every turn."""
+        with self._lock:
+            entries = list(self._middleware.get("gate:pre_llm_call", ()))
+        for module_id, fn in entries:
+            ok, reason = self._run(module_id, "gate:pre_llm_call", fn, metadata_only(kwargs))
+            if ok and isinstance(reason, str) and reason.strip():
+                text = " ".join(reason.split())[:300]
+                self._audit.append(actor=CORE_ACTOR, action="module.gate_blocked", module=module_id,
+                                   detail={"turn": str(kwargs.get("turn_id", ""))[:64]})  # fmt: skip
+                return f"[switchyard/{module_id}] {text}"
+        return None
 
     def dispatch_llm_request(
         self, request: Mapping[str, Any], context: Mapping[str, Any]

@@ -17,7 +17,7 @@ optional = ["llm.free", "llm.paid"]
 request = ["hermes.hooks", "llm.free", "llm.paid", "ui.panel"]
 
 [contributes]
-hooks = ["middleware:llm_request", "api_request_error"]
+hooks = ["middleware:llm_request", "api_request_error", "gate:pre_llm_call"]
 commands = ["status", "explain", "pin", "auto", "rule_add", "rule_remove", "budget", "cooldown_clear"]
 panels = ["router.status"]
 log_streams = ["router"]
