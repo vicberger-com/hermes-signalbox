@@ -158,8 +158,10 @@ unless `allow_test_backend=True`).
 ### Host profiler
 
 `profile() -> HostProfile(cpu_count, ram_bytes, disk_free_bytes, gpu: str | None, net_class, profile_name)`.
-RAM: Windows `GlobalMemoryStatusEx` via `ctypes`, Linux `/proc/meminfo`, macOS `sysctl hw.memsize`. Profile:
-`tiny` < 4 GiB RAM or < 2 CPUs; `laptop` < 16 GiB; `workstation` < 64 GiB; else `server`. Overridable in config.
+RAM: Windows `GlobalMemoryStatusEx`, Linux `/proc/meminfo`, macOS `sysctlbyname("hw.memsize")`, all via `ctypes`
+or files (no subprocess, no network; `net_class` is `unknown`). GPU: best effort (`/proc/driver/nvidia/version`).
+Profile: `tiny` < 4 GiB RAM or < 2 CPUs; `laptop` < 16 GiB; `workstation` < 64 GiB; else `server`. Overridable in
+config. `capacity_metrics(data_dir)` gives `disk.free_ratio` and (where known) `ram.free_ratio` for capacity triggers.
 
 ### Control API
 
