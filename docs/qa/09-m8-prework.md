@@ -51,11 +51,16 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 ## 4. Acceptance tests (written before code)
 
-- [x] Reduction measured on recorded fixtures (`tests/fixtures/output/`: pip 43%, pytest 97%, npm 99.6%, cargo
-  99.2% of characters saved with default settings; thresholds asserted).
+- [x] Reduction measured on recorded fixtures (`tests/fixtures/output/`, default settings, after the review
+  fixes: cargo 99.2%, npm 82.8%, pytest 76.5%, pip 43.1% of characters saved; thresholds asserted).
 - [x] Errors, exit codes and paths are never dropped.
 
 ## 5. Retro (fill in after merge)
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| Regex on tool output is cheap | Quadratic backtracking on one long line can stall a tool call; core-side work needs its own bounds, not just module timeouts | Every core scan of untrusted text |
+| Normalising is harmless | Collapsing CR redraws can delete an error; changes must be justified by an actual trim | Output transforms |
+| "Similar" lines are noise | Lines differing only in a number can carry the one failure; collapse only proven progress shapes | Trimming heuristics |
+| Hooks compose | Hermes keeps the first `transform_tool_result` string; stay out of tools other plugins annotate | Any first-wins Hermes hook |
+

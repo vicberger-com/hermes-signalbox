@@ -19,7 +19,7 @@ pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "trimmer"
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "output"
 # fixture -> minimum reduction (percent of characters) the default settings must reach
-EXPECTED = {"pip_install.txt": 40, "pytest_fail.txt": 90, "npm_install.txt": 95, "cargo_build.txt": 95}
+EXPECTED = {"pip_install.txt": 40, "pytest_fail.txt": 70, "npm_install.txt": 75, "cargo_build.txt": 95}
 
 
 def tr(core: Core, action: str, actor: str = "t", **args: Any) -> Any:
@@ -145,3 +145,84 @@ def test_actions_settings_and_capability(core: Core, tmp_path: Path) -> None:
             c.close()
     out = core.run("module", "revoke", {"id": "trimmer", "capability": "hermes.output"}, actor="t")
     assert out["deactivated"] is True and core.bridge.registered("trimmer") == []
+
+
+def test_review_regressions(core: Core) -> None:
+    import time
+
+    # linear-time scanning on hostile single lines
+    for line in ("a." * 500_000, "window.document.body.style." * 40_000, "/" + "a/" * 400_000):
+        started = time.perf_counter()
+        trim.must_keep([line, line[:3000]])
+        trim.normalise(line + "\r" + line[:100])
+        assert time.perf_counter() - started < 0.5
+    # carriage returns never hide an error
+    assert "FATAL: disk full" in trim.normalise("FATAL: disk full\r\r\nok\n")
+    assert "Traceback: boom" in trim.normalise("Traceback: boom\rdone\n")
+    assert trim.normalise("10%\r50%\r100%\n") == "100%\n"
+    # normalisation alone does not change output
+    assert core.bridge.dispatch_transform("terminal_output", "\x1b[31mshort\x1b[0m", {}) is None
+    # huge span answers are cheap
+    lines = [f"l{i}" for i in range(100_000)]
+    started = time.perf_counter()
+    assert trim.rebuild(lines, [[0, 10**9]] * 10_000) is None  # was quadratic: minutes before the fix
+    assert time.perf_counter() - started < 5
+    # too many must-keep lines: fail open rather than drop any
+    assert trim.rebuild([f"error line {i}" for i in range(2500)] + ["x"] * 10, []) is None
+    # vocabulary
+    for line in (
+        "Command exited with 2",
+        "npm ERR! code ELIFECYCLE",
+        "E: Unable to fetch some archives",
+        "rc=3",
+    ):
+        assert trim.MUST_KEEP.search(line), line
+    assert not trim.MUST_KEEP.search("GET https://registry.npmjs.org/pkg-1 200")
+
+
+def test_only_progress_lines_collapse_by_shape() -> None:
+    from switchyard.modules.trimmer.trimmer_module import plan  # type: ignore[import-not-found,unused-ignore]
+
+    lines = ["Step 1 returned 0", "Step 2 returned 1", "Step 3 returned 0", "done"]
+    assert plan(lines, 200, 60, 80) == [[0, 4]]
+    progress = ["Downloading 10%", "Downloading 55%", "Downloading 100%", "ok"]
+    assert plan(progress, 200, 60, 80) == [[0, 1], [3, 4]]
+
+
+def test_write_tools_and_duplicate_keys(core: Core, tmp_path: Path) -> None:
+    from switchyard.hermes import HermesAdapter
+
+    c = start(tmp_path / "w", 'tools = ["write_file"]')
+    try:
+        assert c.run("module", "show", {"id": "trimmer"}, actor="t")["status"] == "failed"
+    finally:
+        c.close()
+    adapter = HermesAdapter.__new__(HermesAdapter)
+    adapter.core = core
+    long_text = "\n".join(f"fetched {i}" for i in range(3000))
+    dup = '{"output": "ok", "output": ' + json.dumps(long_text) + "}"
+    assert adapter._transform_tool(tool_name="web_extract", result=dup) is None
+    both = json.dumps({"stdout": long_text, "stderr": long_text[:5000]})
+    out = json.loads(adapter._transform_tool(tool_name="web_extract", result=both) or "{}")
+    assert out["stderr"] == long_text[:5000] and len(out["stdout"]) < len(long_text)  # one field per call
+
+
+def test_hung_transform_is_paused(core: Core) -> None:
+    import threading
+
+    release = threading.Event()
+    core.bridge.timeout = 0.1
+    core.bridge.remove_all("trimmer")
+    calls = {"n": 0}
+
+    def hung(lines: Any, meta: Any) -> None:
+        calls["n"] += 1
+        release.wait(5)
+
+    core.bridge.add_transform("slow", "terminal_output", hung)
+    text = "\n".join(f"row {i}" for i in range(2000))
+    for _ in range(6):
+        assert core.bridge.dispatch_transform("terminal_output", text, {}) is None
+    assert calls["n"] <= 3  # three failures pause it; later calls never reach the module
+    assert "module.transform_paused" in [r["action"] for r in core.run("audit", "tail", {"n": 20}, actor="t")]
+    release.set()

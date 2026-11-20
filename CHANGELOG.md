@@ -4,10 +4,20 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-20
+
+Phase M8: token economy (trimming).
+
 ### Added
 - ADR-0008: `hermes.output` capability and deletion-only output transforms (`ctx.hermes_transform`): modules choose
   lines, the core rebuilds output and always keeps errors, exit codes and paths.
 - Bundled `trimmer` module (M8): shortens long terminal and tool output; reduction measured on recorded fixtures.
+
+### Security
+- M8 security review (`src/switchyard/modules/trimmer/README.md`): linear-time must-keep patterns and long-line
+  bound; carriage-return collapse never hides errors; coalesced ranges; fail open over the must-keep cap; more
+  exit-code and error forms; progress-only shape dedupe; file-writing tools excluded; hung transforms paused;
+  duplicate-key JSON left alone.
 
 ## [0.8.0] - 2026-11-20
 

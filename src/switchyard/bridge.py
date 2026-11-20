@@ -16,6 +16,7 @@ import copy
 import hashlib
 import re
 import threading
+import time
 import urllib.parse
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -174,6 +175,8 @@ class HermesBridge:
         self._pools: dict[str, concurrent.futures.ThreadPoolExecutor] = {}
         self._closed = False
         self._delegation: tuple[str, Callable[..., Any], Callable[[], Any]] | None = None
+        self._failures: dict[str, int] = {}
+        self._paused: dict[str, float] = {}
         # goal digest -> list of pending (consumer, free_only) routes; child session -> (consumer, free_only)
         self._routed_goals: collections.OrderedDict[str, list[tuple[str, bool]]] = collections.OrderedDict()
         self._delegated: collections.OrderedDict[str, tuple[str, bool]] = collections.OrderedDict()
@@ -391,16 +394,43 @@ class HermesBridge:
             return None
         info = metadata_only(meta)
         current = trim.normalise(text)
+        trimmed = False
         for module_id, fn in entries:
+            if self._transform_paused(module_id):
+                continue
             lines = current.split("\n")
             ok, ranges = self._run(module_id, f"transform:{kind}", fn, tuple(lines), dict(info))
+            self._transform_result(module_id, ok)
             if not ok or ranges is None or not isinstance(ranges, list | tuple):
                 continue
             rebuilt = trim.rebuild(lines, ranges)
             if rebuilt is None:
                 continue
-            current = rebuilt
-        return current if current != text else None
+            current, trimmed = rebuilt, True
+        # normalisation alone is not a reason to change output (M8 review)
+        return current if trimmed and current != text else None
+
+    def _transform_paused(self, module_id: str) -> bool:
+        with self._lock:
+            until = self._paused.get(module_id, 0.0)
+        return time.monotonic() < until
+
+    def _transform_result(self, module_id: str, ok: bool) -> None:
+        """Three failed or timed-out transform calls in a row pause that module's transforms for five minutes
+        (audited), so a hung module costs at most a few timeouts, not one per tool call (M8 review)."""
+        with self._lock:
+            if ok:
+                self._failures.pop(module_id, None)
+                return
+            count = self._failures.get(module_id, 0) + 1
+            self._failures[module_id] = count
+            if count < 3:
+                return
+            self._failures.pop(module_id, None)
+            self._paused[module_id] = time.monotonic() + 300.0
+        self._audit.append(
+            actor=CORE_ACTOR, action="module.transform_paused", module=module_id, detail={"seconds": "300"}
+        )
 
     def dispatch_gate(self, kwargs: Mapping[str, Any]) -> str | None:
         """Run ``pre_llm_call`` gates (ADR-0006) on metadata. A gate returns ``None`` or a reason **code**
