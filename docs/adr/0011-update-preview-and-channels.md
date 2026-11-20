@@ -15,7 +15,11 @@ Status: accepted, 2026-11-20. Phase: M12. Q&A: [13-m12-prework.md](../qa/13-m12-
 4. `CoreView.update_checks()` exposes the comparison to `core.read` modules; the bundled `updates` module runs
    it on a schedule and announces each new commit once. Nothing is applied automatically.
 
+5. Staged trees with symlinks, `__pycache__`, `.pyc`, `.pyo` or `.pth` files are refused; added contributions
+   and entry changes count as widening; rollback is checked for widening too; 3 previous versions are kept.
+6. git never discovers a repository above its working directory (`GIT_CEILING_DIRECTORIES`; `ls-remote` in an
+   empty directory). Checks run one at a time; `core.read` callers get a cached result.
+
 ## Consequences
 
-- Rollback forgets the recorded installed commit and falls back to the manifest's `ref`, so a check after
-  rollback may report the pre-update pin.
+- The installed commit is restored on rollback from a sidecar written at update time.

@@ -70,8 +70,11 @@ def test_contract_suite() -> None:
     assert report.ok, report.summary()
 
 
-def test_announces_each_available_commit_once(setup: tuple[Core, Heads]) -> None:
+def test_announces_each_available_commit_once(
+    setup: tuple[Core, Heads], monkeypatch: pytest.MonkeyPatch
+) -> None:
     core, heads = setup
+    monkeypatch.setattr("switchyard.updates.CHECK_MIN_SECONDS", 0.0)
     assert act(core, "check_now") == {"modules": 1, "available": 0, "errors": 1}
     heads.heads[(URL, "stable")] = NEW
     assert act(core, "check_now") == {"modules": 1, "available": 1, "errors": 0}

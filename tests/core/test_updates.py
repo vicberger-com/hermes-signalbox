@@ -327,7 +327,7 @@ def test_widening_needs_explicit_acceptance(env: Any) -> None:
 def test_channel_checks(env: Any) -> None:
     core, fetcher, _ = env
     out = core.run("module", "check_updates", {}, actor="t")["modules"]
-    assert out == [{"id": "ext", "channel": "main", "error": "channel 'main' not found"}]
+    assert out == [{"id": "ext", "channel": "main", "error": "channel not found"}]
     fetcher.heads[(URL, "main")] = NEW
     (row,) = core.run("module", "check_updates", {}, actor="t")["modules"]
     assert row == {"id": "ext", "channel": "main", "installed": OLD, "available": NEW, "update": True}
@@ -355,3 +355,65 @@ def test_git_latest_reads_channel_head(tmp_path: Path) -> None:
         fetcher.latest(repo.as_uri(), "nope")
     with pytest.raises(UpdateError, match="https"):
         GitFetcher().latest("http://example.invalid/x.git", "main")
+
+
+# M12 review regressions -------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["__pycache__/mod.cpython-311.pyc", "evil.pth", "x.pyc"])
+def test_compiled_or_path_files_refused(env: Any, name: str) -> None:
+    core, fetcher, _ = env
+    target = fetcher.sources[(URL, NEW)] / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"payload")
+    with pytest.raises(UpdateError, match="compiled or path files"):
+        core.run("module", "preview", {"id": "ext", "ref": NEW}, actor="t")
+    target.unlink()
+
+
+def test_new_contributions_widen(env: Any) -> None:
+    core, fetcher, _ = env
+    toml = fetcher.sources[(URL, NEW)] / "module.toml"
+    text = toml.read_text(encoding="utf-8")
+    text = re.sub(r"log_streams = \[", 'log_streams = ["extra", ', text, count=1)
+    assert '"extra"' in text
+    toml.write_text(text, encoding="utf-8")
+    delta = core.run("module", "preview", {"id": "ext", "ref": NEW}, actor="t")["delta"]
+    assert "contributes.log_streams: extra" in delta["widens"]
+
+
+def test_patch_notes_exact_version_and_format_chars(tmp_path: Path) -> None:
+    from switchyard.updates import patch_notes
+
+    (tmp_path / "CHANGELOG.md").write_text(
+        "## 1.20.0\n- wrong\n## 1.2 - date\n- right\u202egnp.exe\n## 1.1\n", encoding="utf-8"
+    )
+    assert patch_notes(tmp_path, "1.2") == "## 1.2 - date\n- rightgnp.exe"
+
+
+def test_checks_are_single_and_cached(env: Any) -> None:
+    core, fetcher, _ = env
+    fetcher.heads[(URL, "main")] = NEW
+    view_rows = core.updates.cached_checks(max_age_s=0)
+    assert view_rows[0]["update"]
+    fetcher.heads[(URL, "main")] = OLD
+    assert core.updates.cached_checks(max_age_s=0)[0]["update"]  # within the minimum interval: cached
+    core.updates._checking.acquire()
+    try:
+        assert core.updates.check_all()[0]["available"] == NEW  # busy: last result, no second check
+    finally:
+        core.updates._checking.release()
+
+
+def test_rollback_restores_ref_and_prunes(env: Any) -> None:
+    core, fetcher, tmp = env
+    refs = []
+    for n in range(5):
+        ref = f"{n + 5}" * 40
+        fetcher.sources[(URL, ref)] = _source(tmp / f"r{n}", "x", version=f"0.{n + 5}.0")
+        core.run("module", "update", {"id": "ext", "ref": ref}, actor="t")
+        refs.append(ref)
+    previous = list((core.data_dir / "staging" / "ext").glob("previous-*"))
+    assert len([p for p in previous if p.is_dir()]) == 3
+    core.run("module", "rollback", {"id": "ext"}, actor="t")
+    assert _version(core) == "0.8.0" and core.updates.installed_ref("ext") == refs[-2]

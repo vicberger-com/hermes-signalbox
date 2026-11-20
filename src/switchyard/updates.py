@@ -23,7 +23,10 @@ import os
 import re
 import shutil
 import subprocess  # nosec B404
+import tempfile
+import threading
 import time
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -46,6 +49,12 @@ class Fetcher(Protocol):
 
 
 MAX_FILES = 5000
+MAX_FILE_BYTES = 50_000_000
+KEEP_PREVIOUS = 3
+CHECK_CACHE_SECONDS = 3600.0
+CHECK_MIN_SECONDS = 60.0
+# Compiled or path-hook files are not reviewed as source; Python would run them (M12 review).
+_UNREVIEWABLE = (".pyc", ".pyo", ".pth")
 MAX_NOTES = 4000
 _CHANNEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}\Z")
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
@@ -59,7 +68,13 @@ def inventory(root: Path) -> dict[str, str]:
             continue
         if len(out) >= MAX_FILES:
             raise UpdateError(f"module tree has more than {MAX_FILES} files; refused")
-        out[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if path.stat().st_size > MAX_FILE_BYTES:
+            raise UpdateError(
+                f"{path.relative_to(root).as_posix()} is larger than {MAX_FILE_BYTES} bytes; refused"
+            )
+        with path.open("rb") as fh:
+            digest = hashlib.file_digest(fh, "sha256").hexdigest()
+        out[path.relative_to(root).as_posix()] = digest
     return out
 
 
@@ -79,6 +94,8 @@ def _declared(m: Manifest) -> dict[str, Any]:
         "net_hosts": sorted(m.net_hosts),
         "secrets": sorted(m.secrets),
         "isolation": m.isolation,
+        "entry": f"{m.entry_module}:{m.entry_class}",
+        "contributes": {k: sorted(v) for k, v in m.contributes.items() if v},
     }
 
 
@@ -93,6 +110,10 @@ def sbom_delta(old_dir: Path, new_dir: Path, old: Manifest, new: Manifest) -> di
         added = sorted(set(after[key]) - set(before[key]))
         if added:
             widens.append(f"{key}: {', '.join(added)}")
+    for kind, names in after["contributes"].items():  # new hooks etc. run under grants already given
+        added = sorted(set(names) - set(before["contributes"].get(kind, ())))
+        if added:
+            widens.append(f"contributes.{kind}: {', '.join(added)}")
     if before["isolation"] == "subprocess" and after["isolation"] != "subprocess":
         widens.append("isolation: in-process")
     if before["license_class"] != after["license_class"]:
@@ -115,18 +136,22 @@ def patch_notes(root: Path, version: str) -> str:
     path = root / "CHANGELOG.md"
     if not path.is_file() or path.is_symlink():
         return ""
-    text = path.read_bytes()[:1_000_000].decode("utf-8", errors="replace")
+    with path.open("rb") as fh:
+        text = fh.read(1_000_000).decode("utf-8", errors="replace")
+    heading = re.compile(rf"## (\[{re.escape(version)}\]|{re.escape(version)})(\s|\Z)")
     out: list[str] = []
     for line in text.splitlines():
         if line.startswith("## "):
             if out:
                 break
-            if line.startswith((f"## [{version}]", f"## {version}")):
+            if heading.match(line):
                 out.append(line)
             continue
         if out:
             out.append(line)
-    return _CONTROL.sub("", "\n".join(out).strip())[:MAX_NOTES]
+    notes = _CONTROL.sub("", "\n".join(out).strip())
+    # Format characters (bidi overrides, zero-width) can make text read differently from what it is.
+    return "".join(ch for ch in notes if unicodedata.category(ch) != "Cf")[:MAX_NOTES]
 
 
 def _check_ref(ref: str) -> None:
@@ -158,7 +183,9 @@ class GitFetcher:
         if exe is None:
             raise UpdateError("git executable not found")
         env = {k: v for k in _GIT_ENV_ALLOW if (v := os.environ.get(k)) is not None}
-        env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
+        env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
+                    # never discover a repository (and its config) above the working directory (M12 review)
+                    "GIT_CEILING_DIRECTORIES": str(cwd.resolve().parent)})  # fmt: skip
         protocol = "always" if self._allow_file else "never"
         cmd = [exe, "-c", f"protocol.file.allow={protocol}", "-c", "core.hooksPath=" + os.devnull, *args]
         try:
@@ -196,7 +223,8 @@ class GitFetcher:
             raise UpdateError("update URLs must use https://")
         if not _CHANNEL.match(channel) or ".." in channel:
             raise UpdateError("invalid channel name")
-        out = self._run(["ls-remote", "--heads", "--", url, f"refs/heads/{channel}"], Path.cwd())
+        with tempfile.TemporaryDirectory(prefix="switchyard-ls-") as empty:  # no repository config applies
+            out = self._run(["ls-remote", "--heads", "--", url, f"refs/heads/{channel}"], Path(empty))
         for line in out.splitlines():
             sha, _, name = line.partition("\t")
             if name == f"refs/heads/{channel}" and _SHA.match(sha):
@@ -233,6 +261,9 @@ class UpdateController:
         self._modules_dir = (data_dir / "modules").resolve()
         self._staging = data_dir / "staging"
         self._fetcher = fetcher
+        self._checking = threading.Lock()
+        self._check_state = threading.Lock()
+        self._last_check: tuple[float, list[dict[str, Any]]] | None = None
 
     def _record(self, action: str, module_id: str, actor: str, **detail: str) -> None:
         self._audit.append(actor=actor, action=action, module=module_id, detail=detail)
@@ -257,6 +288,15 @@ class UpdateController:
         shutil.rmtree(stage, ignore_errors=True)
         try:
             self._fetcher.fetch(old.update_url or "", ref, stage)
+            links = [p for p in stage.rglob("*") if p.is_symlink()]
+            if links:
+                raise UpdateError(f"staged tree contains a symlink ({links[0].relative_to(stage)}); refused")
+            hidden = [p for p in stage.rglob("*") if "__pycache__" in p.parts or p.suffix in _UNREVIEWABLE]
+            if hidden:
+                raise UpdateError(
+                    "staged tree contains compiled or path files "
+                    f"({hidden[0].relative_to(stage).as_posix()}); refused"
+                )
             try:
                 new = load_manifest(stage)
             except ManifestError as exc:
@@ -265,9 +305,6 @@ class UpdateController:
                 raise UpdateError(f"staged module id {new.id!r} does not match {module_id!r}")
             if new.update_source != "git" or new.update_url != old.update_url:
                 raise UpdateError("staged manifest changes the pinned update source; refused")
-            links = [p for p in stage.rglob("*") if p.is_symlink()]
-            if links:
-                raise UpdateError(f"staged tree contains a symlink ({links[0].relative_to(stage)}); refused")
         except UpdateError as exc:
             shutil.rmtree(stage, ignore_errors=True)
             self._record("module.update_rejected", module_id, actor, ref=ref, reason=str(exc)[:300])
@@ -316,14 +353,16 @@ class UpdateController:
         (stage_root / f"sbom-{ref}.json").write_text(json.dumps(delta, indent=1), encoding="utf-8")
 
         was_active = self._manager.info(module_id).status is ModuleStatus.ACTIVE
-        previous = (
-            stage_root / f"previous-{old.version}-{time.strftime('%Y%m%dT%H%M%S')}-{time.monotonic_ns()}"
-        )
+        previous = stage_root / f"previous-{old.version}-{time.strftime('%Y%m%dT%H%M%S')}-{time.time_ns()}"
+        prior_ref = self.installed_ref(module_id)
         self._manager.deactivate(module_id, actor=actor, reason="update")
         current.rename(previous)
+        if prior_ref:
+            Path(f"{previous}.ref").write_text(prior_ref, encoding="utf-8")
         stage.rename(current)
         if self._restart(module_id, was_active):
             self._set_installed_ref(module_id, ref)
+            self._prune(stage_root)
             self._record(
                 "module.updated", module_id, actor, ref=ref, digest=delta["digest"],
                 widens=";".join(delta["widens"])[:300], **{"from": old.version, "to": new.version},
@@ -359,7 +398,32 @@ class UpdateController:
         return {"id": module_id, "channel": m.update_channel, "installed": current, "available": head,
                 "update": head != current}  # fmt: skip
 
+    def cached_checks(self, max_age_s: float = CHECK_CACHE_SECONDS) -> list[dict[str, Any]]:
+        """For ``core.read`` callers: the last result if younger than ``max_age_s`` (at least
+        ``CHECK_MIN_SECONDS``), otherwise a fresh check. One check at a time; a caller arriving during one
+        gets the last result (M12 review)."""
+        max_age_s = max(max_age_s, CHECK_MIN_SECONDS)
+        with self._check_state:
+            cached = self._last_check
+        if cached is not None and time.monotonic() - cached[0] < max_age_s:
+            return [dict(r) for r in cached[1]]
+        rows = self.check_all()
+        return rows
+
     def check_all(self) -> list[dict[str, Any]]:
+        if not self._checking.acquire(blocking=False):
+            with self._check_state:
+                cached = self._last_check
+            return [dict(r) for r in cached[1]] if cached else [{"error": "a check is already running"}]
+        try:
+            rows = self._check_all()
+        finally:
+            self._checking.release()
+        with self._check_state:
+            self._last_check = (time.monotonic(), rows)
+        return [dict(r) for r in rows]
+
+    def _check_all(self) -> list[dict[str, Any]]:
         out = []
         for info in self._manager.modules():
             m = self._manager.manifest(info.id)
@@ -368,7 +432,10 @@ class UpdateController:
             try:
                 out.append(self.check(info.id))
             except UpdateError as exc:
-                out.append({"id": info.id, "channel": m.update_channel, "error": str(exc)[:200]})
+                # Generic text: messages can carry local paths, and check results reach core.read modules.
+                reason = "channel not found" if "not found" in str(exc) else "check failed"
+                self._record("module.update_check_failed", info.id, CORE_ACTOR, reason=str(exc)[:300])
+                out.append({"id": info.id, "channel": m.update_channel, "error": reason})
         return out
 
     def _restart(self, module_id: str, was_active: bool) -> bool:
@@ -393,22 +460,46 @@ class UpdateController:
         if was_active:
             self._manager.activate(module_id, actor=CORE_ACTOR)
 
-    def rollback(self, module_id: str, *, actor: str) -> str:
+    @staticmethod
+    def _previous(stage_root: Path) -> list[Path]:
+        """Previous versions, oldest first, ordered by the time recorded in the name (not mtime)."""
+
+        def stamp(p: Path) -> int:
+            tail = p.name.rsplit("-", 1)[-1]
+            return int(tail) if tail.isdigit() else 0
+
+        if not stage_root.exists():
+            return []
+        return sorted((p for p in stage_root.glob("previous-*") if p.is_dir()), key=stamp)
+
+    def _prune(self, stage_root: Path) -> None:
+        for old in self._previous(stage_root)[:-KEEP_PREVIOUS]:
+            shutil.rmtree(old, onerror=_force_remove)
+            Path(f"{old}.ref").unlink(missing_ok=True)
+
+    def rollback(self, module_id: str, *, actor: str, accept_wider: bool = False) -> str:
         current = self._installed(module_id)
         stage_root = self._staging / module_id
-        candidates = (
-            sorted(stage_root.glob("previous-*"), key=lambda p: p.stat().st_mtime)
-            if stage_root.exists()
-            else []
-        )
+        candidates = self._previous(stage_root)
         if not candidates:
             raise UpdateError(f"no previous version of {module_id!r} to roll back to")
-        self._ref_file(module_id).unlink(missing_ok=True)  # the previous commit is not recorded separately
         previous = candidates[-1]
+        try:
+            delta = sbom_delta(current, previous, self._manager.manifest(module_id), load_manifest(previous))
+        except ManifestError:
+            raise UpdateError("the previous version's manifest is no longer valid") from None
+        if delta["widens"] and not accept_wider:
+            widens = "; ".join(delta["widens"])[:300]
+            raise UpdateError(f"rolling back widens what the module may do ({widens}); pass accept_wider")
+        sidecar = Path(f"{previous}.ref")
+        prior = sidecar.read_text(encoding="utf-8").strip() if sidecar.is_file() else ""
         was_active = self._manager.info(module_id).status is ModuleStatus.ACTIVE
-        self._restore(
-            module_id, current, previous, stage_root / f"replaced-{time.monotonic_ns()}", was_active
-        )
+        self._restore(module_id, current, previous, stage_root / f"replaced-{time.time_ns()}", was_active)
+        sidecar.unlink(missing_ok=True)
+        if _SHA.match(prior):
+            self._set_installed_ref(module_id, prior)
+        else:
+            self._ref_file(module_id).unlink(missing_ok=True)
         version = self._manager.manifest(module_id).version
         self._record("module.rolled_back", module_id, actor, version=version, reason="manual")
         return version

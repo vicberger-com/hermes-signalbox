@@ -86,10 +86,10 @@ class CoreView:
             for i in self._core.manager.modules()
         ]
 
-    def update_checks(self) -> list[dict[str, Any]]:
+    def update_checks(self, max_age_s: float = 3600.0) -> list[dict[str, Any]]:
         """Channel heads versus installed commits for git-installed modules (ADR-0011). Runs ``git ls-remote``
         against each module's pinned https URL; nothing is downloaded or applied."""
-        return self._core.updates.check_all()
+        return self._core.updates.cached_checks(max_age_s)
 
     def verify_audit(self) -> dict[str, Any]:
         """Cached for ``VERIFY_CACHE_SECONDS``: a full scan holds the audit lock, so a module calling this in

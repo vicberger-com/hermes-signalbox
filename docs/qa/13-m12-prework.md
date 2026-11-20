@@ -49,3 +49,7 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| Hashing the source files covers what runs | Python also imports `.pyc` and `.pth` files; refuse what cannot be reviewed | Any code install path |
+| Permission names are the whole permission surface | Contributions (hooks, commands) gain power under existing grants | Widening checks |
+| Scrubbing global git config isolates git | git still reads the repository above its working directory | Every git call |
+

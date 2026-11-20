@@ -273,10 +273,13 @@ def _module_check_updates(core: Core, p: dict[str, Any], actor: str) -> Any:
     return {"modules": core.updates.check_all()}
 
 
-@op("module", "rollback", "Restore the previous version of a git-installed module.", id=ID)
+@op("module", "rollback", "Restore the previous version of a git-installed module.", id=ID,
+    accept_wider=Param(bool, required=False, default=False,
+                       help="accept a previous version that may do more than the current one"))  # fmt: skip
 def _module_rollback(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
-    return {"id": p["id"], "version": core.updates.rollback(p["id"], actor=actor)}
+    version = core.updates.rollback(p["id"], actor=actor, accept_wider=bool(p.get("accept_wider")))
+    return {"id": p["id"], "version": version}
 
 
 @op("audit", "verify", "Verify the audit hash chain against the stored head anchor.", offline=True)
