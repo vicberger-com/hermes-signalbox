@@ -26,7 +26,7 @@ following [AGENTS.md](AGENTS.md).
 ## Layout
 
 ```
-schemas/module.schema.json     normative module manifest schema
+src/switchyard/schemas/        normative module manifest schema
 templates/module/              copy this to start a module
 tools/validate_manifest.py     stdlib manifest validator (used in CI)
 tests/                         template tests

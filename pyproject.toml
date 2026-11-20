@@ -26,14 +26,17 @@ security = ["bandit>=1.7", "pip-audit>=2.7", "cyclonedx-bom>=4.5", "pip-licenses
 [project.urls]
 Repository = "https://github.com/vicberger-com/hermes-switchyard"
 
-# No runtime package exists before M0; the wheel is intentionally empty of code until then.
 [tool.hatch.build.targets.wheel]
-bypass-selection = true
+packages = ["src/switchyard"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "templates/module/tests"]
 pythonpath = ["tools", "templates/module"]
-addopts = "-q --strict-markers --import-mode=importlib"
+addopts = "-q --strict-markers --import-mode=importlib --cov=switchyard --cov-branch --cov-report=term-missing:skip-covered"
+
+[tool.coverage.report]
+fail_under = 90
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\."]
 
 [tool.ruff]
 line-length = 110
@@ -49,4 +52,4 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["tools", "templates/module/example.py"]
+files = ["src", "tools", "templates/module/example.py"]

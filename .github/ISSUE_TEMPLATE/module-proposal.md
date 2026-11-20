@@ -6,7 +6,7 @@ labels: module
 
 **Problem it solves**
 
-**Capabilities it needs** (names from `schemas/module.schema.json`, with a reason for each)
+**Capabilities it needs** (names from `src/switchyard/schemas/module.schema.json`, with a reason for each)
 
 **Hosts contacted and data sent**
 
