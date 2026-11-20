@@ -1,0 +1,16 @@
+{
+ "results": [
+  {
+   "check_id": "python.lang.security.audit.subprocess-shell-true",
+   "path": "seeded/app.py",
+   "start": {
+    "line": 7
+   },
+   "extra": {
+    "severity": "ERROR",
+    "message": "Found subprocess with shell=True"
+   }
+  }
+ ],
+ "errors": []
+}

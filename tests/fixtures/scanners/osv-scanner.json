@@ -1,0 +1,25 @@
+{
+ "results": [
+  {
+   "source": {
+    "path": "seeded/requirements.txt",
+    "type": "lockfile"
+   },
+   "packages": [
+    {
+     "package": {
+      "name": "requests",
+      "version": "2.19.0",
+      "ecosystem": "PyPI"
+     },
+     "vulnerabilities": [
+      {
+       "id": "GHSA-x84v-xcm2-53pg",
+       "summary": "Insufficiently Protected Credentials in Requests"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

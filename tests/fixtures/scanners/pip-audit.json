@@ -1,0 +1,23 @@
+{
+ "dependencies": [
+  {
+   "name": "requests",
+   "version": "2.19.0",
+   "vulns": [
+    {
+     "id": "PYSEC-2018-28",
+     "fix_versions": [
+      "2.20.0"
+     ],
+     "description": "..."
+    }
+   ]
+  },
+  {
+   "name": "idna",
+   "version": "3.7",
+   "vulns": []
+  }
+ ],
+ "fixes": []
+}

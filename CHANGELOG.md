@@ -4,6 +4,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- Bundled `scanner` module (M10): gitleaks, bandit, pip-audit, osv-scanner, semgrep and trivy as external processes
+  on a schedule or on demand; normalised, de-duplicated findings; failures reported as findings; alerts via
+  `notify`.
+
 ## [0.10.0] - 2026-11-20
 
 Phase M9: dashboard, reporting and notifications.
