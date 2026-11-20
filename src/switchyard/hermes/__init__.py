@@ -315,14 +315,16 @@ class HermesAdapter:
             params = {"action": args.get("name")} | {k: v for k, v in args.items() if k in ("id", "args")}
             return self._call("module", "action", params, untrusted=True)
         params = {k: v for k, v in args.items() if k == "id"}
-        return self._call("module", str(action), params)
+        # list, show, activate and health carry module-written text (summaries, panels, health detail): label
+        # them as data too (R1 follow-up).
+        return self._call("module", str(action), params, untrusted=True)
 
     def tool_audit(self, args: dict[str, Any], **_kw: Any) -> str:
         action = args.get("action")
         if action not in ("verify", "tail"):
             return _error(UsageError("action must be 'verify' or 'tail'"))
         params = {"n": args["n"]} if action == "tail" and "n" in args else {}
-        return self._call("audit", str(action), params)
+        return self._call("audit", str(action), params, untrusted=action == "tail")
 
     def tool_host(self, args: dict[str, Any], **_kw: Any) -> str:
         return self._call("host", "profile", {})

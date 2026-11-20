@@ -177,3 +177,56 @@ def test_module_results_reach_the_model_labelled() -> None:
     from switchyard.hermes import UNTRUSTED_NOTE
 
     assert "data" in UNTRUSTED_NOTE and json.dumps({"note": UNTRUSTED_NOTE})
+
+
+# R1 follow-up review ---------------------------------------------------------------------------------------
+
+
+def test_guarded_facade_hides_private_state_and_checks_nested(tmp_path: Path) -> None:
+    from switchyard.context import _Guarded
+
+    class Inner:
+        def write(self) -> str:
+            return "wrote"
+
+    class Facade:
+        def __init__(self) -> None:
+            self._broker = object()
+            self.inner = Inner()
+
+    class Ctx:
+        module_id = "m"
+        allowed = True
+
+        def _open(self) -> None:
+            if not self.allowed:
+                raise SwitchyardError("closed")
+
+        class _services:
+            class policy:
+                @staticmethod
+                def require(module_id: str, capability: str) -> None:
+                    return None
+
+    ctx = Ctx()
+    g = _Guarded(Facade(), ctx, "x")  # type: ignore[arg-type]
+    with pytest.raises(AttributeError):
+        _ = g._broker
+    nested = g.inner
+    assert nested.write() == "wrote"
+    ctx.allowed = False
+    with pytest.raises(SwitchyardError):
+        nested.write()
+
+
+def test_log_rotation_failure_keeps_appending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("switchyard.logs.MAX_STREAM_BYTES", 200)
+
+    def busy(*_a: object) -> None:
+        raise PermissionError("held open by another process")
+
+    monkeypatch.setattr("switchyard.logs.os.replace", busy)
+    sink = JsonlLogSink(tmp_path)
+    for i in range(5):
+        sink.write("m", "s", "e", {"i": i, "pad": "x" * 50})
+    assert len((tmp_path / "s.jsonl").read_text(encoding="utf-8").splitlines()) == 5

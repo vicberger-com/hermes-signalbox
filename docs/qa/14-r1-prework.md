@@ -63,6 +63,21 @@ Changes visible to existing users: grant `core.read` to `inbox`; the model can n
 preview imports; `module remove --keep-data` no longer keeps grants; module ids may not end in `_`; every quota
 fires at 100 %.
 
+### Follow-up review of the fixes (2026-11-20)
+
+| Finding | Disposition |
+|---|---|
+| (medium) A T2 child that stopped reading could block the parent's send forever; a full inbox blocked the reader | **Fixed.** Sends have a deadline (child killed on timeout); a flooding child is killed |
+| (medium) The guarded facade returned private attributes and nested objects unchecked | **Fixed.** `_` names refused; nested objects wrapped and checked |
+| (medium) A torn last audit line made every append fail | **Fixed.** Repaired under the lock: bytes kept in `*.torn-*`, `audit.torn_tail_repaired` recorded |
+| (medium) Leak tripwire blocked ordinary text for short secrets | **Fixed.** Case forms from 12 characters, 16-character pieces from 24; no case-folding of the whole result |
+| (medium) `list`, `show`, `health`, `activate` and `audit tail` reached the model unlabelled | **Fixed.** All wrapped as `untrusted_data` |
+| (low) Hard stop blocked unregistered (possibly free) models on an exhausted total quota | **Reverted** to the M6 rule: unknown models are never blocked |
+| (low) Log rotation raised when another process held the file (Windows) | **Fixed.** Rotation errors are ignored; appending continues |
+| (low) Supervisor alerted on idle and operator stops | **Fixed.** Only stops caused by a revoked grant |
+| (low) Verify could read a half-written record from another process | **Fixed.** Verify takes the append lock |
+| (low) Requests without a turn id shared one failure counter forever | **Fixed.** Not counted |
+
 ## 4. Acceptance
 
 - [x] Hardening review findings fixed or dispositioned.

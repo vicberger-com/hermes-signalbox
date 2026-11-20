@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import queue
 import subprocess  # nosec B404
@@ -80,6 +81,7 @@ class T2Module:
         self._inbox: queue.Queue[tuple[str, Any]] = queue.Queue(maxsize=MAX_PENDING_FRAMES)
         self._write_lock = threading.Lock()
         self._call_lock = threading.RLock()
+        self._flooded = False
 
     # process ------------------------------------------------------------------------------------------
 
@@ -106,18 +108,44 @@ class T2Module:
         try:
             while True:
                 msg = read_frame(stream)
-                self._inbox.put(("msg", msg))
+                try:
+                    self._inbox.put(("msg", msg), timeout=self._timeout)
+                except queue.Full:
+                    # The child floods frames nobody is reading: stop it instead of blocking (R1 follow-up).
+                    self._flooded = True
+                    proc = self._proc
+                    if proc is not None:
+                        proc.kill()
+                    return
                 if msg is None:
                     return
         except ProtocolError as exc:
-            self._inbox.put(("error", exc))
+            with contextlib.suppress(queue.Full):
+                self._inbox.put(("error", exc), timeout=1)
 
     def _send(self, msg: Message) -> None:
         proc = self._proc
         if proc is None or proc.stdin is None:
             raise ProtocolError("child is not running")
+        stdin = proc.stdin
+        failure: list[BaseException] = []
+
+        def write() -> None:
+            try:
+                write_frame(stdin, msg)
+            except BaseException as exc:  # reported to the caller below
+                failure.append(exc)
+
         with self._write_lock:
-            write_frame(proc.stdin, msg)
+            # A child that stops reading its stdin must not block the parent forever (R1 follow-up).
+            writer = threading.Thread(target=write, daemon=True)
+            writer.start()
+            writer.join(self._timeout)
+            if writer.is_alive():
+                proc.kill()
+                raise ProtocolError(f"module {self._manifest.id!r} stopped reading its input")
+        if failure:
+            raise failure[0]
 
     def _recv(self, timeout: float | None) -> Message | None:
         try:

@@ -249,7 +249,7 @@ def _slash(ctx: FakeHermesCtx, line: str) -> Any:
 def _tool(ctx: FakeHermesCtx, **args: Any) -> Any:
     out = json.loads(ctx.tools["switchyard_modules"](args))
     assert out["ok"], out
-    return out["result"]
+    return out["result"]["untrusted_data"]  # module text reaches the model labelled as data (R1)
 
 
 def test_same_operations_from_cli_api_and_hermes(
@@ -297,7 +297,7 @@ def test_secret_canary_never_appears_in_any_output(
     for capability in ("ui.panel", "secrets.read"):
         seen.append(ctx.commands["switchyard"](f"module grant probe capability={capability}"))
     seen.append(ctx.tools["switchyard_modules"]({"action": "activate", "id": "probe"}))
-    assert json.loads(seen[-1])["result"]["status"] == "active"
+    assert json.loads(seen[-1])["result"]["untrusted_data"]["status"] == "active"
     assert api.request("module", "panel", {"id": "probe", "panel": "probe.status"}) == {"length": len(CANARY)}
     for panel in ("probe.leak", "probe.raise", "probe.net"):
         seen.append(ctx.commands["switchyard"](f"module panel probe panel={panel}"))

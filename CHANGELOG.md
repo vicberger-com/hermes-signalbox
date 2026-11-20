@@ -30,6 +30,9 @@ Phase R1: hardening review, documentation, first stable release. Review disposit
 - Broker facades re-check context and grant on every call.
 - Trimming keeps 401/403/rejected/blocked lines. Secret leak guard checks encoded forms. Short secrets refused.
 - Documented the same-user boundary (DESIGN section 4, SECURITY.md).
+- Follow-up review: T2 send deadline and flood kill; guarded facades hide private state; torn audit tails are
+  repaired and recorded; leak tripwire no longer blocks ordinary text; all module-written text reaching the
+  model is labelled; verify takes the append lock.
 
 ## [0.13.0] - 2026-11-20
 

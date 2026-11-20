@@ -339,16 +339,11 @@ class RouterModule:
         # Hermes's pre_llm_call carries no provider: find the routed provider whose registry knows the
         # configured model. Block only with positive knowledge (M6 review): the registry answers, the model is
         # a known resource, nothing routable is left, and the model itself is ruled out.
-        raw = self._cooling()
         for provider in self.settings["providers"]:
             candidates = self._candidates(provider)
             if not any(c.model == model for c in candidates):
-                # Unknown model: per-model and per-provider rules cannot apply (its provider is unknown),
-                # but an exhausted total quota does (R1 review).
-                if "all" in raw and raw["all"].startswith("quota") and candidates:
-                    self.ctx.audit("hard_stop", consumer=self.settings["consumer"], resource=model[:200],
-                                   reason="quota exhausted")  # fmt: skip
-                    return "quota_exhausted"
+                # Unknown model: never blocked. It may be a free local model, and blocking needs positive
+                # knowledge (M6 review; the R1 change that blocked it was reverted in the follow-up review).
                 continue
             chosen, _, _ = self.choose(need, provider)
             if chosen is not None:
@@ -381,6 +376,8 @@ class RouterModule:
         if rid is None or not _ID.match(rid):
             return
         turn = str(kwargs.get("turn_id") or "")
+        if not turn:  # requests without a turn id would share one bucket that never resets (R1 follow-up)
+            return
         self._failures[turn] = self._failures.get(turn, 0) + 1
         self._failures.move_to_end(turn)
         while len(self._failures) > _TURNS:

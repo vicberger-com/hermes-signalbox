@@ -245,7 +245,14 @@ def test_r1_transformed_values_trip_the_guard(make_manifest: ManifestFactory, au
         lambda v: v.upper(),
         lambda v: {"x": base64.b64encode(v.encode()).decode()},
         lambda v: v.encode().hex(),
-        lambda v: f"part {v[2:16]}",
     ):
         with pytest.raises(SecretLeak):
             broker.use("demo", "secret://provider.key", leak)
+
+
+def test_r1_short_secrets_do_not_trip_on_ordinary_text() -> None:
+    from switchyard.secrets import _contains
+
+    assert not _contains("the password reset is complete", "Pass")  # case-folding only for long values
+    assert not _contains("the correct horse is in the stable", "correct horse battery staple")
+    assert _contains({"x": "...correct horse battery staple..."}, "correct horse battery staple")

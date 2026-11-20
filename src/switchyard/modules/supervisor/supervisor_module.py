@@ -138,9 +138,11 @@ class SupervisorModule:
         for m in self.ctx.core.modules():
             if m["status"] == "active":
                 active.add(m["id"])
-            elif m["status"] != "failed" and m["id"] in self._was_active:
-                # A module that ran at the last pass stopped: a revoked grant can switch off a safety module
-                # (router, meter) without failing it (R1 review). Operator stops show too; ack them.
+            elif (m["status"] != "failed" and m["id"] in self._was_active
+                  and str(m.get("stop_reason", "")).startswith("revoked")):  # fmt: skip
+                # A module that ran at the last pass was stopped by a revoked grant: that can switch off a
+                # safety module (router, meter) without failing it (R1 review). Idle and operator stops are
+                # expected and not reported (R1 follow-up).
                 out.append((f"module:{m['id']}:stopped", "high" if m["id"] in SAFETY else "medium",
                             f"module {m['id']} is {m['status']}"))  # fmt: skip
             if m["status"] == "failed":

@@ -77,8 +77,8 @@ class JsonlLogSink:
             try:
                 if path.stat().st_size + len(line) > MAX_STREAM_BYTES:
                     os.replace(path, self.directory / f"{stream}.1.jsonl")
-            except FileNotFoundError:
-                pass
+            except OSError:
+                pass  # missing, or held open by another process (Windows): keep appending, rotate later
             fd = os.open(path, flags, 0o600)
             try:
                 os.write(fd, line)
