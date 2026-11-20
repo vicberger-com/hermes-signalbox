@@ -13,6 +13,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from switchyard.capabilities import CAPABILITIES
 from switchyard.errors import SwitchyardError
 from switchyard.hostinfo import profile
 
@@ -109,6 +110,7 @@ def op(
 def _info(core: Core, module_id: str) -> dict[str, Any]:
     info = core.manager.info(module_id)
     manifest = core.manager.manifest(module_id)
+    granted = core.policy.granted(module_id)
     return {
         "id": info.id,
         "version": info.version,
@@ -117,8 +119,17 @@ def _info(core: Core, module_id: str) -> dict[str, Any]:
         "isolation": info.isolation,
         "error": info.error,
         "requested": sorted(manifest.requested),
-        "granted": sorted(core.policy.granted(module_id)),
+        "granted": sorted(granted),
+        # H1 D-8: what the module needs to start and does not hold yet
+        "missing_grants": sorted(set(manifest.requested) - set(manifest.optional) - granted),
     }
+
+
+def _known_capability(name: str) -> str:
+    """An unknown capability name is a usage error (exit 2), not a denial (H1 D-26)."""
+    if name not in CAPABILITIES:
+        raise UsageError(f"unknown capability {name!r}; known: {', '.join(sorted(CAPABILITIES))}")
+    return name
 
 
 @op("module", "list", "List every discovered module with status, mode and capabilities.", offline=True)
@@ -148,13 +159,13 @@ def _module_show(core: Core, p: dict[str, Any], actor: str) -> Any:
 
 @op("module", "grant", "Grant a requested capability to a module.", offline=True, id=ID, capability=CAP)
 def _module_grant(core: Core, p: dict[str, Any], actor: str) -> Any:
-    core.policy.grant(p["id"], p["capability"], actor=actor)
+    core.policy.grant(p["id"], _known_capability(p["capability"]), actor=actor)
     return {"granted": sorted(core.policy.granted(p["id"]))}
 
 
 @op("module", "revoke", "Revoke a capability from a module.", offline=True, id=ID, capability=CAP)
 def _module_revoke(core: Core, p: dict[str, Any], actor: str) -> Any:
-    core.policy.revoke(p["id"], p["capability"], actor=actor)
+    core.policy.revoke(p["id"], _known_capability(p["capability"]), actor=actor)
     stopped = False
     manifest = core.manager.manifest(p["id"])
     if (p["capability"] in manifest.requested and p["capability"] not in manifest.optional
@@ -203,6 +214,8 @@ def _module_health(core: Core, p: dict[str, Any], actor: str) -> Any:
 @op("module", "panel", "Render one of a running module's panels as plain data.", id=ID, panel=Param(str))
 def _module_panel(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
+    if core.manager.info(p["id"]).status.value != "active":
+        raise SwitchyardError(f"module {p['id']!r} is not active; start it with 'module activate {p['id']}'")
     return core.panels.render(p["id"], p["panel"])
 
 
@@ -342,6 +355,7 @@ def _config_show(core: Core, p: dict[str, Any], actor: str) -> Any:
     c = core.config
     return {
         "data_dir": str(core.data_dir),
+        "data_dir_source": core.data_dir_source,
         "api": {"enabled": c.api.enabled, "port": c.api.port},
         "log": {"level": c.log_level},
         "host": {"profile": c.host_profile},

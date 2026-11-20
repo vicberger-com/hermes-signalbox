@@ -268,3 +268,25 @@ def test_token_file_acl_is_user_only_on_windows(served: tuple[ControlServer, Pat
     allowed = {getpass.getuser().lower(), "system", "administrators", "owner rights"}
     assert principals and all(p.split("\\")[-1].lower() in allowed for p in principals), out
     assert "(I)" not in out, out
+
+
+def test_h1_b20_every_method_checks_host_first(served: tuple[ControlServer, Path]) -> None:
+    server, _ = served
+    conn = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+    try:
+        conn.request("PUT", "/v1/module/list", body=b"{}", headers={"Host": "evil.example:80"})
+        assert conn.getresponse().status == 403
+    finally:
+        conn.close()
+
+
+def test_h1_b24_dropped_connections_print_no_traceback(
+    served: tuple[ControlServer, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    server, _ = served
+    try:
+        raise ConnectionAbortedError("peer went away")
+    except ConnectionAbortedError:
+        server._httpd.handle_error(None, ("127.0.0.1", 1))  # type: ignore[arg-type]
+    err = capsys.readouterr().err
+    assert "Traceback" not in err and "peer went away" not in err

@@ -108,9 +108,18 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 |---|---|---|---|
 | D-13 | Accepted, documented | WP0 | Single-maintainer project; both gate checks are required on every pull request |
 | D-21 | No action | - | Stale metadata in one local environment only; refreshed 2026-11-20 |
-| C-1 | Fixed | WP1 | ADR-0013: bridge fallback and claim, router fallback from remembered candidates, 1 s store budget |
-| C-4 | Fixed | WP1 | Cool-down upsert keeps the later end and the quota reason |
-| C-8 | Fixed | WP1 | All text keys sized; unknown shape is T5 |
+| C-1 | Fixed | #78 | ADR-0013: bridge fallback and claim, router fallback from remembered candidates, 1 s store budget |
+| C-4 | Fixed | #78 | Cool-down upsert keeps the later end and the quota reason |
+| C-8 | Fixed | #78 | All text keys sized; unknown shape is T5 |
+| D-1 | Fixed | WP2 | Guide grants `ui.panel`; table of capabilities needed to start; walkthrough test runs the guide on every CI OS |
+| D-7 | Fixed | WP2 | Guide step 0 is `switchyard api serve`; `[daemon]` marks in `--help`, the guide and REFERENCE |
+| D-8 | Fixed | WP2 | Failed results exit 1 naming the missing grants; `missing_grants` in list/show; inactive panel message |
+| D-9 | Fixed | WP2 | SIGTERM/SIGBREAK handlers; client clears files left by a dead daemon under `host.lock`; 0.5 s connect timeout |
+| D-10 | Fixed | WP2 | Guide section 2 explains the two stores; `config show` prints `data_dir_source` |
+| D-20 | Fixed | WP2 | Description lists only the enum's actions; test keeps them equal |
+| D-26 | Fixed | WP2 | Unknown capability exits 2; dotted nested output; readiness line flushed |
+| B-20 | Fixed | WP2 | `_unsupported` runs the Host/Origin check first |
+| B-24 | Fixed | WP2 | `handle_error` is silent for dropped connections, one line (class only) otherwise |
 
 Changes visible to existing users (complete this list; it becomes the `### Changed` section):
 

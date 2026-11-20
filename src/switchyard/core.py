@@ -33,7 +33,7 @@ from switchyard.logs import JsonlLogSink
 from switchyard.net import NetBroker
 from switchyard.notify import NotifyBroker
 from switchyard.ops import lookup
-from switchyard.paths import ensure_data_dir, resolve_data_dir
+from switchyard.paths import data_dir_source, ensure_data_dir, resolve_data_dir
 from switchyard.process import ProcessBroker
 from switchyard.schedule import ScheduleBroker
 from switchyard.scheduler import Scheduler
@@ -135,6 +135,11 @@ class Core:
         initial = resolve_data_dir(configured=data_dir, hermes_dir=hermes_dir)
         self.config: CoreConfig = load_config(initial / "config.toml")
         self.data_dir = ensure_data_dir(self.config.data_dir or initial)
+        self.data_dir_source = (
+            f"data_dir in {initial / 'config.toml'}"
+            if self.config.data_dir
+            else data_dir_source(configured=data_dir, hermes_dir=hermes_dir)
+        )
         # hosting=True: must host (raise if another process does); None: host if free; False: never host.
         self._host_lock = HostLock(self.data_dir / "host.lock")
         self.hosting = bool(hosting is not False and self._host_lock.acquire())

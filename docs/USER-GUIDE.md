@@ -12,7 +12,7 @@ Needs Hermes Agent 0.22 or newer and Python 3.11 or newer. Switchyard has no Pyt
 # pin an exact release commit (recommended): see the release page for the SHA of a tag
 hermes plugins install vicberger-com/hermes-switchyard --ref <40-character commit SHA>
 # or with pip, which also installs the `switchyard` command
-pip install "git+https://github.com/vicberger-com/hermes-switchyard@v1.0.0"
+pip install "git+https://github.com/vicberger-com/hermes-switchyard@<40-character commit SHA>"
 ```
 
 Releases carry `SHA256SUMS`, a CycloneDX SBOM and a build provenance attestation
@@ -20,29 +20,66 @@ Releases carry `SHA256SUMS`, a CycloneDX SBOM and a build provenance attestation
 
 ## 2. First run
 
-Start Hermes. The plugin creates its data directory (the profile's plugin data directory unless you set
-`data_dir`) and discovers the bundled modules. None is active and none holds a capability.
+**Which data directory.** Switchyard keeps its state, grants, audit log and `config.toml` in one data directory.
+A Hermes session uses the profile's plugin data directory; the `switchyard` command uses a platform default
+(`%LOCALAPPDATA%\switchyard`, `~/Library/Application Support/switchyard` or `~/.local/share/switchyard`). These
+are **two different stores** unless you point both at one: set `SWITCHYARD_DATA_DIR` (or pass `--data-dir`) to
+the same absolute path everywhere. `switchyard config show` prints the directory in use and why it was chosen
+(`data_dir_source`).
+
+**Which process hosts modules.** Only one process hosts modules for a data directory: the first Hermes session
+that opens it, or `switchyard api serve`. Commands marked `[daemon]` in `switchyard <noun> --help` (activate,
+deactivate, health, panel, action, update, preview, rollback, check_updates, report) need that hosting process
+with its loopback API. Other commands (list, show, grant, revoke, mode, remove, audit, config) work directly on
+the data directory. A process that runs turns without hosting writes one `core.not_hosting` audit record.
+
+For the commands in this guide, start the daemon first in its own terminal and leave it running (Ctrl+C stops
+it):
+
+```bash
+switchyard api serve              # step 0: hosts the modules and the loopback API
+```
+
+Then, in another terminal:
 
 ```bash
 switchyard module list            # every module, its status, mode and requested capabilities
 switchyard audit verify           # the audit chain is intact
-switchyard config show            # effective core settings
+switchyard config show            # data directory in use, why, and core settings
 ```
 
 In a Hermes session the same operations are under `/switchyard`, for example `/switchyard module list`.
-
-Only one process hosts modules for a data directory (the first Hermes session or `switchyard api serve`).
-Other processes read and change stored state, but gates, hooks and transforms run only in the hosting one; a
-process that runs turns without hosting writes one `core.not_hosting` audit record.
+Exit codes: 0 success, 1 error or a failed result, 2 usage error, 3 capability denied.
 
 ## 3. Grant capabilities and activate a module
 
-Each module's README lists what it requests and why. Grant only what you want it to do:
+Each module's README lists what it requests and why. A module starts only when every capability it needs to
+start is granted; `module show` lists any that are missing under `missing_grants`. Optional capabilities turn
+on extra features and can be granted later.
+
+| Module | Needed to start | Optional | Default mode |
+|---|---|---|---|
+| `activation` | `hermes.config.write`, `hermes.hooks`, `ui.panel` | | auto |
+| `inbox` | `core.read`, `ui.panel` | | auto |
+| `meter` | `hermes.hooks`, `ui.panel` | `fs.read` | auto |
+| `offload` | `net.outbound`, `ui.panel` | `process.spawn` | manual |
+| `resources` | `fs.read`, `ui.panel` | | auto |
+| `router` | `hermes.hooks`, `ui.panel` | `llm.free`, `llm.paid` | auto |
+| `scanner` | `process.spawn`, `schedule`, `ui.panel` | `notify` | manual |
+| `secrets` | `process.spawn`, `secrets.read`, `ui.panel` | | auto |
+| `supervisor` | `core.read`, `schedule`, `ui.panel` | | auto |
+| `trimmer` | `hermes.output`, `ui.panel` | | manual |
+| `updates` | `core.read`, `schedule`, `ui.panel` | `notify` | manual |
+| `workers` | `hermes.delegation`, `hermes.hooks`, `schedule`, `ui.panel` | `llm.paid` | auto |
+
+Grant only what you want the module to do, then start it (the daemon from section 2 must be running):
 
 ```bash
 switchyard module show router
 switchyard module grant router --capability hermes.hooks
-switchyard module activate router
+switchyard module grant router --capability ui.panel
+switchyard module activate router               # [daemon]
+switchyard module health router                 # [daemon]
 switchyard module mode router --mode auto       # start it with every hosting process
 ```
 
@@ -72,8 +109,20 @@ API that accepts a fixed allow-list of read operations plus activate, deactivate
 
 ## 6. Notifications and reports
 
-Activate `inbox` (grants `core.read`, `ui.panel`) to collect alerts from the supervisor, meter, scanner,
-workers and updates modules. Reports: `switchyard report show --kind health|usage|security|changes`.
+The `inbox` module collects alerts from the supervisor, meter, scanner, workers and updates modules:
+
+```bash
+switchyard module grant inbox --capability core.read
+switchyard module grant inbox --capability ui.panel
+switchyard module activate inbox                # [daemon]
+```
+
+Reports (`--kind` is `health`, `usage`, `security` or `changes`; all need the daemon):
+
+```bash
+switchyard report show --kind health
+switchyard report show --kind security
+```
 
 ## 7. Updates
 
@@ -81,10 +130,10 @@ Bundled modules update with Switchyard itself (`hermes plugins update switchyard
 from git under `<data_dir>/modules` are updated by commit:
 
 ```bash
-switchyard module check_updates                          # installed commit vs the head of each channel
-switchyard module preview ext --ref <sha>                # files changed, new permissions, notes, digest
-switchyard module update ext --ref <sha> --digest <digest>
-switchyard module rollback ext
+switchyard module check_updates                          # [daemon] installed commit vs the head of each channel
+switchyard module preview <id> --ref <sha>               # [daemon] files changed, new permissions, notes, digest
+switchyard module update <id> --ref <sha> --digest <digest>
+switchyard module rollback <id>
 ```
 
 An update that adds capabilities, hosts, secrets or contributions, or weakens isolation, is refused unless you

@@ -63,6 +63,20 @@ def resolve_data_dir(
     return default_data_dir(platform=platform, env=env, home=home)
 
 
+def data_dir_source(
+    *, env: Mapping[str, str] | None = None, configured: Path | None = None, hermes_dir: Path | None = None
+) -> str:
+    """Why ``resolve_data_dir`` picks what it picks (same precedence), for ``config show`` (H1 D-10)."""
+    env = os.environ if env is None else env
+    if env.get(ENV_VAR, ""):
+        return f"{ENV_VAR} environment variable"
+    if configured is not None:
+        return "--data-dir option (or the data_dir argument)"
+    if hermes_dir is not None:
+        return "Hermes plugin data directory of the profile"
+    return "platform default (the CLI and a Hermes session differ unless SWITCHYARD_DATA_DIR is set)"
+
+
 def _make_private_dir(path: Path) -> None:
     if path.exists() and not path.is_dir():
         raise ConfigError(f"{path} exists and is not a directory")
