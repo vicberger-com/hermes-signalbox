@@ -13,6 +13,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - State store (SQLite WAL, transactional numbered migrations with backup, persistent grants, module tables
   confined by the SQLite authorizer) and hash-chained audit log (fsync per record, rotation, head anchor
   for truncation detection, redaction, fail-closed on a torn last record).
+- Event bus (typed dotted names, per-handler data copies, isolated and audited handler failures, depth
+  limit) and scheduler (time/every, 5-field cron, event, usage and capacity triggers; one run at a time,
+  minimum interval, counted skips).
 - Coverage gate (90%) on `src/switchyard`; mypy strict and bandit now include `src/`.
 
 ### Changed
