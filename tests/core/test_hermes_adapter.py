@@ -256,3 +256,9 @@ def test_config_port_uses_the_public_hermes_api(monkeypatch: pytest.MonkeyPatch)
     port.set("skills.disabled", [])
     assert saved[-1][0]["skills"] == {"disabled": []}
     assert port.skills() == [{"name": "a", "category": "c", "description": "d"}]
+    assert port.essential() == frozenset({"hermes-agent"})  # agent.skill_utils not importable here
+    skill_utils = types.ModuleType("agent.skill_utils")
+    skill_utils.ESSENTIAL_SKILLS = {"hermes-agent", "other"}  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "agent", types.ModuleType("agent"))
+    monkeypatch.setitem(sys.modules, "agent.skill_utils", skill_utils)
+    assert port.essential() == frozenset({"hermes-agent", "other"})

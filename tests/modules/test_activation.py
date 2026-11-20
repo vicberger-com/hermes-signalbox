@@ -25,7 +25,7 @@ SKILLS = [
     {"name": "arxiv", "category": "research", "description": "Search arXiv papers " * 6},
     {"name": "manim-video", "category": "creative", "description": "Manim animations " * 8},
     {"name": "p5js", "category": "creative", "description": "p5.js sketches " * 8},
-    {"name": "bad name!", "category": "x", "description": "dropped"},
+    {"name": "bad,name", "category": "x", "description": "dropped"},
 ]
 
 
@@ -55,6 +55,9 @@ class FakeHermesConfig:
 
     def skills(self) -> list[dict[str, str]]:
         return [dict(s) for s in SKILLS]
+
+    def essential(self) -> frozenset[str]:
+        return frozenset(ESSENTIAL)
 
 
 class Clock:
@@ -111,7 +114,7 @@ def test_writer_backs_up_audits_verifies_and_rolls_back(tmp_path: Path, port: Fa
     out = w.set("m", "skills.disabled", ["arxiv", "hermes-agent", "arxiv"], actor="t")
     assert out["stored"] == ["arxiv"] and out["refused"] == ["hermes-agent"]
     backup = json.loads((tmp_path / "backups" / f"{out['backup']}.json").read_text(encoding="utf-8"))
-    assert backup["old"] == ["p5js"] and backup["new"] == ["arxiv", "hermes-agent"]
+    assert backup["old"] == ["p5js"] and backup["new"] == ["arxiv"]  # essential skills are never written
     assert records[-1]["action"] == "hermes.config.write"
     port.fail_next = True
     with pytest.raises(SwitchyardError, match="previous value restored"):
@@ -125,8 +128,10 @@ def test_writer_backs_up_audits_verifies_and_rolls_back(tmp_path: Path, port: Fa
     assert port.values["skills.disabled"] == ["p5js"]
     for key, value in [
         ("model.default", ["x"]),
+        ("plugins.disabled", []),
+        ("skills.disabled", ["a,b"]),
+        ("skills.disabled", [" lead"]),
         ("skills.disabled", "github"),
-        ("skills.disabled", ["bad name"]),
         ("skills.disabled", [3]),
     ]:
         with pytest.raises(SwitchyardError):
@@ -143,7 +148,11 @@ def test_writer_backs_up_audits_verifies_and_rolls_back(tmp_path: Path, port: Fa
 
 def test_inventory_and_benchmark_measure_prompt_reduction(core: Core) -> None:
     inv = act(core, "inventory", actor="hermes")
-    assert inv["count"] == 6 and next(s for s in inv["skills"] if s["name"] == "p5js")["enabled"] is False
+    assert (
+        inv["count"] == 6
+        and inv["not_listed"] == 1
+        and next(s for s in inv["skills"] if s["name"] == "p5js")["enabled"] is False
+    )
     act(
         core,
         "preset_add",
@@ -160,9 +169,8 @@ def test_inventory_and_benchmark_measure_prompt_reduction(core: Core) -> None:
     assert bench["before_tokens"] == inv["enabled_tokens"] and bench["after_tokens"] == expected_after
     assert bench["reduction_percent"] > 40
     idle = act(core, "benchmark", name="idle")
-    assert (
-        idle["after_tokens"] == 0
-    )  # the benchmark counts what is asked; Hermes keeps essential skills anyway
+    essential = next(s["tokens"] for s in inv["skills"] if s["name"] == "hermes-agent")
+    assert idle["after_tokens"] == essential  # Hermes keeps essential skills, so they never count as saved
     assert [p["name"] for p in act(core, "presets")["presets"]] == ["coding", "idle"]
 
 
@@ -173,7 +181,7 @@ def test_apply_restore_and_undo(core: Core, port: FakeHermesConfig) -> None:
     act(core, "preset_add", name="idle", disable="*")
     second = act(core, "apply", name="idle")
     assert "hermes-agent" in second["refused"] and second["baseline"] == out["baseline"]
-    assert act(core, "restore")["restored"] == out["backup"]
+    assert act(core, "restore")["restored"] == "idle"
     assert port.values["skills.disabled"] == ["p5js"]
     with pytest.raises(SwitchyardError, match="no preset is active"):
         act(core, "restore")
@@ -254,3 +262,54 @@ def test_without_a_hermes_config_port(tmp_path: Path) -> None:
         assert c.run("module", "show", {"id": "activation"}, actor="t")["status"] == "failed"
     finally:
         c.close()
+
+
+def test_ending_a_preset_keeps_other_edits_and_expires_before_apply(
+    core: Core, port: FakeHermesConfig, clock: Clock
+) -> None:
+    act(core, "preset_add", name="a", disable="github")
+    act(core, "preset_add", name="b", disable="manim-video")
+    act(core, "apply", name="a", ttl_minutes=5)
+    assert port.values["skills.disabled"] == ["github", "p5js"]
+    port.values["skills.disabled"] = ["arxiv", "github", "p5js"]  # the user disables arxiv by hand meanwhile
+    clock.now += 3600
+    act(core, "apply", name="b")  # 'a' expired: it ends first, so github comes back
+    assert port.values["skills.disabled"] == ["arxiv", "manim-video", "p5js"]
+    drift = [
+        r
+        for r in core.run("audit", "tail", {"n": 100}, actor="t")
+        if r["action"] == "module.activation.drift"
+    ]
+    assert len(drift) == 1
+    act(core, "restore")
+    assert port.values["skills.disabled"] == ["arxiv", "p5js"]  # the hand edit survives
+
+
+def test_existing_names_are_kept_even_if_odd(core: Core, port: FakeHermesConfig) -> None:
+    port.values["skills.disabled"] = ["p5js", "legacy\tname"]
+    act(core, "preset_add", name="a", disable="github")
+    act(core, "apply", name="a")
+    assert port.values["skills.disabled"] == ["github", "legacy\tname", "p5js"]
+    port.values["skills.platform_disabled"] = {"telegram": ["arxiv"], "x": "github", "y": 3}
+    inv = act(core, "inventory")
+    assert next(s for s in inv["skills"] if s["name"] == "arxiv")["disabled_on"] == ["telegram"]
+    assert next(s for s in inv["skills"] if s["name"] == "github")["disabled_on"] == ["x"]
+
+
+def test_writer_reads_and_essential_fallback(tmp_path: Path) -> None:
+    class Port(FakeHermesConfig):
+        def essential(self) -> frozenset[str]:
+            raise RuntimeError("internal moved")
+
+    class Sink:
+        def append(self, **kw: Any) -> None:
+            pass
+
+    port = Port()
+    w = ConfigWriter(port, Sink(), tmp_path / "b")  # type: ignore[arg-type]
+    assert w.essential() == frozenset({"hermes-agent"})
+    with pytest.raises(SwitchyardError, match="not readable"):
+        w.read("model.default")
+    assert w.read("skills.platform_disabled") == {}
+    port.values["skills.disabled"] = None
+    assert w.get("skills.disabled") == []

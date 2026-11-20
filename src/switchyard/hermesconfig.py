@@ -14,7 +14,6 @@ import os
 import re
 import secrets as _random
 import threading
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -22,34 +21,27 @@ from typing import Any, Protocol
 from switchyard.capabilities import AuditSink
 from switchyard.errors import SwitchyardError
 
-_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}\Z")
+# Hermes has no strict skill-name rule; accept any printable name without commas (preset lists are
+# comma-separated), surrounding spaces or control characters.
+_NAME = re.compile(r"[^\x00-\x1f\x7f,\s](?:[^\x00-\x1f\x7f,]{0,126}[^\x00-\x1f\x7f,\s])?\Z")
 _BACKUP_ID = re.compile(r"[0-9]{20}-[a-f0-9]{8}\Z")
 MAX_NAMES = 2000
 KEEP_BACKUPS = 200
 
 
-def _name_list(value: Any) -> list[str]:
-    if not isinstance(value, list) or len(value) > MAX_NAMES:
-        raise SwitchyardError(f"value must be a list of at most {MAX_NAMES} names")
-    names = []
-    for item in value:
-        if not isinstance(item, str) or not _NAME.match(item):
-            raise SwitchyardError(f"invalid name {str(item)[:80]!r}")
-        names.append(item)
-    return sorted(set(names))
-
-
-# key -> validator. ``skills.disabled`` takes effect on the next turn; ``plugins.disabled`` on restart.
-ALLOWED_KEYS: dict[str, Callable[[Any], Any]] = {
-    "skills.disabled": _name_list,
-    "plugins.disabled": _name_list,
-}
+# Writable keys. ``skills.disabled`` takes effect on the next turn. ``plugins.disabled`` is deliberately
+# absent: it is a deny-list whose shortening re-enables plugins the user turned off (M5 review); plugin
+# switching needs its own human-approved capability.
+ALLOWED_KEYS = frozenset({"skills.disabled"})
+READ_ONLY_KEYS = frozenset({"skills.platform_disabled"})
+FALLBACK_ESSENTIAL = frozenset({"hermes-agent"})
 
 
 class HermesConfigPort(Protocol):
     def get(self, key: str) -> Any: ...
     def set(self, key: str, value: Any) -> None: ...
     def skills(self) -> list[dict[str, str]]: ...
+    def essential(self) -> frozenset[str]: ...
 
 
 class ConfigWriter:
@@ -61,15 +53,14 @@ class ConfigWriter:
         self._dir = backup_dir
         self._lock = threading.Lock()
         self._seq = 0
+        self.dropped = 0
 
     @staticmethod
-    def _check_key(key: str) -> Callable[[Any], Any]:
-        validator = ALLOWED_KEYS.get(key)
-        if validator is None:
+    def _check_key(key: str) -> None:
+        if key not in ALLOWED_KEYS:
             raise SwitchyardError(
                 f"Hermes config key {key!r} is not writable; allowed: {sorted(ALLOWED_KEYS)}"
             )
-        return validator
 
     def get(self, key: str) -> Any:
         self._check_key(key)
@@ -78,18 +69,38 @@ class ConfigWriter:
             return []
         return sorted({str(v) for v in value}) if isinstance(value, list | tuple | set) else [str(value)]
 
+    def read(self, key: str) -> Any:
+        """Read-only keys (``skills.platform_disabled``): platform -> sorted names."""
+        if key not in READ_ONLY_KEYS:
+            raise SwitchyardError(
+                f"Hermes config key {key!r} is not readable here; allowed: {sorted(READ_ONLY_KEYS)}"
+            )
+        value = self._port.get(key)
+        if not isinstance(value, dict):
+            return {}
+        out: dict[str, list[str]] = {}
+        for platform, names in list(value.items())[:64]:
+            items = names if isinstance(names, list) else [names] if isinstance(names, str) else []
+            out[str(platform)[:64]] = sorted({str(n)[:128] for n in items})[:MAX_NAMES]
+        return out
+
+    def essential(self) -> frozenset[str]:
+        """Skills Hermes never disables (it ignores them in ``skills.disabled``)."""
+        try:
+            return frozenset(self._port.essential()) or FALLBACK_ESSENTIAL
+        except Exception:
+            return FALLBACK_ESSENTIAL
+
     def skills(self) -> list[dict[str, str]]:
+        """Installed skills. Names Switchyard cannot handle are left out and counted in ``dropped``."""
+        rows = self._port.skills()
         out = []
-        for row in self._port.skills()[:MAX_NAMES]:
+        for row in rows[:MAX_NAMES]:
             name = row.get("name")
             if isinstance(name, str) and _NAME.match(name):
-                out.append(
-                    {
-                        "name": name,
-                        "category": str(row.get("category") or "")[:128],
-                        "description": str(row.get("description") or "")[:4000],
-                    }
-                )
+                out.append({"name": name, "category": str(row.get("category") or "")[:128],
+                            "description": str(row.get("description") or "")[:4000]})  # fmt: skip
+        self.dropped = len(rows) - len(out)
         return out
 
     def _write_backup(self, record: dict[str, Any]) -> None:
@@ -104,9 +115,14 @@ class ConfigWriter:
     def set(self, module_id: str, key: str, value: Any, *, actor: str, note: str = "") -> dict[str, Any]:
         """Write ``key``; returns ``{"backup", "key", "stored", "refused"}``. ``refused`` lists names Hermes
         declined to store (for example essential skills); anything else unexpected rolls back."""
-        new = self._check_key(key)(value)
+        self._check_key(key)
         with self._lock:
             old = self.get(key)
+            new = self._validate_new(value, old)
+            refused_upfront: set[str] = set()
+            if key == "skills.disabled":  # Hermes ignores essential skills here; don't pretend otherwise
+                refused_upfront = set(new) & self.essential()
+                new = sorted(set(new) - refused_upfront)
             now = datetime.now(UTC)
             self._seq = (self._seq + 1) % 1_000_000  # orders backups made within the same second
             backup = f"{now.strftime('%Y%m%d%H%M%S')}{self._seq:06d}-{_random.token_hex(4)}"
@@ -146,7 +162,19 @@ class ConfigWriter:
                     f"previous value {'restored' if restored == 'yes' else 'NOT restored'}, "
                     f"backup {backup}"
                 ) from None
-        return {"backup": backup, "key": key, "stored": stored, "refused": sorted(set(new) - set(stored))}
+        refused = sorted((set(new) - set(stored)) | refused_upfront)
+        return {"backup": backup, "key": key, "stored": stored, "refused": refused}
+
+    @staticmethod
+    def _validate_new(value: Any, old: list[str]) -> list[str]:
+        """Names the caller adds must be valid; names already in Hermes's list are kept as they are."""
+        if not isinstance(value, list) or len(value) > MAX_NAMES:
+            raise SwitchyardError(f"value must be a list of at most {MAX_NAMES} names")
+        kept = set(old)
+        for item in value:
+            if not isinstance(item, str) or (item not in kept and not _NAME.match(item)):
+                raise SwitchyardError(f"invalid name {str(item)[:80]!r}")
+        return sorted(set(value))
 
     def backups(self, n: int = 20) -> list[dict[str, Any]]:
         out = []
@@ -190,6 +218,16 @@ class ModuleConfig:
 
     def skills(self) -> list[dict[str, str]]:
         return self._writer.skills()
+
+    @property
+    def dropped(self) -> int:
+        return self._writer.dropped
+
+    def read(self, key: str) -> Any:
+        return self._writer.read(key)
+
+    def essential(self) -> frozenset[str]:
+        return self._writer.essential()
 
     def set(self, key: str, value: Any, *, actor: str, note: str = "") -> dict[str, Any]:
         return self._writer.set(self._module_id, key, value, actor=actor, note=note)

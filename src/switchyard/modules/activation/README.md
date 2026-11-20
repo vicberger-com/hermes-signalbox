@@ -18,14 +18,17 @@ system prompt. Totals for enabled and disabled skills are included.
 
 - `benchmark {name}`: index tokens now and with the preset applied, and the reduction (no change is made).
 - `apply {name, ttl_minutes}`: writes through `ctx.hermes_config` (backed up, audited, read back, rolled back
-  on failure). With `ttl_minutes` the state before the first active preset comes back after that time; expiry
-  is checked before each Hermes turn and on every health poll. Hermes keeps essential skills enabled; those
-  are reported as `refused`.
-- `restore`: back to the state before the first active preset.
+  on failure). With `ttl_minutes` the preset ends after that time; expiry is checked before each Hermes turn,
+  on every health poll and before any new `apply`. Hermes keeps essential skills enabled; they are never
+  written and are reported as `refused` (and never counted as saved in `benchmark`).
+- `restore` (and expiry): undo exactly what the active preset(s) changed. Skills you switched by hand in the
+  meantime keep your setting; a difference is audited as `module.activation.drift`.
 - `undo {backup}`: restore the value before any single change (`history` lists backups).
 
-Changes to skills take effect on the next turn. Plugins are not switched by this module (they need a restart
-and are code); the broker already allows `plugins.disabled` for later phases.
+Changes to skills take effect on the next turn. Only the global `skills.disabled` list is managed;
+`inventory` shows platforms that also disable a skill (`disabled_on`) and counts installed skills whose names
+cannot be handled (`not_listed`). Plugins are not switched (they need a restart, are code, and their list is a
+deny-list); that needs its own capability.
 
 ## Control surface
 
@@ -41,3 +44,19 @@ Capabilities: `hermes.config.write`, `hermes.hooks`, `ui.panel`.
 
 Tables `presets`, `active`. Config backups belong to the core (`<data_dir>/hermes-config-backups`) and stay
 after removal so changes remain reversible.
+
+## Security review (M5 gate)
+
+Reviewed 2026-11-20 by a fresh subagent with the M5 diff, the threat table and the Hermes v0.23.2 sources.
+
+| Finding | Disposition |
+|---|---|
+| (medium) An expired timed preset was not ended before a new `apply` | **Fixed.** `apply` ends expired presets first |
+| (medium) Backup pruning could delete the baseline an active preset needs | **Fixed.** The active row keeps the baseline and applied lists itself; no backup file needed |
+| (medium) Ending a preset restored a whole old list, discarding edits made in between | **Fixed.** Only the preset's own changes are undone; drift audited |
+| (medium) `plugins.disabled` writable by any holder of the capability (shortening it re-enables plugins) | **Fixed.** Removed from the writable keys |
+| (low) Essential skills written and counted as saved | **Fixed.** Never written, reported as refused, excluded from savings |
+| (low) Per-platform disables ignored | **Fixed (shown).** `disabled_on` in the inventory; only global scope is managed |
+| (low) An odd existing name in Hermes's list blocked every apply | **Fixed.** Only added names are validated |
+| (low) Skills with unusual names silently dropped | **Fixed.** Name rule relaxed to printable without commas; the rest are counted as `not_listed` |
+

@@ -32,6 +32,14 @@ class HermesConfigAdapter:
         node[leaf] = value
         save_config(config, merge_existing=True)
 
+    def essential(self) -> frozenset[str]:
+        """Hermes's essential skills. Not in the published plugin API, so read defensively."""
+        try:
+            from agent.skill_utils import ESSENTIAL_SKILLS  # type: ignore[import-not-found,unused-ignore]
+        except Exception:
+            return frozenset({"hermes-agent"})
+        return frozenset(str(s) for s in ESSENTIAL_SKILLS)
+
     def skills(self) -> list[dict[str, str]]:
         from tools.skills_tool import find_all_skills  # type: ignore[import-not-found,unused-ignore]
 
