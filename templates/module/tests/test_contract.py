@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from example import ExampleModule
@@ -38,3 +39,11 @@ def test_contributed_panel_matches_manifest_and_returns_plain_data() -> None:
     assert set(ctx.panels) == {"example.status"}
     data = ctx.panels["example.status"]()
     assert data == {"title": "Example", "state": "active"}
+
+
+def test_full_contract_through_a_real_core() -> None:
+    """The shared contract suite: manifest, discovery, denial, activation, health, panels, removal, audit."""
+    from switchyard.contract import run_contract
+
+    report = run_contract(Path(__file__).resolve().parents[1])
+    assert report.ok, report.summary()

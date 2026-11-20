@@ -37,6 +37,8 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Update control for git-installed modules: pinned commit fetch (https only, no hooks, verified HEAD),
   staged manifest checks (same id, same pinned source), swap with health check and automatic rollback,
   manual rollback.
+- Module contract suite `switchyard.contract.run_contract`; the template module passes it in-process and
+  under the subprocess host. End-to-end M0 acceptance tests across CLI, API and Hermes adapter.
 - Coverage gate (90%) on `src/switchyard`; mypy strict and bandit now include `src/`.
 
 ### Changed

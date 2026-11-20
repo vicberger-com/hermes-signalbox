@@ -1,8 +1,9 @@
 """Template module. Copy the directory, rename, and replace the bodies.
 
-The core passes a ``ModuleContext`` to ``activate``. It exposes only the brokers for capabilities this
-module was granted. Until the core exists (M0), the context is typed as a Protocol with the two members
-the template uses, so this file runs and is testable on its own.
+The core passes a ``switchyard.context.ModuleContext`` to ``activate``. It exposes only the brokers for
+capabilities this module was granted; anything else raises ``CapabilityDenied``. The context is typed here as
+a Protocol with the two members the template uses, so the module imports nothing from Switchyard and its unit
+tests run on their own. ``tests/test_contract.py`` also runs it through a real core (``switchyard.contract``).
 """
 
 from __future__ import annotations
