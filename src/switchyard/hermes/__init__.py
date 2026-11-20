@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import contextlib
 import json
 import re
 import shlex
@@ -37,6 +38,7 @@ from switchyard.capabilities import CORE_ACTOR
 from switchyard.core import Core
 from switchyard.errors import SwitchyardError
 from switchyard.hermes.config_port import HermesConfigAdapter
+from switchyard.hermes.delegation import make_provider
 from switchyard.ops import MODEL_ACTOR, OPERATIONS, UsageError
 from switchyard.secrets import DEFAULT_PATTERNS
 
@@ -132,6 +134,9 @@ class HermesAdapter:
         for hook in sorted(OBSERVER_HOOKS):  # ADR-0004: one forwarder per hook; modules attach in the core
             ctx.register_hook(hook, self._forwarder(hook))
         ctx.register_middleware("llm_request", self._llm_request)
+        if hasattr(ctx, "register_delegation_provider"):  # ADR-0007; Hermes builds without it are fine
+            with contextlib.suppress(ImportError):
+                ctx.register_delegation_provider(make_provider(self.core.bridge, self.core.hosting))
         patterns = [p for p in DEFAULT_PATTERNS if _LITERAL_PREFIX.match(p)]
         ctx.register_redaction_patterns(patterns)
         if self.core.hosting:

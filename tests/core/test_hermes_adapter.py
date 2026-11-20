@@ -211,6 +211,7 @@ def test_hooks_and_middleware_are_forwarded_to_the_bridge(
         "post_api_request",
         "api_request_error",
         "post_llm_call",
+        "subagent_start",
         "subagent_stop",
     }
     assert set(ctx.middleware) == {"llm_request"}
@@ -274,3 +275,20 @@ def test_pre_llm_call_gate_blocks_the_turn(ctx: FakeCtx, monkeypatch: pytest.Mon
         "message": "[switchyard/router] stop",
     }
     assert ctx.hooks["post_llm_call"](user_message="hi") is None  # only pre_llm_call can block
+
+
+def test_delegation_backend_registered_when_hermes_supports_it(
+    ctx: FakeCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+    import types
+
+    fake = types.ModuleType("agent.delegation_provider")
+    fake.DelegationProvider = object  # type: ignore[attr-defined]
+    fake.DelegationRouteError = ValueError  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "agent", types.ModuleType("agent"))
+    monkeypatch.setitem(sys.modules, "agent.delegation_provider", fake)
+    got: list[Any] = []
+    ctx.register_delegation_provider = got.append  # type: ignore[attr-defined]
+    register(ctx)
+    assert got[0].name == "switchyard" and not got[0].is_available()  # no module routes yet

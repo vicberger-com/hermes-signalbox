@@ -9,9 +9,11 @@ only). An ``llm_request`` middleware can only change the request's ``model``: no
 
 from __future__ import annotations
 
+import collections
 import concurrent.futures
 import contextlib
 import copy
+import hashlib
 import re
 import threading
 import urllib.parse
@@ -19,6 +21,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from switchyard.capabilities import CORE_ACTOR, AuditSink
+from switchyard.errors import SwitchyardError
 
 OBSERVER_HOOKS = frozenset(
     {
@@ -27,6 +30,7 @@ OBSERVER_HOOKS = frozenset(
         "post_api_request",
         "api_request_error",
         "post_llm_call",
+        "subagent_start",
         "subagent_stop",
     }
 )
@@ -68,10 +72,15 @@ _SCALAR_KEYS = frozenset(
         "is_first_turn",
         "child_role",
         "child_status",
+        "child_subagent_id",
+        "parent_subagent_id",
         "duration_ms",
     }
 )
 _MAX_STR = 300
+_ROLE = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
+_ROUTE_VALUE = re.compile(r"[A-Za-z0-9._:/@+-]{1,200}\Z")
+_PROFILE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")
 _GATE_CODE = re.compile(r"[a-z][a-z0-9_]{0,39}\Z")
 
 
@@ -81,6 +90,14 @@ def _host_only(url: str) -> str:
     host = parts.hostname or ""
     port = f":{parts.port}" if parts.port else ""
     return f"{parts.scheme}://{host}{port}"[:_MAX_STR] if parts.scheme and host else ""
+
+
+def goal_sha(goal: object) -> str:
+    """A short digest of a delegated task's goal (ADR-0007): links a route decision to the subagent it became
+    and spots repeated delegation, without any module seeing the goal text."""
+    if not isinstance(goal, str):
+        return ""
+    return hashlib.sha256(" ".join(goal.split()).encode("utf-8")).hexdigest()[:16]
 
 
 def metadata_only(kwargs: Mapping[str, Any]) -> dict[str, Any]:
@@ -115,6 +132,8 @@ def metadata_only(kwargs: Mapping[str, Any]) -> dict[str, Any]:
     error = kwargs.get("error")
     if isinstance(error, Mapping) and isinstance(error.get("type"), str):
         out["error"] = {"type": error["type"][:_MAX_STR]}
+    if "child_goal" in kwargs:
+        out["goal_sha"] = goal_sha(kwargs.get("child_goal"))
     return out
 
 
@@ -130,6 +149,9 @@ class HermesBridge:
         self.timeout = timeout
         self._pools: dict[str, concurrent.futures.ThreadPoolExecutor] = {}
         self._closed = False
+        self._delegation: tuple[str, Callable[..., Any], Callable[[], Any]] | None = None
+        self._routed_goals: collections.OrderedDict[str, None] = collections.OrderedDict()
+        self._delegated: collections.OrderedDict[str, None] = collections.OrderedDict()
 
     def _pool(self, module_id: str) -> concurrent.futures.ThreadPoolExecutor:
         """One small pool per module, so a module whose calls hang only starves itself (M6 review)."""
@@ -165,8 +187,22 @@ class HermesBridge:
         with self._lock:
             self._middleware.setdefault("gate:pre_llm_call", []).append((module_id, fn))
 
+    def set_delegation(self, module_id: str, route: Callable[..., Any], roles: Callable[[], Any]) -> None:
+        """One module at a time routes Hermes delegation (ADR-0007)."""
+        with self._lock:
+            holder = self._delegation[0] if self._delegation else None
+            if holder is not None and holder != module_id:
+                raise SwitchyardError(f"delegation routing is already provided by {holder!r}")
+            self._delegation = (module_id, route, roles)
+
+    def delegation_active(self) -> bool:
+        with self._lock:
+            return self._delegation is not None
+
     def remove_all(self, module_id: str) -> None:
         with self._lock:
+            if self._delegation and self._delegation[0] == module_id:
+                self._delegation = None
             for table in (self._hooks, self._middleware):
                 for key in list(table):
                     table[key] = [(m, f) for m, f in table[key] if m != module_id]
@@ -179,6 +215,8 @@ class HermesBridge:
                 for k, entries in self._middleware.items()
                 if any(m == module_id for m, _ in entries)
             ]
+            if self._delegation and self._delegation[0] == module_id:
+                mids.append("delegation")
         return sorted(hooks + mids)
 
     # dispatch -----------------------------------------------------------------------------------------
@@ -207,7 +245,101 @@ class HermesBridge:
             self._failed(module_id, what, exc)
         return False, None
 
+    def delegation_roles(self) -> list[tuple[str, str]]:
+        """Worker roles for the ``delegate_task`` schema: sorted, validated names, one-line descriptions."""
+        with self._lock:
+            entry = self._delegation
+        if entry is None:
+            return []
+        ok, roles = self._run(entry[0], "delegation:roles", entry[2])
+        out: dict[str, str] = {}
+        if ok and isinstance(roles, list):
+            for item in roles[:64]:
+                if (
+                    isinstance(item, tuple | list)
+                    and len(item) == 2
+                    and isinstance(item[0], str)
+                    and _ROLE.match(item[0])
+                    and isinstance(item[1], str)
+                ):
+                    out[item[0]] = " ".join(item[1].split())[:200]
+        return sorted(out.items())
+
+    def dispatch_delegation(self, task: Mapping[str, Any]) -> tuple[dict[str, str] | None, str]:
+        """Route one ``delegate_task`` task (ADR-0007). Returns ``(route, "")`` or ``(None, message)``.
+
+        The module sees the role, the goal digest and the task index, never the goal or context text. It
+        returns ``{"model", "provider"}``, ``{"profile"}`` or ``{"refuse": code}``; anything else, an error or
+        a timeout refuses the task (fail closed: the operator chose this backend, so no silent fallback to
+        another route). Messages are written here, because Hermes shows them to the model."""
+        with self._lock:
+            entry = self._delegation
+        if entry is None:
+            return None, "[switchyard] No Switchyard module routes delegation right now. Ask the operator."
+        module_id, route_fn, _ = entry
+        role = task.get("worker_role")
+        meta: dict[str, Any] = {
+            "worker_role": role if isinstance(role, str) and _ROLE.match(role) else "",
+            "goal_sha": goal_sha(task.get("goal")),
+            "index": task.get("index") if isinstance(task.get("index"), int) else 0,
+        }
+        ok, answer = self._run(module_id, "delegation:route", route_fn, meta)
+        if ok and isinstance(answer, Mapping):
+            label = meta["worker_role"] or module_id
+            code = answer.get("refuse")
+            if isinstance(code, str) and _GATE_CODE.match(code):
+                self._audit.append(
+                    actor=CORE_ACTOR,
+                    action="module.delegation_refused",
+                    module=module_id,
+                    detail={"role": label, "code": code},
+                )
+                words = code.replace("_", " ")
+                return None, (
+                    f"[switchyard] The {module_id} module refused this task ({words}). "
+                    "Do not delegate the same task again; do it differently or ask the user."
+                )
+            profile = answer.get("profile")
+            if isinstance(profile, str) and _PROFILE.match(profile) and set(answer) == {"profile"}:
+                self._remember(self._routed_goals, meta["goal_sha"])
+                return {"profile": profile, "label": label}, ""
+            model, provider = answer.get("model"), answer.get("provider")
+            if (
+                set(answer) == {"model", "provider"}
+                and isinstance(model, str)
+                and isinstance(provider, str)
+                and _ROUTE_VALUE.match(model)
+                and _ROUTE_VALUE.match(provider)
+            ):
+                self._remember(self._routed_goals, meta["goal_sha"])
+                return {"model": model, "provider": provider, "label": label}, ""
+        self._audit.append(
+            actor=CORE_ACTOR,
+            action="module.delegation_failed",
+            module=module_id,
+            detail={"role": meta["worker_role"]},
+        )
+        return (
+            None,
+            "[switchyard] Delegation routing failed for this task. Ask the operator to check Switchyard.",
+        )
+
+    def _remember(self, table: collections.OrderedDict[str, None], key: str) -> None:
+        if not key:
+            return
+        with self._lock:
+            table[key] = None
+            table.move_to_end(key)
+            while len(table) > 2000:
+                table.popitem(last=False)
+
     def dispatch_hook(self, name: str, kwargs: Mapping[str, Any]) -> None:
+        if name == "subagent_start":
+            child = str(kwargs.get("child_session_id") or "")
+            with self._lock:
+                routed = goal_sha(kwargs.get("child_goal")) in self._routed_goals
+            if routed:
+                self._remember(self._delegated, child)
         with self._lock:
             entries = list(self._hooks.get(name, ()))
         for module_id, fn in entries:
@@ -262,6 +394,10 @@ class HermesBridge:
             ctx = copy.deepcopy(
                 {k: v for k, v in context.items() if k not in {"request", "original_request"}}
             )
+            # ADR-0007: a subagent whose model a delegation route chose is marked, so request middleware
+            # (the router) leaves that choice alone.
+            with self._lock:
+                ctx["delegated"] = str(context.get("session_id") or "") in self._delegated
         except Exception:
             return None  # not copyable: never hand a module the live request
         for module_id, fn in entries:

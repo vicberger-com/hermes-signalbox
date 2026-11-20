@@ -1,0 +1,29 @@
+# Bundled module M7: workers, personas and teams. Spec: README.md in this directory.
+schema = 1
+
+[module]
+id = "workers"
+name = "Workers"
+version = "0.8.0"
+license = "Apache-2.0"
+license_class = "open"
+summary = "Worker roles and teams for Hermes delegation: each role routes to its own model pool or Hermes profile; a ledger of spawned work, stuck and loop detection."
+requires_core = ">=0.1,<1"
+isolation = "in-process"
+entry = "workers_module:WorkersModule"
+
+[capabilities]
+optional = ["llm.paid"]
+request = ["hermes.hooks", "hermes.delegation", "schedule", "ui.panel", "llm.paid"]
+
+[contributes]
+hooks = ["subagent_start", "subagent_stop"]
+commands = ["report", "roles", "teams", "ledger", "role_set", "role_remove", "team_set", "team_remove"]
+panels = ["workers.status"]
+log_streams = ["workers"]
+
+[lifecycle]
+activation = "auto"
+
+[update]
+source = "bundled"

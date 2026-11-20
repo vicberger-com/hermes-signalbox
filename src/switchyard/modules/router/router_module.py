@@ -99,7 +99,7 @@ class RouterModule:
         read_only = {"status", "explain"}
         params: dict[str, dict[str, type]] = {
             "status": {},
-            "explain": {"tokens": int, "tools": bool, "vision": bool},
+            "explain": {"tokens": int, "tools": bool, "vision": bool, "consumer": str},
             "pin": {"consumer": str, "id": str},
             "auto": {"consumer": str},
             "rule_add": {"consumer": str, "min_tier": str},
@@ -155,9 +155,11 @@ class RouterModule:
             return False
         return self._spent_today() < self._budget()
 
-    def _candidates(self, provider: str) -> list[Candidate]:
+    def _candidates(self, provider: str, consumer: str | None = None) -> list[Candidate]:
         try:
-            resolved = self.ctx.call("resources", "resolve", {"consumer": self.settings["consumer"]})
+            resolved = self.ctx.call(
+                "resources", "resolve", {"consumer": consumer or self.settings["consumer"]}
+            )
         except SwitchyardError:
             return []  # registry not running: pass requests through unchanged
         found = candidates_from(resolved.get("resources", []), provider)
@@ -200,9 +202,11 @@ class RouterModule:
 
     # Hermes callbacks ---------------------------------------------------------------------------------
 
-    def choose(self, need: Need, provider: str) -> tuple[Candidate | None, str, dict[str, str]]:
-        consumer = self.settings["consumer"]
-        candidates = self._candidates(provider)
+    def choose(
+        self, need: Need, provider: str, consumer: str | None = None
+    ) -> tuple[Candidate | None, str, dict[str, str]]:
+        consumer = consumer or self.settings["consumer"]
+        candidates = self._candidates(provider, consumer)
         cooling = self._effective_cooling(provider, candidates)
         paid_ok = self._paid_ok(consumer, need.tier)
         pin = self._q(f"SELECT resource FROM {self._t('pins')} WHERE consumer = ?", (consumer,))  # nosec B608
@@ -217,8 +221,8 @@ class RouterModule:
 
     def route(self, request: dict[str, Any], context: dict[str, Any]) -> dict[str, Any] | None:
         provider = context.get("provider")
-        if self.ctx is None or provider not in self.settings["providers"]:
-            return None
+        if self.ctx is None or provider not in self.settings["providers"] or context.get("delegated"):
+            return None  # a subagent routed by its worker role keeps that role's model (ADR-0007)
         with self._lock:  # choice and paid-budget charge are one step (concurrent Hermes requests)
             chosen, need, reason = self._decide(request, str(provider), str(context.get("turn_id") or ""))
             if chosen is not None and chosen.cost_class == "paid":
@@ -384,18 +388,34 @@ class RouterModule:
             "recent": [dict(zip(keys, r, strict=True)) for r in recent],
         }
 
-    def explain(self, tokens: int = 1000, tools: bool = False, vision: bool = False) -> dict[str, Any]:
+    def explain(
+        self, tokens: int = 1000, tools: bool = False, vision: bool = False, consumer: str = ""
+    ) -> dict[str, Any]:
+        """Read-only: what the router would choose now. ``consumer`` (default: the configured one) lets the
+        workers module ask for a role's own pool (ADR-0007)."""
         if not 1 <= tokens <= 10_000_000:
             raise SwitchyardError("tokens must be from 1 to 10000000")
+        if consumer:
+            _check(_CONSUMER, consumer, "consumer")
+        consumer = consumer or self.settings["consumer"]
         need = Need(tokens=tokens, tools=tools, vision=vision, tier=tier_for(tokens))
         out = []
         for provider in self.settings["providers"]:
-            chosen, reason, skipped = self.choose(need, provider)
-            out.append({"provider": provider, "chosen": chosen.id if chosen else None, "reason": reason,
-                        "skipped": skipped})  # fmt: skip
+            chosen, reason, skipped = self.choose(need, provider, consumer)
+            out.append(
+                {
+                    "provider": provider,
+                    "chosen": chosen.id if chosen else None,
+                    "model": chosen.model if chosen else None,
+                    "cost_class": chosen.cost_class if chosen else None,
+                    "reason": reason,
+                    "skipped": skipped,
+                }
+            )
         return {
+            "consumer": consumer,
             "tier": need.tier,
-            "paid_allowed": self._paid_ok(self.settings["consumer"], need.tier),
+            "paid_allowed": self._paid_ok(consumer, need.tier),
             "providers": out,
         }
 
