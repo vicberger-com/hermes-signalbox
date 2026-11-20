@@ -236,5 +236,16 @@ reactivate if it was running, health check; any failure restores the previous di
 
 ## 5. Acceptance tests
 
+**Contract suite.** `switchyard.contract.run_contract(module_dir) -> ContractReport` (stdlib only, usable from
+third-party module repositories). Copies the module into a temporary data directory and runs it through a real
+hosting core: `manifest`, `discover`, `deny_ungranted` (probe `net.outbound`, or `process.spawn` if the module asks
+for net), `activate` (all requested capabilities granted; second activate is a no-op), `health`, `panels` (exactly
+the declared panels, JSON-serialisable), `deactivate` (twice; panels removed), `remove` (grants gone), `audit` (chain
+verifies; grant/activation/denial/removal recorded). Later checks are skipped after a failure. Checks raise
+`ContractFailure`, not `assert`, so they hold under `python -O`. The template passes in-process and in the T2 host.
+
+**End to end.** `tests/acceptance/test_m0_acceptance.py` covers every item of the Q&A section 4 list through the CLI,
+the loopback API and the Hermes adapter on one data directory.
+
 As listed in [01-m0-prework.md](../qa/01-m0-prework.md) section 4, plus the threat tests in its question 5 table.
 Coverage target for `src/switchyard`: 90%.

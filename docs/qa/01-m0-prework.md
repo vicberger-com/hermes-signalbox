@@ -68,13 +68,16 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 ## 4. Acceptance tests (written before code)
 
-- [ ] The example module from `templates/module/` is discovered, verified, granted, loaded and activated.
-- [ ] A call needing an ungranted capability raises `CapabilityDenied` and writes an audit record.
-- [ ] Every grant, activation, denial, update and rollback appears in the audit log; `audit verify` passes, and fails after any edit.
-- [ ] The example module is updated to a pinned commit and rolled back after a failing health check, with the core still running.
-- [ ] The same operation (list, enable, disable) works from the CLI, the loopback API and the Hermes tool, with the same result.
-- [ ] A secret canary value never appears in any tool result, log line, audit record or exception text.
-- [ ] Coverage of `src/switchyard` is at least 90%; mypy strict passes on `src/`.
+Automated in `tests/acceptance/test_m0_acceptance.py`; the template's contract run is in
+`tests/core/test_contract.py` and `templates/module/tests/test_contract.py`.
+
+- [x] The example module from `templates/module/` is discovered, verified, granted, loaded and activated.
+- [x] A call needing an ungranted capability raises `CapabilityDenied` and writes an audit record.
+- [x] Every grant, activation, denial, update and rollback appears in the audit log; `audit verify` passes, and fails after any edit.
+- [x] The example module is updated to a pinned commit and rolled back after a failing health check, with the core still running.
+- [x] The same operation (list, enable, disable) works from the CLI, the loopback API and the Hermes tool, with the same result.
+- [x] A secret canary value never appears in any tool result, log line, audit record or exception text.
+- [x] Coverage of `src/switchyard` is at least 90%; mypy strict passes on `src/`.
 
 ## 5. Retro (fill in after merge)
 

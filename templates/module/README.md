@@ -39,6 +39,11 @@ Inputs treated as untrusted, hosts contacted, secrets used (names only), failure
 
 Source, verification, health check used after update.
 
+## Contract tests
+
+`tests/test_contract.py` keeps the module's own unit tests and calls `switchyard.contract.run_contract` on
+the module directory. A module ships only when the full contract passes (see `docs/modules/m0-core.md`).
+
 ## Third-party code
 
 Source, license, what was reused, where it is attributed.
