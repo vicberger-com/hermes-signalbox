@@ -40,8 +40,12 @@ def _int_setting(cfg: dict[str, Any], key: str, default: int, low: int, high: in
     return value
 
 
+SAFETY = frozenset({"router", "meter", "resources", "secrets", "supervisor"})
+
+
 class SupervisorModule:
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
+        self._was_active: set[str] = set()
         self.ctx: Any = None
         self.clock = clock
         self.settings: dict[str, int] = {}
@@ -130,7 +134,15 @@ class SupervisorModule:
 
     def _check_modules(self) -> list[tuple[str, str, str]]:
         out = []
+        active = set()
         for m in self.ctx.core.modules():
+            if m["status"] == "active":
+                active.add(m["id"])
+            elif m["status"] != "failed" and m["id"] in self._was_active:
+                # A module that ran at the last pass stopped: a revoked grant can switch off a safety module
+                # (router, meter) without failing it (R1 review). Operator stops show too; ack them.
+                out.append((f"module:{m['id']}:stopped", "high" if m["id"] in SAFETY else "medium",
+                            f"module {m['id']} is {m['status']}"))  # fmt: skip
             if m["status"] == "failed":
                 out.append(
                     (
@@ -139,6 +151,7 @@ class SupervisorModule:
                         f"module {m['id']} failed: {m['error'] or 'unknown error'}",
                     )
                 )
+        self._was_active = active
         return out
 
     def _check_audit(self, now: float) -> list[tuple[str, str, str]]:

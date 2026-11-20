@@ -25,6 +25,7 @@ from types import MappingProxyType
 from typing import Any
 
 from switchyard.errors import AuditError
+from switchyard.hostlock import FileLock
 
 GENESIS = "0" * 64
 DEFAULT_MAX_BYTES = 8 * 1024 * 1024
@@ -142,6 +143,12 @@ class AuditLog:
 
     # writing ------------------------------------------------------------------------------------------
 
+    def _file_lock(self) -> FileLock:
+        try:
+            return FileLock(self._dir / ".append.lock")
+        except OSError as exc:  # pragma: no cover - directory permissions
+            raise AuditError(f"cannot lock the audit log: {exc}") from exc
+
     def _clean_detail(self, detail: Mapping[str, str]) -> dict[str, str]:
         out: dict[str, str] = {}
         for key, value in detail.items():
@@ -158,7 +165,18 @@ class AuditLog:
             if not isinstance(value, str) or len(value) > MAX_NAME_CHARS:
                 raise AuditError(f"audit {name} must be a string of at most {MAX_NAME_CHARS} characters")
         clean = self._clean_detail(detail)
-        with self._lock:
+        try:
+            return self._append_locked(actor, action, module, clean)
+        except TimeoutError:
+            raise AuditError("the audit log is locked by another process") from None
+        except OSError as exc:  # the lock file could not be opened
+            raise AuditError(f"cannot write audit record: {exc}") from exc
+
+    def _append_locked(self, actor: str, action: str, module: str, clean: dict[str, str]) -> AuditRecord:
+        with self._lock, self._file_lock():
+            # Another process may have appended since our last write: recover the head under the shared
+            # lock, so two writers never fork the chain (R1 review).
+            self._seq, self._prev, self._file_no = self._recover()
             body: dict[str, Any] = {
                 "seq": self._seq + 1, "ts": self._clock(), "actor": actor, "action": action,
                 "module": module, "detail": clean, "prev": self._prev,

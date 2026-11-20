@@ -1,0 +1,102 @@
+# Reference
+
+Generated from the code for v1.0.0 (operations table: `switchyard.ops.OPERATIONS`). How to use them:
+[USER-GUIDE.md](USER-GUIDE.md).
+
+## Operations
+
+The same operations run from the CLI (`switchyard <noun> <verb>`), the `/switchyard` slash command in Hermes,
+and the loopback API (`POST /v1/<noun>/<verb>` with a JSON body). "Model" marks what the `hermes` actor (the
+model's tools) may run; the core refuses everything else for it. "Dashboard" marks what the dashboard's API
+profile accepts. Also: `switchyard version`, `switchyard api serve [--port N]` (run the hosting daemon and API).
+
+| Command | Parameters | What it does | Model | Dashboard |
+|---|---|---|---|---|
+| `audit ack` |  | Acknowledge a recorded audit-chain failure after investigating it (operator only). |  |  |
+| `audit tail` | `--n` (optional) | Show the most recent audit records. | yes | yes |
+| `audit verify` |  | Verify the audit hash chain against the stored head anchor. | yes | yes |
+| `config show` |  | Show the effective core configuration (no secret values exist in it). | yes |  |
+| `host profile` |  | Show the host profile used to pick capacity defaults. | yes | yes |
+| `module action` | `id`, `--action`, `--args` (optional) | Run an action a running module registered (ADR-0002). | yes | yes |
+| `module activate` | `id` | Start a module (needs the hosting process: daemon or Hermes session). | yes | yes |
+| `module check_updates` |  | Compare git-installed modules with the head of their update channel. |  |  |
+| `module deactivate` | `id` | Stop a running module. |  | yes |
+| `module grant` | `id`, `--capability` | Grant a requested capability to a module. |  |  |
+| `module health` | `id` | Run a module's health check. | yes |  |
+| `module list` |  | List every discovered module with status, mode and capabilities. | yes | yes |
+| `module mode` | `id`, `--mode` | Set activation mode: manual, auto or disabled. |  |  |
+| `module panel` | `id`, `--panel` | Render one of a running module's panels as plain data. | yes | yes |
+| `module preview` | `id`, `--ref` | Stage a commit without applying it: SBOM delta, patch notes and tree digest. |  |  |
+| `module remove` | `id`, `--keep-data` (optional) | Stop and forget a module; drops its grants, and its data unless keep_data is true. |  |  |
+| `module revoke` | `id`, `--capability` | Revoke a capability from a module. |  |  |
+| `module rollback` | `id`, `--accept-wider` (optional) | Restore the previous version of a git-installed module. |  |  |
+| `module show` | `id` | Show one module, including its declared contributions and live panels. | yes | yes |
+| `module update` | `id`, `--ref`, `--digest` (optional), `--accept-wider` (optional) | Update a git-installed module to a pinned commit; rolls back if it fails. |  |  |
+| `report show` | `--kind` | Operator report: health, usage, security or changes (redacted; M9). | yes | yes |
+
+## Hermes tools and command
+
+| Name | Arguments | Notes |
+|---|---|---|
+| `switchyard_modules` | `action`: list, show, activate, health, run; `id`; `name` and `args` for run | `run` reaches read-only module actions only; results are wrapped as `{"untrusted_data": ..., "note": ...}` |
+| `switchyard_audit` | `action`: verify, tail; `n` | |
+| `switchyard_host` | none | Host profile |
+| `/switchyard <noun> <verb> [args]` | as the CLI, `key=value` arguments | Runs as the operator (`user` actor) |
+
+## Core settings (`<data_dir>/config.toml`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `data_dir` | plugin data directory | Absolute path for all state (also `SWITCHYARD_DATA_DIR`) |
+| `[api] enabled` | `false` | Start the loopback control API in the hosting process (needed by the dashboard) |
+| `[api] port` | `0` | Port; `0` picks a free one (written to `api.port`) |
+| `[log] level` | `INFO` | DEBUG, INFO, WARNING, ERROR |
+| `[host] profile` | `auto` | auto, tiny, laptop, workstation, server: capacity defaults |
+| `[modules.<id>]` | | Module settings: see each module's README |
+
+## Audit actions
+
+Core actions (detail values are redacted before writing):
+
+`api.start_failed`, `audit.acknowledged`, `audit.verify_failed`, `core.not_hosting`, `core.tick_failed`, `event.depth_exceeded`, `event.handler_failed`, `fs.read`, `fs.read_failed`, `hermes.config.rollback`, `hermes.config.write`, `module.action`, `module.activated`, `module.auto_skipped`, `module.deactivate_failed`, `module.deactivated`, `module.delegation_failed`, `module.delegation_refused`, `module.failed`, `module.gate_blocked`, `module.gate_rejected`, `module.hook_failed`, `module.hook_timeout`, `module.job_skipped`, `module.job_timeout`, `module.middleware_rejected`, `module.mode_changed`, `module.notify`, `module.rejected`, `module.reloaded`, `module.removed`, `module.rolled_back`, `module.transform_paused`, `module.update_check_failed`, `module.update_previewed`, `module.update_rejected`, `module.updated`, `module.verified`, `net.request`, `policy.denied`, `policy.grant_refused`, `policy.granted`, `policy.grants_removed`, `policy.revoked`, `process.spawned`, `secret.backend_added`, `secret.backend_removed`, `secret.leak_blocked`, `secret.unavailable`, `secret.used`, `trigger.failed`.
+
+Module actions are recorded as `module.<id>.<name>`:
+
+| Module | Actions |
+|---|---|
+| `activation` | `module.activation.drift`, `module.activation.expired`, `module.activation.preset_add`, `module.activation.preset_remove` |
+| `inbox` | `module.inbox.ack_all` |
+| `meter` | `module.meter.quota_add`, `module.meter.quota_remove`, `module.meter.threshold` |
+| `offload` | `module.offload.offload` |
+| `resources` | `module.resources.bound`, `module.resources.import_applied`, `module.resources.pool_created`, `module.resources.pool_deleted`, `module.resources.pool_member_added`, `module.resources.pool_member_removed`, `module.resources.priority_set`, `module.resources.state_set`, `module.resources.unbound` |
+| `router` | `module.router.auto`, `module.router.budget`, `module.router.hard_stop`, `module.router.paid_decision`, `module.router.paid_passthrough`, `module.router.pin`, `module.router.quota_passthrough`, `module.router.rule_add`, `module.router.rule_remove` |
+| `scanner` | `module.scanner.scan` |
+| `secrets` | `module.secrets.expiry_set`, `module.secrets.rotated` |
+| `supervisor` | `module.supervisor.ack`, `module.supervisor.alert` |
+| `updates` | `module.updates.checked` |
+| `workers` | `module.workers.loop_refused`, `module.workers.role_remove`, `module.workers.role_set`, `module.workers.stuck`, `module.workers.team_remove`, `module.workers.team_set` |
+
+## Events
+
+| Type | Published by | Data |
+|---|---|---|
+| `core.notify` | notify broker (any module with `notify`) | `module`, `severity`, `title`, `detail` (redacted, capped) |
+| `meter.threshold`, `meter.exhausted` | meter | `quota`, `scope`, `metric`, `percent`, `used`, `limit`, `period`, `period_end` |
+| `supervisor.alert` | supervisor | `key`, `severity`, `message` |
+| `scanner.finding` | scanner | `severity`, `title` |
+| `workers.loop` | workers | `role`, `goal_sha` |
+| `workers.stuck` | workers | `role`, `child`, `minutes` |
+
+Subscribing to `*` or to `core.*` events needs `core.read`.
+
+## Data directory
+
+| Path | Contents |
+|---|---|
+| `config.toml` | Settings (you edit it) |
+| `state.db` | Grants, module state, audit anchor |
+| `audit/` | Hash-chained audit log (`audit-NNNNNN.jsonl`) |
+| `logs/` | Per-stream JSON Lines logs, 20 MB per stream plus one rotated file |
+| `modules/` | Modules you installed from git (run as subprocesses) |
+| `staging/` | Update staging, previous versions (3 kept), SBOM deltas |
+| `host.lock`, `api.token`, `api.port` | Hosting lock; API token and port (user-only permissions) |

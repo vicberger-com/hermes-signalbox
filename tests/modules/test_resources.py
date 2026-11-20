@@ -73,7 +73,10 @@ def test_contract_suite() -> None:
 
 
 def test_import_is_reviewed_and_never_enables(core: Core) -> None:
-    preview = act(core, "import_preview", actor="hermes")  # read-only: the model may preview
+    with pytest.raises(SwitchyardError, match="read-only"):  # R1: a preview replaces the pending one
+        act(core, "import_preview", actor="hermes")
+    preview = act(core, "import_preview")
+    assert preview["cost_changes"] == []
     assert (preview["added"], preview["changed"], preview["removed"]) == (3, 0, 0)
     assert act(core, "list")["count"] == 0  # nothing applied yet
     with pytest.raises(SwitchyardError, match="read-only"):
@@ -265,7 +268,7 @@ def test_model_cannot_choose_files(core: Core, tmp_path: Path) -> None:
     secret.write_text(json.dumps({"resources": [{"id": "x/y", "name": "private-name"}]}), encoding="utf-8")
     with pytest.raises(SwitchyardError, match="read-only"):
         act(core, "import_file", actor="hermes", path=str(secret))
-    preview = act(core, "import_preview", actor="hermes")
+    preview = act(core, "import_preview")
     assert set(preview["sample_ids"]) == {"added", "changed", "removed"}
     assert all(isinstance(i, str) for i in preview["sample_ids"]["added"])
 
@@ -282,3 +285,17 @@ def test_tag_filter_treats_underscore_literally_and_tag_cap(core: Core, tmp_path
     )
     with pytest.raises(SwitchyardError, match="tags"):
         act(core, "import_file", path=str(many))
+
+
+def test_cost_class_change_is_shown_and_demotes_to_manual(core: Core, tmp_path: Path) -> None:
+    """R1 review: a paid resource relabelled free must not be routed free-first without a human."""
+    act(core, "import_apply", import_id=act(core, "import_preview")["import_id"])
+    act(core, "set_state", id="openrouter/big/paid", state="auto")
+    relabelled = json.loads(json.dumps(MODELS_DEV))
+    relabelled["openrouter"]["models"]["big/paid"]["cost"] = {"input": 0, "output": 0}
+    (tmp_path / "models_dev_cache.json").write_text(json.dumps(relabelled), encoding="utf-8")
+    preview = act(core, "import_preview")
+    assert preview["cost_changes"] == [{"id": "openrouter/big/paid", "from": "paid", "to": "free"}]
+    act(core, "import_apply", import_id=preview["import_id"])
+    big = act(core, "show", id="openrouter/big/paid")
+    assert big["cost_class"] == "free" and big["state"] == "manual"

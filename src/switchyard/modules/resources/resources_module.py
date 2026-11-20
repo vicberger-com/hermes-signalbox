@@ -113,7 +113,8 @@ class ResourcesModule:
             [("id", text), ("source", text), ("created_at", text), ("diff", text)],
             primary_key=["id"],
         )
-        read_only = {"list", "show", "pools", "resolve", "import_preview"}
+        # import_preview replaces the pending import from the same source, so it is not read-only (R1 review)
+        read_only = {"list", "show", "pools", "resolve"}
         params: dict[str, dict[str, type]] = {
             "list": {
                 "state": str,
@@ -321,7 +322,14 @@ class ResourcesModule:
             "changed": [c["id"] for c in changes["changed"][:10]],
             "removed": changes["removed"][:10],
         }
-        return {"import_id": import_id, "source": label, **counts, "sample_ids": sample}
+        # Cost-class changes decide what is free to route: list every one, and apply them as "manual" so a
+        # human re-enables the resource (R1 review).
+        cost = [
+            {"id": c["id"], "from": c["before"].get("cost_class"), "to": c["after"].get("cost_class")}
+            for c in changes["changed"]
+            if c["before"].get("cost_class") != c["after"].get("cost_class")
+        ]
+        return {"import_id": import_id, "source": label, **counts, "sample_ids": sample, "cost_changes": cost}
 
     # human-only actions -------------------------------------------------------------------------------
 
@@ -429,6 +437,9 @@ class ResourcesModule:
             )
         for c in changes["changed"]:
             after = c["after"]
+            if c["before"].get("cost_class") != after["cost_class"]:
+                sql = f"UPDATE {t} SET state = 'manual' WHERE id = ? AND source = ? AND state = 'auto'"  # nosec B608
+                self._q(sql, (c["id"], source))
             self._q(
                 f"UPDATE {t} SET kind = ?, provider = ?, name = ?, cost_class = ?, source_tags = ?, "  # nosec B608
                 "limits = ?, updated_at = ? WHERE id = ? AND source = ?",

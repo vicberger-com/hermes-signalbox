@@ -233,6 +233,13 @@ class RouterModule:
             )
             if chosen is not None and chosen.cost_class == "paid":
                 self._charge_paid(need, chosen)
+            elif chosen is None:
+                # The configured model goes out unchanged. If it is a known paid resource, count it: the
+                # budget shows real paid use even when nothing free could take the request (R1 review).
+                current = next((c for c in self._candidates(str(provider), consumer)
+                                if c.model == request.get("model")), None)  # fmt: skip
+                if current is not None and current.cost_class == "paid":
+                    self._charge_paid(need, current)
         if chosen is None:
             return None
         self._sent[str(context.get("api_request_id") or "")] = chosen.id
@@ -252,12 +259,17 @@ class RouterModule:
         free_only: bool = False,
     ) -> tuple[Candidate | None, Need, str]:
         need = need_for(request)
-        if self._failures.get(turn, 0) >= self.settings["max_attempts"]:
+        exhausted = self._failures.get(turn, 0) >= self.settings["max_attempts"]
+        if exhausted:
             chosen, reason = None, "attempts exhausted"
         else:
             chosen, reason, _ = self.choose(need, provider, consumer, free_only)
         if chosen is None:
-            chosen, reason = self._guard_paid_default(request, need, provider, reason, consumer, free_only)
+            # After repeated failures stay free-first (R1 review): a paid configured model that is allowed
+            # must not take over while a free resource is still available.
+            chosen, reason = self._guard_paid_default(
+                request, need, provider, reason, consumer, free_only or exhausted
+            )
         self._record(need, chosen, reason)
         return chosen, need, reason
 
@@ -327,9 +339,16 @@ class RouterModule:
         # Hermes's pre_llm_call carries no provider: find the routed provider whose registry knows the
         # configured model. Block only with positive knowledge (M6 review): the registry answers, the model is
         # a known resource, nothing routable is left, and the model itself is ruled out.
+        raw = self._cooling()
         for provider in self.settings["providers"]:
             candidates = self._candidates(provider)
             if not any(c.model == model for c in candidates):
+                # Unknown model: per-model and per-provider rules cannot apply (its provider is unknown),
+                # but an exhausted total quota does (R1 review).
+                if "all" in raw and raw["all"].startswith("quota") and candidates:
+                    self.ctx.audit("hard_stop", consumer=self.settings["consumer"], resource=model[:200],
+                                   reason="quota exhausted")  # fmt: skip
+                    return "quota_exhausted"
                 continue
             chosen, _, _ = self.choose(need, provider)
             if chosen is not None:

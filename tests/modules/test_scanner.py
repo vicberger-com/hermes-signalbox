@@ -54,7 +54,8 @@ def start(data: Path, config: str) -> Core:
     c = Core(data_dir=data, hosting=True)
     for cap in ("process.spawn", "schedule", "ui.panel", "notify"):
         c.run("module", "grant", {"id": "scanner", "capability": cap}, actor="t")
-    c.run("module", "grant", {"id": "inbox", "capability": "ui.panel"}, actor="t")
+    for cap in ("core.read", "ui.panel"):
+        c.run("module", "grant", {"id": "inbox", "capability": cap}, actor="t")
     c.run("module", "activate", {"id": "inbox"}, actor="t")
     c.run("module", "activate", {"id": "scanner"}, actor="t")
     return c

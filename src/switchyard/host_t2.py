@@ -42,6 +42,9 @@ _BROKERS = {
 }
 
 
+MAX_PENDING_FRAMES = 64  # at most 64 MB queued (frames are capped at 1 MB)
+
+
 class T2Timeout(SwitchyardError):
     """A call to a subprocess module did not finish in time."""
 
@@ -73,7 +76,8 @@ class T2Module:
         self._proc: subprocess.Popen[bytes] | None = None
         self._channel: Channel | None = None
         self._ctx: ModuleContext | None = None
-        self._inbox: queue.Queue[tuple[str, Any]] = queue.Queue()
+        # Bounded (R1 review): when full, the reader stops reading and the child blocks on its own writes.
+        self._inbox: queue.Queue[tuple[str, Any]] = queue.Queue(maxsize=MAX_PENDING_FRAMES)
         self._write_lock = threading.Lock()
         self._call_lock = threading.RLock()
 

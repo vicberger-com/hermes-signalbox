@@ -124,7 +124,7 @@ def test_gated_members(
     assert audit.records[-1]["action"] == "policy.denied"
 
     ctx, _ = _setup(make_manifest, audit, grant=(capability,), brokers={capability: broker}, **kw)
-    assert getattr(ctx, member) is broker
+    assert getattr(ctx, member)._facade is broker  # wrapped: re-checked on every call (R1 review)
 
     ctx, _ = _setup(make_manifest, audit, grant=(capability,), **kw)
     with pytest.raises(SwitchyardError, match="not available"):

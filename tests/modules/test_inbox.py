@@ -36,7 +36,8 @@ def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 @pytest.fixture
 def core(tmp_path: Path) -> Iterator[Core]:
     c = Core(data_dir=tmp_path / "data", hosting=True)
-    c.run("module", "grant", {"id": "inbox", "capability": "ui.panel"}, actor="t")
+    for cap in ("core.read", "ui.panel"):
+        c.run("module", "grant", {"id": "inbox", "capability": cap}, actor="t")
     c.run("module", "activate", {"id": "inbox"}, actor="t")
     yield c
     c.close()
@@ -100,7 +101,8 @@ def test_failed_modules_and_min_severity(tmp_path: Path) -> None:
     )
     c = Core(data_dir=data, hosting=True)
     try:
-        c.run("module", "grant", {"id": "inbox", "capability": "ui.panel"}, actor="t")
+        for cap in ("core.read", "ui.panel"):
+            c.run("module", "grant", {"id": "inbox", "capability": cap}, actor="t")
         c.run("module", "activate", {"id": "inbox"}, actor="t")
         for cap in ("schedule", "core.read", "ui.panel"):
             c.run("module", "grant", {"id": "supervisor", "capability": cap}, actor="t")

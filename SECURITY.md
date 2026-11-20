@@ -7,7 +7,7 @@ issue. Expect an acknowledgement within 7 days. Fixes are released with an advis
 
 ## Supported versions
 
-Until 1.0.0 only the latest tagged release is supported.
+The latest 1.x minor release receives security fixes.
 
 ## Baseline
 
@@ -20,4 +20,7 @@ Until 1.0.0 only the latest tagged release is supported.
 ## Scope notes
 
 In-process modules are not sandboxed (a Python limitation). Only modules reviewed in this repository run
-in-process; all others run as separate subprocesses with a scrubbed environment.
+in-process; all others run as separate subprocesses with a scrubbed environment. Those subprocesses run as your
+OS user, so they are a fault boundary, not a security boundary: install only modules you trust. Likewise a model
+with an unrestricted shell can do what your user can. Details: `docs/DESIGN.md` section 4, "The same-user
+boundary". Reports that depend only on same-user access are handled as hardening, not vulnerabilities.

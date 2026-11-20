@@ -4,10 +4,14 @@ A security-first, open-source control plane for [Hermes Agent](https://github.co
 one small core framework plus snap-on modules that manage skills, plugins, model/resource pools, sub-agents,
 token use, security testing, reporting and updates. Hermes can operate 100% of it; so can a human.
 
-**Status:** v0.13.0, phases M0 (core framework), M1 (secrets), M2 (resource registry and pools), M3 (router and failover), M4 (metering and quotas), M5 (skill activation), M6 (supervisor), M7 (workers), M8 (trimming), M9 (dashboard), M10 (scanners), M11 (offload) and M12 (updates) complete: module lifecycle with in-process and subprocess hosts,
-default-deny capabilities, hash-chained audit log, secrets by reference, update with rollback, CLI, loopback API
-and the Hermes plugin. Modules M1 to M12 follow. The build is executed by a Hermes instance following
-[AGENTS.md](AGENTS.md).
+**Status:** v1.0.0. The core (module lifecycle with in-process and subprocess hosts, default-deny capabilities,
+hash-chained audit log, secrets by reference, CLI, loopback API, Hermes plugin) and twelve bundled modules:
+secrets, resource registry and pools, router and failover, metering and quotas, skill activation, supervisor,
+workers, output trimming, dashboard and inbox, security scanners, offload connectors, and module updates. Built
+by a Hermes instance following [AGENTS.md](AGENTS.md); every phase had a fresh security review (results in each
+module README and `docs/qa/`).
+
+Start with the [user guide](docs/USER-GUIDE.md).
 
 **Priorities (in order, used to break every tie):** 1 security, 2 utility, 3 open source, 4 speed and capacity,
 5 size and code clarity.
@@ -16,6 +20,8 @@ and the Hermes plugin. Modules M1 to M12 follow. The build is executed by a Herm
 
 | File | What it is |
 |---|---|
+| [docs/USER-GUIDE.md](docs/USER-GUIDE.md) | Install, first run, grants, activation, dashboard, updates, uninstall |
+| [docs/REFERENCE.md](docs/REFERENCE.md) | Every operation, tool, core setting, audit action and event |
 | [AGENTS.md](AGENTS.md) | Execution contract for the building agent: flow, auto-accept rule, stop conditions |
 | [docs/DESIGN.md](docs/DESIGN.md) | Architecture, trust model, module contract, Hermes integration points |
 | [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md) | Phase order, per-module loop, gates, definition of done |
@@ -28,10 +34,12 @@ and the Hermes plugin. Modules M1 to M12 follow. The build is executed by a Herm
 ## Layout
 
 ```
+src/switchyard/                core, Hermes adapter, bundled modules (src/switchyard/modules/<id>/README.md)
 src/switchyard/schemas/        normative module manifest schema
+dashboard/                     Hermes dashboard tab
 templates/module/              copy this to start a module
 tools/validate_manifest.py     stdlib manifest validator (used in CI)
-tests/                         template tests
+tests/                         core, module and acceptance tests
 docs/qa/                       Q&A records, one file per phase
 .github/                       CI, security scans, release, Dependabot, templates
 ```

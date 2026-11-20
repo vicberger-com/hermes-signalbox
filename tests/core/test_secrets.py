@@ -235,3 +235,17 @@ def test_canary_never_in_any_output(tmp_path: Path, make_manifest: ManifestFacto
     assert CANARY not in everything
     assert "[REDACTED]" in everything
     assert audit.verify().ok
+
+
+def test_r1_transformed_values_trip_the_guard(make_manifest: ManifestFactory, audit: RecordingAudit) -> None:
+    import base64
+
+    broker, _, _ = _setup(make_manifest, audit)
+    for leak in (
+        lambda v: v.upper(),
+        lambda v: {"x": base64.b64encode(v.encode()).decode()},
+        lambda v: v.encode().hex(),
+        lambda v: f"part {v[2:16]}",
+    ):
+        with pytest.raises(SecretLeak):
+            broker.use("demo", "secret://provider.key", leak)

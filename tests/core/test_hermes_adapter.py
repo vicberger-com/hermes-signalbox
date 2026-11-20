@@ -113,7 +113,14 @@ def test_model_tools_list_and_run_modules(ctx: FakeCtx) -> None:
         "ok": True,
         "detail": "ok",
     }
-    assert _tool(ctx, "switchyard_modules", action="deactivate", id="ext")["ok"]
+    assert not _tool(ctx, "switchyard_modules", action="deactivate", id="ext")["ok"]  # R1: operator only
+    from switchyard.errors import CapabilityDenied
+
+    with pytest.raises(CapabilityDenied, match="operator only"):  # enforced in the core, not only the tool
+        import switchyard.hermes as sh
+
+        assert sh._current is not None
+        sh._current.core.run("module", "grant", {"id": "ext", "capability": "fs.read"}, actor="hermes")
     actors = {r["actor"] for r in _tool(ctx, "switchyard_audit", action="tail", n=10)["result"]}
     assert "hermes" in actors
     assert _tool(ctx, "switchyard_audit", action="verify")["result"]["ok"] is True

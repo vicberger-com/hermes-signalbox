@@ -13,10 +13,12 @@ Real backends (OS keyring, Vaultwarden) are module M1; the core ships only ``Mem
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import sys
 import threading
+import urllib.parse
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, TypeVar
@@ -143,16 +145,36 @@ class Redactor:
         return value
 
 
+def _forms(value: str) -> list[str]:
+    """The value and common encodings of it; for long values also overlapping 12-character pieces. A
+    tripwire for careless code, not a control against a module that wants to leak (R1 review)."""
+    raw = value.encode("utf-8")
+    forms = {
+        value,
+        value.lower(),
+        value.upper(),
+        raw.hex(),
+        base64.b64encode(raw).decode(),
+        base64.urlsafe_b64encode(raw).decode().rstrip("="),
+        urllib.parse.quote(value, safe=""),
+    }
+    if len(value) >= 16:
+        forms.update(value[i : i + 12] for i in range(0, len(value) - 11, 4))
+    return [f for f in forms if len(f) >= MIN_REDACT_CHARS]
+
+
 def _contains(result: Any, value: str) -> bool:
     if isinstance(result, bytes):
-        return value.encode("utf-8") in result
-    if isinstance(result, str):
-        return value in result
-    try:
-        text = json.dumps(result, default=repr, ensure_ascii=False)
-    except (TypeError, ValueError):
-        text = repr(result)
-    return value in text or value in repr(result)
+        text = result.decode("utf-8", errors="replace")
+    elif isinstance(result, str):
+        text = result
+    else:
+        try:
+            text = json.dumps(result, default=repr, ensure_ascii=False) + repr(result)
+        except (TypeError, ValueError):
+            text = repr(result)
+    folded = text.lower()
+    return any(form in text or form.lower() in folded for form in _forms(value))
 
 
 class SecretsBroker:
@@ -201,6 +223,9 @@ class SecretsBroker:
         name = SecretRef.parse(ref).name
         self._policy.require_secret(module_id, name)
         value, backend = self._resolve(module_id, name)
+        if len(value) < MIN_REDACT_CHARS:  # too short to redact reliably (R1 review)
+            del value
+            raise SwitchyardError(f"secret {name!r} is shorter than {MIN_REDACT_CHARS} characters; refused")
         self._redactor.add(value)
         self._audit.append(
             actor="core", action="secret.used", module=module_id, detail={"secret": name, "backend": backend}

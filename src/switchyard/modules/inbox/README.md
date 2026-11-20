@@ -13,7 +13,8 @@ Collects operator notifications for the Switchyard dashboard tab. Q&A:
 | `workers.stuck` / `workers.loop` | medium / low |
 | `module.failed` | high |
 
-Notifications below `min_severity` (default `low`) are dropped. Nothing leaves the machine.
+Notifications below `min_severity` (default `low`) are dropped. Nothing leaves the machine. Grant `core.read`
+(needed to receive `core.notify`, which carries every module's notifications) and `ui.panel`, then activate.
 
 ## Control surface
 

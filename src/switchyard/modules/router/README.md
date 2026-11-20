@@ -28,8 +28,11 @@ If no candidate fits (or the turn's attempts are used up), passing the request t
 configured model. If that model is a **paid** registry resource and paid is not allowed right now, the router
 sends it to any free or self-hosted `auto` resource that is not cooling down instead (size and tag checks
 ignored). Only if none exists does the paid model go out, and that is audited as
-`module.router.paid_passthrough` (once per resource per day). A configured model the registry does not know
-is outside the router's control: register it, or set Hermes's default to a free model.
+`module.router.paid_passthrough` (once per resource per day) and counted against the day's paid requests,
+so `status` can show more than the budget. The budget is therefore a routing limit, not a hard cap: to stop
+turns that would go out paid, set `hard_stop = true`. After the turn's attempts are used up the router stays
+free-first even when paid is allowed. A configured model the registry does not know is outside the router's
+control: register it, or set Hermes's default to a free model.
 
 ## Failover
 

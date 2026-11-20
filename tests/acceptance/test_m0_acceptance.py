@@ -284,7 +284,9 @@ def test_same_operations_from_cli_api_and_hermes(
     api.request("module", "grant", {"id": "example", "capability": "ui.panel"})
     assert api.request("module", "activate", {"id": "example"})["status"] == "active"
     assert _tool(ctx, action="health", id="example") == api.request("module", "health", {"id": "example"})
-    assert _tool(ctx, action="deactivate", id="example")["status"] != "active"
+    assert api.request("module", "deactivate", {"id": "example"})["status"] != "active"
+    refused = json.loads(ctx.tools["switchyard_modules"]({"action": "deactivate", "id": "example"}))
+    assert not refused["ok"]  # operator only (R1 review)
 
 
 def test_secret_canary_never_appears_in_any_output(

@@ -4,6 +4,33 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-20
+
+Phase R1: hardening review, documentation, first stable release. Review dispositions:
+`docs/qa/14-r1-prework.md` section 3.
+
+### Added
+- `docs/USER-GUIDE.md` and `docs/REFERENCE.md` (every operation, tool, core setting, audit action and event).
+- `audit ack` (operator only): acknowledge a recorded audit-chain failure.
+- ADR-0012: replacing Hermes compaction is deferred past 1.0.
+
+### Changed
+- The model actor is limited in the core to an allow-list of operations (`MODEL_OPS`); `deactivate` is no
+  longer a model tool action; module action results reach the model wrapped as `untrusted_data`.
+- `module remove --keep-data` keeps data only, never grants. Module ids may not end in `_`.
+- `inbox` requests `core.read`: subscribing to `*` or `core.*` events needs it. Grant it after upgrading.
+- `resources import_preview` is operator only; cost-class changes are listed and applied as `manual`.
+- Every meter quota fires at 100 %; cost quotas need loaded prices.
+- Router: free-first after repeated failures; paid pass-through is counted against the budget.
+- Supervisor reports modules that stopped since its last pass.
+
+### Security
+- Audit log: inter-process append lock and monotonic anchor; failures persist until acknowledged.
+- T2 host: bounded message queue and one deadline per call; log streams rotate at 20 MB.
+- Broker facades re-check context and grant on every call.
+- Trimming keeps 401/403/rejected/blocked lines. Secret leak guard checks encoded forms. Short secrets refused.
+- Documented the same-user boundary (DESIGN section 4, SECURITY.md).
+
 ## [0.13.0] - 2026-11-20
 
 Phase M12: update and release control for modules.

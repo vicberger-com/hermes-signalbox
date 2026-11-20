@@ -22,7 +22,7 @@ from switchyard.bridge import HermesBridge
 from switchyard.capabilities import CORE_ACTOR, PolicyEngine
 from switchyard.config import CoreConfig, load_config
 from switchyard.context import MemoryActionRegistry, MemoryPanelRegistry
-from switchyard.errors import SwitchyardError
+from switchyard.errors import CapabilityDenied, SwitchyardError
 from switchyard.events import EventBus
 from switchyard.fsread import FsBroker
 from switchyard.hermesconfig import ConfigWriter, HermesConfigPort
@@ -43,6 +43,7 @@ from switchyard.updates import Fetcher, GitFetcher, UpdateController
 
 BUILTIN_MODULES = Path(switchyard.__file__).resolve().parent / "modules"
 _HEAD_KEY = "audit.head"
+_BROKEN_KEY = "audit.broken"
 
 
 class AnchoredAudit:
@@ -56,8 +57,10 @@ class AnchoredAudit:
         record = self.log.append(actor=actor, action=action, module=module, detail=detail)
         self._store.core_execute(
             "INSERT INTO meta (key, value) VALUES (?, ?) "
-            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-            (_HEAD_KEY, f"{record.seq}:{record.hash}"),
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value "
+            # another process may have anchored a later record already: never move the anchor back
+            "WHERE CAST(substr(value, 1, instr(value, ':') - 1) AS INTEGER) < ?",
+            (_HEAD_KEY, f"{record.seq}:{record.hash}", record.seq),
         )
         return record
 
@@ -137,7 +140,14 @@ class Core:
         self.store.migrate()
         self.audit = AnchoredAudit(self.audit_log, self.store)
         self.audit_status = self.verify_audit()
-        if not self.audit_status.ok:
+        if not self.audit_status.ok and not self._audit_broken():
+            # Keep the failure until the operator acknowledges it ("audit ack"): appending below moves the
+            # head anchor, and without this flag the next verify would pass and the gap would be forgotten
+            # (R1 review).
+            self.store.core_execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                (_BROKEN_KEY, f"{self.audit_status.first_bad_seq}:{self.audit_status.reason}"[:500]),
+            )
             self.audit.append(
                 actor=CORE_ACTOR,
                 action="audit.verify_failed",
@@ -201,12 +211,40 @@ class Core:
 
         return run_action(self, module_id, action, args, actor=f"module:{caller}", read_only_only=True)
 
+    def _audit_broken(self) -> str | None:
+        rows = self.store.core_query("SELECT value FROM meta WHERE key = ?", (_BROKEN_KEY,))
+        return str(rows[0][0]) if rows else None
+
     def verify_audit(self) -> VerifyResult:
-        return self.audit_log.verify(expected_head=self.audit.stored_head())
+        result = self.audit_log.verify(expected_head=self.audit.stored_head())
+        broken = self._audit_broken() if hasattr(self, "store") else None
+        if broken:
+            seq, _, reason = broken.partition(":")
+            first = int(seq) if seq.isdigit() else 0
+            message = f"earlier failure not acknowledged: {reason} (run 'switchyard audit ack')"
+            return VerifyResult(False, result.records, first if result.ok else result.first_bad_seq, message)
+        return result
+
+    def ack_audit(self, *, actor: str) -> dict[str, Any]:
+        broken = self._audit_broken()
+        if broken is None:
+            return {"acknowledged": False}
+        self.store.core_execute("DELETE FROM meta WHERE key = ?", (_BROKEN_KEY,))
+        # Re-anchor at the log as it is now: the operator has accepted it as the new baseline.
+        self.store.core_execute("DELETE FROM meta WHERE key = ?", (_HEAD_KEY,))
+        self.audit.append(
+            actor=actor, action="audit.acknowledged", module="", detail={"failure": broken[:300]}
+        )
+        return {"acknowledged": True, "failure": broken}
 
     def run(self, noun: str, verb: str, params: Mapping[str, Any], *, actor: str) -> Any:
         """Run one operation from the shared table. Raises ``UsageError`` or the operation's own error."""
+        from switchyard.ops import MODEL_ACTOR, MODEL_OPS
+
         operation = lookup(noun, verb)
+        if actor == MODEL_ACTOR and (noun, verb) not in MODEL_OPS:
+            self.audit.append(actor=actor, action="policy.denied", module="", detail={"op": f"{noun} {verb}"})
+            raise CapabilityDenied(f"'{noun} {verb}' is for the operator only")
         clean = operation.validate(params)
         with self._lock:
             if self._closed:

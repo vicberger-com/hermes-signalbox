@@ -442,12 +442,14 @@ class ModuleManager:
                 self.deactivate(module_id, actor=CORE_ACTOR, reason="idle")
 
     def remove(self, module_id: str, *, actor: str, keep_data: bool = False) -> None:
-        """Stop and forget a module. Drops its grants and stored data unless ``keep_data``."""
+        """Stop and forget a module. Drops its grants, and its stored data unless ``keep_data``."""
         with self._lock:
             self._entry(module_id)
             self.deactivate(module_id, actor=actor, reason="remove")
             self._unload(module_id)
-            self._policy.unregister(module_id, actor=actor, keep_grants=keep_data)
+            # Grants never survive removal (R1 review): consent was given to the code that was installed; a
+            # different module could later appear under the same id. keep_data keeps stored data only.
+            self._policy.unregister(module_id, actor=actor, keep_grants=False)
             if self._store is not None:
                 if not keep_data:
                     self._store.module(module_id).drop_all()

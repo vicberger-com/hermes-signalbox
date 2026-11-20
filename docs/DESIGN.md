@@ -84,11 +84,20 @@ hardening listed in section 4. Modules that need a library declare it in their o
 |---|---|---|
 | T0 | Core | Trusted computing base; kept small and fully reviewed |
 | T1 | First-party modules in this repository | In-process, signed with the release, capability-checked |
-| T2 | Third-party modules | Separate subprocess, JSON-RPC over stdio, scrubbed environment, no secret values |
+| T2 | Third-party modules | Separate subprocess, JSON-RPC over stdio, scrubbed environment, no secret values; same OS user (see below) |
 | T3 | External tools and services (gateways, n8n, scanners) | Reached only through a connector module with declared hosts |
 
 Python cannot sandbox code inside one process. Capability checks on T1 modules are a correctness and audit
 control, not a containment boundary. Anything not reviewed in this repository runs as T2.
+
+**The same-user boundary (R1 review).** Switchyard runs as your OS user and keeps its state in files your user
+can read and write. Anything else running as that user is outside its control: a T2 module process (it can
+open `state.db`, read `api.token`, or open sockets without asking the core), and a model with an unrestricted
+shell tool (it can run `switchyard` itself). For those, the T2 host is a fault and request boundary, not a
+security boundary, and the audit log is tamper-evident only against changes to one of its two files. Real
+containment needs the operating system: run untrusted modules only after review, and restrict the model's
+shell with Hermes's command approval or sandbox. A future release may run T2 modules under a separate,
+restricted account.
 
 **Controls**
 
@@ -97,7 +106,8 @@ control, not a containment boundary. Anything not reviewed in this repository ru
 2. Secrets by reference. Modules and models handle `secret://name`. The core resolves the value inside the
    outbound request and never returns it to a module result, a log or model context. Known secret shapes are
    registered with Hermes redaction (`register_redaction_patterns`).
-3. Egress allow-list. A module may contact only hosts declared in `capabilities.net_hosts`.
+3. Egress allow-list. Requests made through the core (`ctx.net`) go only to hosts declared in
+   `capabilities.net_hosts`. This binds in-process modules that use the broker; it is not an OS firewall.
 4. Paid-resource gate. `llm.paid` is a separate capability with budget limits. The supervisor can never hold it.
 5. Tamper-evident audit. Every grant, activation, routing decision above a threshold, secret use (name only),
    update and policy change is written to the hash-chained log. `switchyard audit verify` checks the chain.

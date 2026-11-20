@@ -303,3 +303,23 @@ def test_free_resources_need_the_llm_free_grant(core: Core) -> None:
     assert route(core, request()) == "x/default"  # no free candidates without the grant
     core.run("module", "grant", {"id": "router", "capability": "llm.free"}, actor="t")
     assert route(core, request()) == "free/small:free"
+
+
+def test_r1_attempts_exhausted_stays_free_and_passthrough_is_counted(core: Core) -> None:
+    """R1 review: after max_attempts failures an allowed paid configured model must not take over while a
+    free resource is available, and a paid model that does go out unchanged is counted."""
+    core.run("module", "grant", {"id": "router", "capability": "llm.paid"}, actor="t")
+    rt(core, "rule_add", consumer="main", min_tier="T1")
+    rt(core, "budget", paid_requests_per_day=5)
+    for _ in range(3):
+        fail(core, "paid/big", status=400, turn="tb")
+    assert route(core, request(model="paid/big"), turn="tb") == "free/small:free"
+    before = rt(core, "status")["paid_today"]
+    for rid in ("openrouter/free/small:free", "openrouter/free/long:free"):  # nothing free left
+        sent = {"body": {"model": rid.split("/", 1)[1]}}
+        core.bridge.dispatch_hook(
+            "api_request_error", {"provider": OR, "turn_id": "z", "status_code": 429, "request": sent}
+        )
+    rt(core, "budget", paid_requests_per_day=0)
+    assert route(core, request(image=True, model="paid/big"), turn="tc") == "paid/big"  # passed through
+    assert rt(core, "status")["paid_today"] == before + 1  # ... and counted

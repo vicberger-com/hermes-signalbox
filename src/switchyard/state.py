@@ -24,7 +24,7 @@ from typing import Any
 
 from switchyard.errors import StateError
 
-_MODULE_ID = re.compile(r"[a-z][a-z0-9_]{1,31}\Z")
+_MODULE_ID = re.compile(r"[a-z][a-z0-9_]{0,30}[a-z0-9]\Z")
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}\Z")
 _MIGRATION_FILE = re.compile(r"(\d{4})_[a-z0-9_]+\.sql\Z")
 COLUMN_TYPES = frozenset({"TEXT", "INTEGER", "REAL", "BLOB"})
@@ -184,6 +184,10 @@ class SqliteGrantStore:
         self._store.core_execute("DELETE FROM grants WHERE module_id = ?", (module_id,))
 
 
+def _owned(rest: str) -> bool:
+    return bool(_NAME.match(rest)) and "__" not in rest
+
+
 class ModuleState:
     """A module's view of the store: its own tables and key/value rows only."""
 
@@ -227,7 +231,13 @@ class ModuleState:
         if action in _TABLE_ACTIONS:
             # count(*) reads with db=None; ATTACH is denied, so that can only be main.
             main = db == "main" or (db is None and action == sqlite3.SQLITE_READ and arg2 == "")
-            if main and arg1 is not None and arg1.startswith(self._prefix):
+            # The rest must be a valid table name: module "ab" must not reach "ab_"'s "m_ab___x" (R1 review).
+            if (
+                main
+                and arg1 is not None
+                and arg1.startswith(self._prefix)
+                and _owned(arg1[len(self._prefix) :])
+            ):
                 return sqlite3.SQLITE_OK
             self._denied = f"table {arg1!r}"
             return sqlite3.SQLITE_DENY
@@ -270,6 +280,7 @@ class ModuleState:
             (len(self._prefix), self._prefix),
         )
         for (name,) in rows:
-            _check_name("table", name[len(self._prefix) :])
+            if not _owned(name[len(self._prefix) :]):
+                continue  # another module's table whose id extends ours
             self._store.core_execute(f'DROP TABLE "{name}"')
         self._store.core_execute("DELETE FROM kv WHERE module_id = ?", (self._id,))

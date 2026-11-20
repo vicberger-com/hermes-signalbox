@@ -197,7 +197,7 @@ def test_action_surfaces_cli_slash_and_model_tool(core: Core, capsys: pytest.Cap
         "by": 3, "note": "hi", "loud": True,
     }  # fmt: skip
     out = json.loads(adapter.tool_modules({"action": "run", "id": "prov", "name": "status"}))
-    assert out == {"ok": True, "result": {"ok": True}}
+    assert out["ok"] and out["result"]["untrusted_data"] == {"ok": True}  # labelled as data (R1)
     out = json.loads(adapter.tool_modules({"action": "run", "id": "prov", "name": "bump", "args": {"by": 1}}))
     assert out["ok"] is False and "read-only" in out["message"]
     parser = cli._parser()
