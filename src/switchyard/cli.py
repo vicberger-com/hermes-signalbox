@@ -7,20 +7,23 @@ When a daemon is running for the data directory (``switchyard api serve``), ever
 Otherwise operations marked ``offline`` run directly against the data directory; live operations (activate,
 health, panels) need the daemon because a one-shot process cannot host a running module.
 
-Exit codes: 0 success, 1 operation error, 2 usage error, 3 capability denied.
+Exit codes: 0 success, 1 operation error or a failed result (``status: failed``, ``ok: false``), 2 usage error
+(including an unknown capability name), 3 capability denied. Operations marked ``[daemon]`` in ``--help`` need
+``switchyard api serve`` (or a hosting Hermes session with the API enabled) for the same data directory.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import signal
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
 from switchyard import __version__
-from switchyard.api import ApiClient, ApiUnavailable, ControlServer
+from switchyard.api import ApiClient, ApiUnavailable, ControlServer, clear_stale_files
 from switchyard.core import Core
 from switchyard.errors import CapabilityDenied, SwitchyardError
 from switchyard.ops import OPERATIONS, Operation, UsageError
@@ -46,7 +49,8 @@ def _parser() -> argparse.ArgumentParser:
             groups[noun] = nouns.add_parser(noun, help=f"{noun} operations").add_subparsers(
                 dest="verb", required=True
             )
-        sub = groups[noun].add_parser(verb, help=operation.description, description=operation.description)
+        text = operation.description + ("" if operation.offline else " [daemon]")  # H1 D-7
+        sub = groups[noun].add_parser(verb, help=text, description=text)
         for name, spec in operation.params.items():
             flag = "--" + name.replace("_", "-")
             if name == "id":
@@ -88,16 +92,44 @@ def _print(result: Any, as_json: bool) -> None:
             print("  ".join(f"{k}={v}" for k, v in row.items()) if isinstance(row, dict) else row)
     elif isinstance(result, dict):
         for key, value in result.items():
-            print(f"{key}: {value}")
+            if isinstance(value, dict) and value and all(not isinstance(v, dict) for v in value.values()):
+                for sub, inner in value.items():  # one level of nesting as dotted keys (H1 D-26)
+                    print(f"{key}.{sub}: {inner}")
+            else:
+                print(f"{key}: {value}")
     elif result is not None:
         print(result)
 
 
+def _failure(result: Any) -> str | None:
+    """The message for a result that reports failure without raising (H1 D-8), else ``None``."""
+    if not isinstance(result, dict):
+        return None
+    if result.get("status") == "failed":
+        missing = result.get("missing_grants") or []
+        need = f"; not granted: {', '.join(map(str, missing))}" if missing else ""
+        return f"module {result.get('id')!r} failed: {result.get('error') or 'unknown error'}{need}"
+    if result.get("ok") is False:
+        return str(result.get("detail") or result.get("reason") or "the result reports ok: false")
+    return None
+
+
+def _stop(signum: int, frame: Any) -> None:
+    raise KeyboardInterrupt  # run the same clean shutdown as Ctrl+C
+
+
 def _serve(data_dir: Path | None, port: int | None) -> int:
+    # H1 D-9: SIGTERM and Ctrl+Break (Windows) stop the daemon cleanly, so api.port and api.token are removed
+    for name in ("SIGTERM", "SIGBREAK"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), _stop)
     with Core(data_dir=data_dir, hosting=True) as core:
         server = ControlServer(core, port=port if port is not None else core.config.api.port)
         server.start()
-        print(f"switchyard API listening on 127.0.0.1:{server.port} (token in {core.data_dir / 'api.token'})")
+        print(
+            f"switchyard API listening on 127.0.0.1:{server.port} (token in {core.data_dir / 'api.token'})",
+            flush=True,  # H1 D-26: service managers read this line through a pipe
+        )
         try:
             core.manager.start_auto(actor="core")
             while True:
@@ -117,6 +149,8 @@ def _run(operation: Operation, params: dict[str, Any], data_dir: Path | None) ->
 
         resolved = resolve_data_dir()
     try:
+        if clear_stale_files(resolved):  # nobody hosts this directory: no daemon to talk to (H1 D-9)
+            raise ApiUnavailable(f"no running daemon for {resolved}")
         return ApiClient.from_data_dir(resolved).request(operation.noun, operation.verb, params)
     except ApiUnavailable:
         if not operation.offline:
@@ -152,6 +186,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     _print(result, args.json)
+    failure = _failure(result)
+    if failure is not None:
+        print(f"error: {failure}", file=sys.stderr)
+        return 1
     return 0
 
 

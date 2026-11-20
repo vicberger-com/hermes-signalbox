@@ -27,6 +27,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,6 +40,7 @@ MAX_BODY_BYTES = 64 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024
 SOCKET_TIMEOUT_S = 10.0
 CLIENT_TIMEOUT_S = 60.0
+CONNECT_TIMEOUT_S = 0.5  # loopback: a refused or dead port must not cost seconds (H1 D-9)
 LOOPBACK = "127.0.0.1"
 _ROUTE = re.compile(r"/v1/([a-z]+)/([a-z_]+)\Z")
 _STATUS_ERRORS: dict[int, type[SwitchyardError]] = {400: UsageError, 403: CapabilityDenied}
@@ -160,7 +162,8 @@ class _Handler(BaseHTTPRequestHandler):
         return True
 
     def _unsupported(self) -> None:
-        self._fail(501, "not_implemented")
+        if self._origin_ok():  # every request is checked, whatever the method (H1 B-20)
+            self._fail(501, "not_implemented")
 
     do_PUT = do_PATCH = do_DELETE = do_OPTIONS = _unsupported  # drain the body, reply 501 as JSON
 
@@ -244,6 +247,13 @@ DASHBOARD_ACTIONS = frozenset({("inbox", "list"), ("inbox", "ack"), ("inbox", "a
 class _Server(ThreadingHTTPServer):
     allow_reuse_address = False  # Windows SO_REUSEADDR would let a second socket bind a held port (M9 review)
 
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        """No tracebacks (H1 B-24): a dropped connection is normal; anything else is one line, class only."""
+        exc = sys.exc_info()[1]
+        if exc is None or isinstance(exc, ConnectionError | TimeoutError):
+            return
+        sys.stderr.write(f"switchyard API: request failed ({type(exc).__name__})\n")
+
 
 class ControlServer:
     def __init__(self, core: Any, *, port: int = 0, host: str = LOOPBACK, profile: str = "full") -> None:
@@ -292,6 +302,28 @@ class ControlServer:
             path.unlink(missing_ok=True)
 
 
+def clear_stale_files(data_dir: Path) -> bool:
+    """True when no process hosts ``data_dir`` (nobody holds ``host.lock``); leftover ``api.port`` and
+    ``api.token`` from a daemon that died are then removed, under the lock, so no client sends the token to
+    whatever listens on that port now (H1 D-9). False when a hosting process runs."""
+    from switchyard.hostlock import HostLock
+
+    if not data_dir.is_dir():
+        return True
+    lock = HostLock(data_dir / "host.lock")
+    try:
+        if not lock.acquire():
+            return False
+    except OSError:
+        return False  # cannot tell: leave the files alone
+    try:
+        for name in ("api.port", "api.token"):
+            (data_dir / name).unlink(missing_ok=True)
+    finally:
+        lock.release()
+    return True
+
+
 class ApiClient:
     def __init__(self, port: int, token: str) -> None:
         self.port = port
@@ -308,8 +340,11 @@ class ApiClient:
 
     def request(self, noun: str, verb: str, params: dict[str, Any]) -> Any:
         body = json.dumps(params).encode("utf-8")
-        conn = http.client.HTTPConnection(LOOPBACK, self.port, timeout=CLIENT_TIMEOUT_S)
+        conn = http.client.HTTPConnection(LOOPBACK, self.port, timeout=CONNECT_TIMEOUT_S)
         try:
+            conn.connect()
+            if conn.sock is not None:
+                conn.sock.settimeout(CLIENT_TIMEOUT_S)
             conn.request("POST", f"/v1/{noun}/{verb}", body=body, headers={
                 "Host": f"{LOOPBACK}:{self.port}", "Authorization": f"Bearer {self._token}",
                 "Content-Type": "application/json",

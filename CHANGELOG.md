@@ -14,6 +14,21 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   (ADR-0013). State store: `ModuleState.deadline(seconds)` bounds a thread's store waits.
 - Router: a request with no recognised text key is sized as tier T5. With `hard_stop = true` the turn after
   a slow route that let a paid model through is blocked once (`route timeout`). No operator step needed.
+- CLI (H1 D-7, D-8, D-9, D-10, D-26): a result with `status: failed` or `ok: false` exits 1 and says why
+  (missing grants are named); an unknown capability name exits 2; `module panel` on an inactive module says
+  so; `config show` prints `data_dir_source` and nested settings as `section.key: value`; `--help` marks
+  operations that need the daemon with `[daemon]`. Scripts that relied on exit 0 for failed results must
+  check the new exit code.
+- Daemon: SIGTERM and Ctrl+Break stop `switchyard api serve` cleanly; the readiness line is flushed. The client
+  removes `api.port`/`api.token` left by a daemon that died (only while no process holds `host.lock`) and
+  connects with a 0.5 s timeout.
+- `module list` / `module show` add `missing_grants`. The model tool description no longer names
+  `deactivate` (H1 D-20).
+- Loopback API: unsupported methods are Host/Origin-checked too; dropped connections print no traceback
+  (H1 B-20, B-24).
+- User guide: two data stores explained, `switchyard api serve` as step 0, the capabilities each module needs
+  to start, and grant examples that work as written (H1 D-1). `tools/guide_walkthrough.py` runs the guide's
+  commands in CI (`tests/acceptance/test_guide_walkthrough.py`).
 
 ### Added
 - Bug-report and feature-request issue forms; wiki framework, page templates and generated wiki source with

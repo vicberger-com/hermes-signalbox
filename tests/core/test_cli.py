@@ -128,3 +128,110 @@ def test_default_data_dir_comes_from_the_environment(data: Path, monkeypatch: py
     monkeypatch.setenv("SWITCHYARD_DATA_DIR", str(data))
     assert main(["--json", "module", "list"]) == 0
     assert json.loads(capsys.readouterr().out)[0]["id"] == "ext"
+
+
+# H1 WP2: truthful exit codes and messages, daemon files, help text ---------------------------------------
+
+PANEL_MOD = """
+class Mod:
+    def activate(self, ctx):
+        ctx.register_panel("pan.status", lambda: {"ok": True})
+    def deactivate(self):
+        pass
+    def health(self):
+        return (True, "ok")
+"""
+
+
+@pytest.fixture
+def pan(data: Path) -> Path:
+    write_module(data / "modules", "pan", PANEL_MOD, request=("ui.panel",), isolation="subprocess")
+    return data
+
+
+def test_h1_d8_failed_results_exit_1_and_name_what_is_missing(
+    pan: Path, daemon: ControlServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(_run(pan, "module", "panel", "pan", "--panel", "pan.status")) == 1
+    assert "not active" in capsys.readouterr().err
+    assert main(_run(pan, "module", "activate", "pan")) == 1
+    captured = capsys.readouterr()
+    assert "status: failed" in captured.out and "missing_grants: ['ui.panel']" in captured.out
+    assert "ui.panel" in captured.err
+    assert main(_run(pan, "module", "health", "pan")) == 1
+    assert main(_run(pan, "module", "grant", "pan", "--capability", "ui.panel")) == 0
+    assert main(_run(pan, "module", "activate", "pan")) == 0
+    assert main(_run(pan, "--json", "module", "panel", "pan", "--panel", "pan.status")) == 0
+
+
+def test_h1_d26_unknown_capability_is_a_usage_error(data: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(_run(data, "module", "grant", "ext", "--capability", "net.bogus")) == 2
+    assert "unknown capability" in capsys.readouterr().err
+    assert main(_run(data, "module", "revoke", "ext", "--capability", "net.bogus")) == 2
+
+
+def test_h1_d10_config_show_names_the_data_directory_and_why(
+    data: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(_run(data, "config", "show")) == 0
+    out = capsys.readouterr().out
+    assert f"data_dir: {data}" in out and "data_dir_source: --data-dir" in out
+    assert "api.enabled: False" in out and "{" not in out  # nested settings as key: value lines
+    monkeypatch.setenv("SWITCHYARD_DATA_DIR", str(data))
+    assert main(["config", "show"]) == 0
+    assert "data_dir_source: SWITCHYARD_DATA_DIR" in capsys.readouterr().out
+
+
+def test_h1_d9_stale_daemon_files_cost_nothing_and_are_removed(
+    data: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import socket
+    import time
+
+    with socket.socket() as sock:  # a port nobody listens on
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "api.port").write_text(str(port), encoding="utf-8")
+    (data / "api.token").write_text("stale", encoding="utf-8")
+    started = time.monotonic()
+    assert main(_run(data, "module", "list")) == 0
+    assert time.monotonic() - started < 1.5
+    assert not (data / "api.port").exists() and not (data / "api.token").exists()
+
+
+def test_h1_d7_help_marks_daemon_only_operations(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["module", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "Start a module" in out and "[daemon]" in out
+    assert "List every discovered module with status, mode and capabilities. [daemon]" not in out
+
+
+def test_h1_d9_serve_removes_its_files_on_termination(data: Path) -> None:
+    import os
+    import signal
+    import subprocess
+    import sys
+    import threading
+
+    env = {**os.environ, "SWITCHYARD_DATA_DIR": str(data)}
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0  # type: ignore[attr-defined,unused-ignore]
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "switchyard.cli", "api", "serve", "--port", "0"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, creationflags=flags, text=True,
+    )  # fmt: skip
+    lines: list[str] = []
+    reader = threading.Thread(target=lambda: lines.append(proc.stdout.readline() if proc.stdout else ""))
+    reader.start()
+    reader.join(30)  # the readiness line arrives through a pipe without waiting for exit (flushed)
+    try:
+        assert lines and "listening on 127.0.0.1:" in lines[0]
+        assert (data / "api.port").exists() and (data / "api.token").exists()
+    finally:
+        if sys.platform == "win32":
+            proc.send_signal(signal.CTRL_BREAK_EVENT)  # type: ignore[attr-defined,unused-ignore]
+        else:
+            proc.send_signal(signal.SIGTERM)
+        proc.wait(30)
+    assert not (data / "api.port").exists() and not (data / "api.token").exists()

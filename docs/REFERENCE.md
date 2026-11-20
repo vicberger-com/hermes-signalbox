@@ -8,7 +8,17 @@ Generated from the code for v1.0.0 (operations table: `switchyard.ops.OPERATIONS
 The same operations run from the CLI (`switchyard <noun> <verb>`), the `/switchyard` slash command in Hermes,
 and the loopback API (`POST /v1/<noun>/<verb>` with a JSON body). "Model" marks what the `hermes` actor (the
 model's tools) may run; the core refuses everything else for it. "Dashboard" marks what the dashboard's API
-profile accepts. Also: `switchyard version`, `switchyard api serve [--port N]` (run the hosting daemon and API).
+profile accepts. Also: `switchyard version`, `switchyard api serve [--port N]` (run the hosting daemon and API;
+SIGTERM, Ctrl+C and Ctrl+Break stop it and remove `api.port` and `api.token`).
+
+Operations that need a running module instance (`module activate`, `deactivate`, `health`, `panel`,
+`action`, `update`, `preview`, `rollback`, `check_updates`, `report show`) need the hosting process for the
+data directory and are marked `[daemon]` in `switchyard <noun> --help`. `module list` and `module show` include
+`missing_grants` (capabilities needed to start that are not granted). `config show` prints `data_dir` and
+`data_dir_source` (why that directory was chosen) and nested settings as `section.key: value`.
+
+CLI exit codes: 0 success; 1 operation error, or a result that reports failure (`status: failed`, `ok: false`);
+2 usage error, including an unknown capability name; 3 capability denied.
 
 | Command | Parameters | What it does | Model | Dashboard |
 |---|---|---|---|---|

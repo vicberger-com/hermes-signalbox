@@ -70,7 +70,7 @@ def _schema(name: str, description: str, properties: dict[str, Any], required: l
 
 MODULES_SCHEMA = _schema(
     "switchyard_modules",
-    "Inspect and run Switchyard modules. Actions: list, show, activate, deactivate, health, and run (a "
+    "Inspect and run Switchyard modules. Actions: list, show, activate, health, and run (a "
     "module's read-only action, named by 'name' with 'args'). Granting capabilities is a user decision made "
     "with /switchyard, not available here.",
     {

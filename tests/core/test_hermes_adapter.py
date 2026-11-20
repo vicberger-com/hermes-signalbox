@@ -304,3 +304,16 @@ def test_delegation_backend_registered_when_hermes_supports_it(
     ctx.register_delegation_provider = got.append  # type: ignore[attr-defined]
     register(ctx)
     assert got[0].name == "switchyard" and not got[0].is_available()  # no module routes yet
+
+
+def test_h1_d20_model_tool_description_matches_its_actions() -> None:
+    import re
+
+    from switchyard.hermes import MODULES_SCHEMA
+
+    text = MODULES_SCHEMA["description"]
+    listed = re.search(r"Actions: ([a-z, ]+?)(?: \(|\.)", text)
+    assert listed is not None
+    names = {w.strip() for w in listed.group(1).replace(" and ", ", ").split(",") if w.strip()}
+    assert names == set(MODEL_TOOL_ACTIONS)
+    assert "deactivate" not in text
