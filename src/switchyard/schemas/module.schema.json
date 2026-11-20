@@ -91,7 +91,8 @@
       "properties": {
         "source": {"type": "string", "enum": ["bundled", "git"]},
         "url": {"type": "string", "pattern": "^https://"},
-        "ref": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+        "ref": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "channel": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$"}
       }
     }
   }

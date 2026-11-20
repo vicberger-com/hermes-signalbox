@@ -86,6 +86,11 @@ class CoreView:
             for i in self._core.manager.modules()
         ]
 
+    def update_checks(self) -> list[dict[str, Any]]:
+        """Channel heads versus installed commits for git-installed modules (ADR-0011). Runs ``git ls-remote``
+        against each module's pinned https URL; nothing is downloaded or applied."""
+        return self._core.updates.check_all()
+
     def verify_audit(self) -> dict[str, Any]:
         """Cached for ``VERIFY_CACHE_SECONDS``: a full scan holds the audit lock, so a module calling this in
         a loop must not stall every audited action (M6 review)."""

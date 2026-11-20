@@ -294,3 +294,4 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
 - ADR-0008: `ctx.hermes_transform(kind, fn)` (`hermes.output`; returns kept line ranges; core rebuilds).
 - ADR-0009: `ctx.notify.send(severity, title, detail)` (`notify`); `report show`; dashboard tab via the control API.
 - ADR-0010: `ctx.net.request(...)` (`net.outbound`; manifest `net_hosts`; bare host = any port).
+- ADR-0011: `module preview`, `module check_updates`, update `digest`/`accept_wider`, manifest `[update] channel`, `CoreView.update_checks()`.

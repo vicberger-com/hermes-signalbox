@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -26,6 +28,12 @@ class FakeFetcher:
     def __init__(self) -> None:
         self.sources: dict[tuple[str, str], Path] = {}
         self.calls: list[tuple[str, str]] = []
+        self.heads: dict[tuple[str, str], str] = {}
+
+    def latest(self, url: str, channel: str) -> str:
+        if (url, channel) not in self.heads:
+            raise UpdateError(f"channel {channel!r} not found")
+        return self.heads[(url, channel)]
 
     def fetch(self, url: str, ref: str, dest: Path) -> None:
         self.calls.append((url, ref))
@@ -78,7 +86,9 @@ def test_update_swaps_and_keeps_the_module_running(env: Any) -> None:
     core, fetcher, _ = env
     core.run("module", "activate", {"id": "ext"}, actor="t")
     result = core.run("module", "update", {"id": "ext", "ref": NEW}, actor="t")
-    assert result == {"id": "ext", "from": "0.1.0", "to": "0.2.0", "ref": NEW, "rolled_back": False}
+    assert {k: result[k] for k in ("id", "from", "to", "ref", "rolled_back")} == {
+        "id": "ext", "from": "0.1.0", "to": "0.2.0", "ref": NEW, "rolled_back": False}  # fmt: skip
+    assert result["delta"]["files"]["changed"] == ["module.toml"]  # SBOM delta for every update
     assert _version(core) == "0.2.0" and fetcher.calls == [(URL, NEW)]
     assert core.run("module", "health", {"id": "ext"}, actor="t")["ok"] is True
     actions = [r["action"] for r in core.run("audit", "tail", {"n": 30}, actor="t")]
@@ -232,3 +242,116 @@ def test_staged_tree_with_symlinks_is_rejected(env: Any) -> None:
     with pytest.raises(UpdateError, match="symlink"):
         core.run("module", "update", {"id": "ext", "ref": link}, actor="t")
     assert _version(core) == "0.1.0"
+
+
+# M12 (ADR-0011): preview, SBOM delta, patch notes, digest pinning, widening, channels ---------------------
+
+WIDE = "4" * 40
+
+
+def _with_changelog(d: Path, version: str) -> None:
+    (d / "CHANGELOG.md").write_text(
+        f"# Changelog\n\n## [{version}] - 2026-11-20\n\n- Faster.\x1b[31m red\n\n## [0.1.0]\n\n- Old.\n",
+        encoding="utf-8",
+    )
+
+
+def test_preview_reports_delta_and_notes_without_applying(env: Any) -> None:
+    core, fetcher, _ = env
+    _with_changelog(fetcher.sources[(URL, NEW)], "0.2.0")
+    out = core.run("module", "preview", {"id": "ext", "ref": NEW}, actor="t")
+    assert _version(core) == "0.1.0"  # nothing applied
+    assert out["delta"]["files"]["added"] == ["CHANGELOG.md"]
+    assert out["delta"]["declared"]["version"] == {"from": "0.1.0", "to": "0.2.0"}
+    assert out["notes"].startswith("## [0.2.0]") and "Old." not in out["notes"] and "\x1b" not in out["notes"]
+    assert not list((core.data_dir / "staging" / "ext").glob("stage-*"))
+    result = core.run(
+        "module", "update", {"id": "ext", "ref": NEW, "digest": out["delta"]["digest"]}, actor="t"
+    )
+    assert result["to"] == "0.2.0" and result["notes"] == out["notes"]
+    sbom = core.data_dir / "staging" / "ext" / f"sbom-{NEW}.json"
+    assert json.loads(sbom.read_text(encoding="utf-8"))["digest"] == out["delta"]["digest"]
+
+
+def test_tampered_update_rejected(env: Any) -> None:
+    """The files fetched at update time differ from the ones reviewed in preview: refused, nothing applied."""
+    core, fetcher, _ = env
+    digest = core.run("module", "preview", {"id": "ext", "ref": NEW}, actor="t")["delta"]["digest"]
+    entry = fetcher.sources[(URL, NEW)] / "mod.py"
+    entry.write_text(entry.read_text(encoding="utf-8") + "\n# injected\n", encoding="utf-8")
+    with pytest.raises(UpdateError, match="previewed digest"):
+        core.run("module", "update", {"id": "ext", "ref": NEW, "digest": digest}, actor="t")
+    assert _version(core) == "0.1.0"
+    rejected = [
+        r for r in core.run("audit", "tail", {"n": 20}, actor="t") if r["action"] == "module.update_rejected"
+    ]
+    assert rejected and "digest" in rejected[-1]["detail"]["reason"]
+
+
+def test_failed_health_check_rolls_back_with_delta(env: Any) -> None:
+    core, _, _ = env
+    core.run("module", "activate", {"id": "ext"}, actor="t")
+    result = core.run("module", "update", {"id": "ext", "ref": BAD}, actor="t")
+    assert result["rolled_back"] and _version(core) == "0.1.0"
+    assert result["delta"]["declared"]["version"]["to"] == "0.3.0"
+
+
+def test_widening_needs_explicit_acceptance(env: Any) -> None:
+    core, fetcher, tmp = env
+    wide = _source(tmp / "v4", "x", version="0.4.0")
+    toml = wide / "module.toml"
+    text = toml.read_text(encoding="utf-8")
+    text = text.replace("[capabilities]\n", '[capabilities]\nnet_hosts = ["api.example.com"]\n', 1)
+    text = re.sub(
+        r"request = \[([^\]]*)\]",
+        lambda m: (
+            f'request = [{m.group(1)}, "net.outbound"]'
+            if m.group(1).strip()
+            else 'request = ["net.outbound"]'
+        ),
+        text,
+        count=1,
+    )
+    toml.write_text(text, encoding="utf-8")
+    fetcher.sources[(URL, WIDE)] = wide
+    preview = core.run("module", "preview", {"id": "ext", "ref": WIDE}, actor="t")
+    assert any(w.startswith("net_hosts") for w in preview["delta"]["widens"])
+    assert any("net.outbound" in w for w in preview["delta"]["widens"])
+    with pytest.raises(UpdateError, match="widens"):
+        core.run("module", "update", {"id": "ext", "ref": WIDE}, actor="t")
+    assert _version(core) == "0.1.0"
+    result = core.run("module", "update", {"id": "ext", "ref": WIDE, "accept_wider": True}, actor="t")
+    assert result["to"] == "0.4.0"
+
+
+def test_channel_checks(env: Any) -> None:
+    core, fetcher, _ = env
+    out = core.run("module", "check_updates", {}, actor="t")["modules"]
+    assert out == [{"id": "ext", "channel": "main", "error": "channel 'main' not found"}]
+    fetcher.heads[(URL, "main")] = NEW
+    (row,) = core.run("module", "check_updates", {}, actor="t")["modules"]
+    assert row == {"id": "ext", "channel": "main", "installed": OLD, "available": NEW, "update": True}
+    core.run("module", "update", {"id": "ext", "ref": NEW}, actor="t")
+    (row,) = core.run("module", "check_updates", {}, actor="t")["modules"]
+    assert row["installed"] == NEW and not row["update"]
+    core.run("module", "rollback", {"id": "ext"}, actor="t")
+    (row,) = core.run("module", "check_updates", {}, actor="t")["modules"]
+    assert row["installed"] == OLD
+
+
+@needs_git
+def test_git_latest_reads_channel_head(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "stable")
+    _git(repo, "-c", "user.email=a@b", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x")
+    head = _git(repo, "rev-parse", "HEAD")
+    fetcher = GitFetcher(allow_file_protocol=True)
+    assert fetcher.latest(repo.as_uri(), "stable") == head
+    for bad in ("../x", "-x", "a b"):
+        with pytest.raises(UpdateError):
+            fetcher.latest(repo.as_uri(), bad)
+    with pytest.raises(UpdateError, match="not found"):
+        fetcher.latest(repo.as_uri(), "nope")
+    with pytest.raises(UpdateError, match="https"):
+        GitFetcher().latest("http://example.invalid/x.git", "main")

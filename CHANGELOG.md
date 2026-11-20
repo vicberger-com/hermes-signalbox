@@ -4,6 +4,12 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- ADR-0011: `module preview` (SBOM delta, patch notes, tree digest); `module update` takes `digest` and refuses
+  permission widening without `accept_wider`; SBOM delta stored for every update; manifest `[update] channel`
+  and `module check_updates`.
+- Bundled `updates` module (M12): scheduled channel checks with one alert per new commit; never applies.
+
 ## [0.12.0] - 2026-11-20
 
 Phase M11: offload connectors.
