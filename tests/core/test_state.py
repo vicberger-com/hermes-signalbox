@@ -16,6 +16,14 @@ M1 = (1, "CREATE TABLE one (x INTEGER);")
 M2 = (2, "CREATE TABLE two (y INTEGER);")
 
 
+def _migrate_once(path: Path, backups: Path, migrations: list[tuple[int, str]]) -> None:
+    store = StateStore(path, backup_dir=backups, migrations=migrations)
+    try:
+        store.migrate()
+    finally:
+        store.close()  # H1 D-23: no unclosed connections (ResourceWarning on 3.14)
+
+
 def _store(tmp_path: Path) -> StateStore:
     store = StateStore(tmp_path / "state.db", backup_dir=tmp_path / "backup")
     store.migrate()
@@ -38,7 +46,7 @@ def test_migrate_sets_version_and_wal(tmp_path: Path) -> None:
 
 def test_upgrade_takes_a_backup_first(tmp_path: Path) -> None:
     path, backups = tmp_path / "s.db", tmp_path / "backup"
-    StateStore(path, backup_dir=backups, migrations=[M1]).migrate()
+    _migrate_once(path, backups, [M1])
     s = StateStore(path, backup_dir=backups, migrations=[M1, M2])
     s.migrate()
     assert s.user_version == 2
@@ -53,7 +61,7 @@ def test_upgrade_takes_a_backup_first(tmp_path: Path) -> None:
 
 def test_failed_migration_rolls_back(tmp_path: Path) -> None:
     path = tmp_path / "s.db"
-    StateStore(path, backup_dir=tmp_path / "b", migrations=[M1]).migrate()
+    _migrate_once(path, tmp_path / "b", [M1])
     bad = (2, "CREATE TABLE two (y INTEGER); CREATE TABLE one (x INTEGER);")
     s = StateStore(path, backup_dir=tmp_path / "b", migrations=[M1, bad])
     with pytest.raises(StateError, match="migration 2"):
@@ -65,9 +73,9 @@ def test_failed_migration_rolls_back(tmp_path: Path) -> None:
 
 def test_newer_database_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "s.db"
-    StateStore(path, backup_dir=tmp_path / "b", migrations=[M1, M2]).migrate()
+    _migrate_once(path, tmp_path / "b", [M1, M2])
     with pytest.raises(StateError, match="newer"):
-        StateStore(path, backup_dir=tmp_path / "b", migrations=[M1]).migrate()
+        _migrate_once(path, tmp_path / "b", [M1])
 
 
 def test_migration_numbers_must_be_contiguous(tmp_path: Path) -> None:

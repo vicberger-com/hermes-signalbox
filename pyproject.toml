@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27,<2"]  # the lock pins the exact version used in CI and releases (H1 D-25)
 build-backend = "hatchling.build"
 
 [project]
@@ -34,6 +34,16 @@ switchyard = "switchyard.hermes"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/switchyard"]
+
+# H1 D-5: the Hermes plugin manifest and the dashboard tab ship in the wheel too. Hermes 0.23.2 shows dashboard
+# tabs only for plugins installed into a plugins directory (`hermes plugins install`), not for pip entry points;
+# see docs/USER-GUIDE.md section 5. Files are listed one by one so no local cache file is packaged.
+[tool.hatch.build.targets.wheel.force-include]
+"plugin.yaml" = "switchyard/_plugin/plugin.yaml"
+"dashboard/manifest.json" = "switchyard/_plugin/dashboard/manifest.json"
+"dashboard/plugin_api.py" = "switchyard/_plugin/dashboard/plugin_api.py"
+"dashboard/dist/index.js" = "switchyard/_plugin/dashboard/dist/index.js"
+"dashboard/dist/style.css" = "switchyard/_plugin/dashboard/dist/style.css"
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "templates/module/tests"]
