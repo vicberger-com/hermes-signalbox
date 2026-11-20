@@ -4,6 +4,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- `ctx.fs` file-read broker for `fs.read` (ADR-0003): absolute regular files only, size-capped, JSON depth
+  limit, audited by path.
+
 ## [0.2.0] - 2026-11-19
 
 Phase M1: secrets.
