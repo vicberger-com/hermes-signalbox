@@ -243,6 +243,17 @@ class ModuleContext:
         ``contributes.hooks``."""
         self._bridge_check("gate:pre_llm_call").add_gate(self.module_id, fn)
 
+    def hermes_delegation(self, route: Callable[[dict[str, Any]], Any], roles: Callable[[], Any]) -> None:
+        """Route Hermes ``delegate_task`` tasks (ADR-0007). ``roles() -> [(name, description)]`` feeds the
+        ``worker_role`` schema enum;
+        ``route(meta) -> {"model", "provider"} | {"profile"} | {"refuse": code}``.
+        Needs ``hermes.delegation``; one module at a time."""
+        self._open()
+        self._services.policy.require(self.module_id, "hermes.delegation")
+        if self._services.bridge is None:
+            raise SwitchyardError("the Hermes bridge is not available in this host")
+        self._services.bridge.set_delegation(self.module_id, route, roles)
+
     def hermes_middleware(self, kind: str, fn: Callable[[dict[str, Any], dict[str, Any]], Any]) -> None:
         """Register Hermes middleware: ``fn(request, context) -> new request | None``.
 

@@ -24,7 +24,7 @@ from switchyard.manifest import Manifest
 
 CAPABILITIES: frozenset[str] = frozenset({
     "fs.read", "fs.write", "net.outbound", "secrets.read", "process.spawn",
-    "hermes.hooks", "hermes.tools", "hermes.config.write",
+    "hermes.hooks", "hermes.tools", "hermes.config.write", "hermes.delegation",
     "llm.free", "llm.paid", "ui.panel", "schedule", "notify", "core.read",
 })  # fmt: skip
 

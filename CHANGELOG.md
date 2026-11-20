@@ -4,6 +4,13 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- ADR-0007: `hermes.delegation` capability and a `switchyard` Hermes delegation backend (`ctx.hermes_delegation`);
+  `subagent_start` observer hook with a goal digest; `delegated` marker for routed children's requests.
+- Bundled `workers` module (M7): worker roles bound to a model pool or a Hermes profile (persona), teams, a
+  restart-safe ledger, stuck-worker and repeated-delegation detection.
+- Router `explain` takes a `consumer`; requests from routed children keep their role's model.
+
 ## [0.7.0] - 2026-11-20
 
 Phase M6: supervisor.

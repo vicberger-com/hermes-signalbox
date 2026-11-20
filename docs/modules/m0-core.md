@@ -290,4 +290,5 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
   `revert`. Provided only when the Hermes adapter supplies a config port.
 - ADR-0006: `ctx.schedule.every(name, seconds, fn)` (`schedule`), `ctx.core` (`core.read`), `ctx.hermes_gate(fn)`
   (`gate:pre_llm_call` declared; blocks a turn with a prefixed reason; fails open).
+- ADR-0007: `ctx.hermes_delegation(route, roles)` (`hermes.delegation`; one module); Hermes backend `switchyard`.
 
