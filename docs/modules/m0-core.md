@@ -199,9 +199,21 @@ the daemon. `api serve` runs `start_auto()`, then `Core.tick()` every second unt
 
 ### Hermes adapter
 
-`register(ctx)`: builds `Core` with `data_dir = ctx.state.data_dir`; registers tools `switchyard_modules`,
-`switchyard_audit`, `switchyard_host` (toolset `switchyard`), command `/switchyard`, CLI command `switchyard`.
-Declares no Hermes plugin capabilities. Tool results are JSON strings passed through the redactor.
+`switchyard.hermes.register(ctx)` (entry point `hermes_agent.plugins`; root `plugin.yaml` + shim `__init__.py` for
+`hermes plugins install`). Builds `Core` with `data_dir` = setting `data_dir` or `ctx.state.data_dir`. Registers:
+model tools `switchyard_modules` (list, show, activate, deactivate, health), `switchyard_audit` (verify, tail),
+`switchyard_host` (toolset `switchyard`); slash command `/switchyard <noun> <verb> [id] [key=value]` (every operation);
+CLI command `hermes switchyard` (the full CLI; skipped by Hermes under `plugins.isolation: host`); daily idle task
+`switchyard-audit-verify`; the redactor's default patterns that start with two literal characters (Hermes rule).
+**The model-facing tools cannot grant or revoke capabilities, change modes or remove modules** (a prompt-injected
+model could widen its own access); those are human paths only. Tool handlers catch every exception and return JSON
+with core messages only, because Hermes otherwise forwards exception text to the model. No Hermes plugin
+capabilities are declared. Verified with `hermes plugins validate` on Hermes v0.23.2.
+
+**Hosting.** Only the process holding the OS lock on `<data_dir>/host.lock` (`msvcrt.locking` / `fcntl.flock`;
+dropped by the OS on exit) hosts modules: `start_auto()` plus a daemon thread calling `Core.tick()` every 15 s
+(resolves the open item: Hermes idle tasks are hour-scale). `Core(hosting=True|None|False)`; non-hosting cores refuse
+live operations (activate, deactivate, health, panel). `api serve` requires hosting; the offline CLI never hosts.
 
 ### Update control
 

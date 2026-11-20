@@ -82,7 +82,7 @@ def _print(result: Any, as_json: bool) -> None:
 
 
 def _serve(data_dir: Path | None, port: int | None) -> int:
-    with Core(data_dir=data_dir) as core:
+    with Core(data_dir=data_dir, hosting=True) as core:
         server = ControlServer(core, port=port if port is not None else core.config.api.port)
         server.start()
         print(f"switchyard API listening on 127.0.0.1:{server.port} (token in {core.data_dir / 'api.token'})")
@@ -112,7 +112,7 @@ def _run(operation: Operation, params: dict[str, Any], data_dir: Path | None) ->
             raise SwitchyardError(
                 f"'{name}' needs the running daemon: start it with 'switchyard api serve'"
             ) from None
-    with Core(data_dir=resolved) as core:
+    with Core(data_dir=resolved, hosting=False) as core:
         return core.run(operation.noun, operation.verb, params, actor="cli")
 
 

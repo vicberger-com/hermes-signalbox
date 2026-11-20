@@ -91,7 +91,21 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _fail(self, status: int, error: str, message: str = "") -> None:
+        self._drain()
         self._reply(status, {"ok": False, "error": error, "message": message})
+
+    def _drain(self) -> None:
+        """Discard an unread request body within the size limit before an early reply; replying with unread
+        bytes in the socket makes some stacks (Windows) reset the connection before the client reads."""
+        if self.command != "POST" or getattr(self, "_body_read", False):
+            return
+        self._body_read = True
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            return
+        if 0 < length <= MAX_BODY_BYTES and "Transfer-Encoding" not in self.headers:
+            self.rfile.read(length)
 
     def _origin_ok(self) -> bool:
         port = self.control.port
@@ -137,6 +151,7 @@ class _Handler(BaseHTTPRequestHandler):
         if route is None:
             self._fail(404, "not_found")
             return
+        self._body_read = True
         try:
             params = json.loads(self.rfile.read(length) or b"{}")
         except (UnicodeDecodeError, ValueError):

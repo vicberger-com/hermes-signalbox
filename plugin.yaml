@@ -1,0 +1,19 @@
+# Hermes plugin manifest (Hermes >= 0.22). Installed from git with `hermes plugins install`, or via pip through the
+# `hermes_agent.plugins` entry point declared in pyproject.toml. Implementation: src/switchyard/hermes/__init__.py
+manifest_version: 2
+name: switchyard
+version: 0.0.1
+description: "Security-first, modular control plane for Hermes: modules, capability grants, audit, secrets by reference."
+author: Vic Berger
+license: Apache-2.0
+homepage: https://github.com/vicberger-com/hermes-switchyard
+requires_hermes: ">=0.22"
+provides_tools:
+  - switchyard_modules
+  - switchyard_audit
+  - switchyard_host
+provides_hooks: []
+config_schema:
+  data_dir:
+    type: string
+    description: "Absolute path for Switchyard state; default is this profile's plugin data directory."
