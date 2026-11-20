@@ -1,0 +1,234 @@
+"""Append-only, hash-chained audit log in JSON Lines (spec section 3, Audit log).
+
+Record fields: ``seq, ts, actor, action, module, detail, prev, hash``. ``hash`` is the SHA-256 of the
+canonical JSON of the record without ``hash`` (sorted keys, no whitespace, UTF-8); ``prev`` is the previous
+record's hash, ``GENESIS`` for the first. Files are ``audit-NNNNNN.jsonl`` and rotate at ``max_bytes``; the
+chain runs across files. Every append is flushed and fsynced.
+
+``verify`` detects an edited, deleted, inserted or reordered record. A log cut off at the end is still a valid
+chain, so callers keep the last ``head`` (seq, hash) elsewhere (the state store) and pass it as
+``expected_head``. Opening a log whose last line is torn fails closed with ``AuditError``.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import threading
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any
+
+from switchyard.errors import AuditError
+
+GENESIS = "0" * 64
+DEFAULT_MAX_BYTES = 8 * 1024 * 1024
+MAX_NAME_CHARS = 128
+MAX_DETAIL_CHARS = 1024
+_FILE_RE = re.compile(r"audit-(\d{6})\.jsonl\Z")
+_FIELDS = frozenset({"seq", "ts", "actor", "action", "module", "detail", "prev", "hash"})
+_TAIL_PROBE_BYTES = 64 * 1024
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _canonical(obj: Mapping[str, Any]) -> bytes:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def record_hash(record: Mapping[str, Any]) -> str:
+    """Hash of a record without its ``hash`` field."""
+    return hashlib.sha256(_canonical({k: v for k, v in record.items() if k != "hash"})).hexdigest()
+
+
+@dataclass(frozen=True)
+class AuditRecord:
+    seq: int
+    ts: str
+    actor: str
+    action: str
+    module: str
+    detail: Mapping[str, str]
+    prev: str
+    hash: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "seq": self.seq, "ts": self.ts, "actor": self.actor, "action": self.action,
+            "module": self.module, "detail": dict(self.detail), "prev": self.prev, "hash": self.hash,
+        }  # fmt: skip
+
+
+@dataclass(frozen=True)
+class VerifyResult:
+    ok: bool
+    records: int
+    first_bad_seq: int | None = None
+    reason: str = ""
+
+
+def _files(directory: Path) -> list[Path]:
+    if not directory.is_dir():
+        return []
+    found = [(int(m.group(1)), p) for p in directory.iterdir() if (m := _FILE_RE.match(p.name))]
+    return [p for _, p in sorted(found)]
+
+
+def _iter_lines(directory: Path) -> Iterator[str]:
+    for path in _files(directory):
+        with path.open("r", encoding="utf-8", newline="\n") as fh:
+            for line in fh:
+                if line.strip():
+                    yield line.rstrip("\n")
+
+
+class AuditLog:
+    """Thread-safe writer and verifier for one audit directory. Satisfies ``capabilities.AuditSink``."""
+
+    def __init__(
+        self,
+        directory: Path,
+        *,
+        redact: Callable[[str], str] | None = None,
+        clock: Callable[[], str] = _utc_now,
+        max_bytes: int = DEFAULT_MAX_BYTES,
+    ) -> None:
+        self._dir = directory
+        self._redact = redact or (lambda s: s)
+        self._clock = clock
+        self._max_bytes = max_bytes
+        self._lock = threading.Lock()
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self._seq, self._prev, self._file_no = self._recover()
+
+    # state --------------------------------------------------------------------------------------------
+
+    def _recover(self) -> tuple[int, str, int]:
+        files = _files(self._dir)
+        if not files:
+            return 0, GENESIS, 1
+        last = files[-1]
+        file_no = int(_FILE_RE.match(last.name).group(1))  # type: ignore[union-attr]
+        size = last.stat().st_size
+        if size == 0:
+            if len(files) == 1:
+                return 0, GENESIS, file_no
+            last = files[-2]
+            size = last.stat().st_size
+        with last.open("rb") as fh:
+            fh.seek(max(0, size - _TAIL_PROBE_BYTES))
+            tail = fh.read()
+        if not tail.endswith(b"\n"):
+            raise AuditError(f"{last}: last record is incomplete (torn write); run 'switchyard audit verify'")
+        try:
+            rec = json.loads(tail.rstrip(b"\n").rsplit(b"\n", 1)[-1])
+            seq, digest = int(rec["seq"]), str(rec["hash"])
+        except (ValueError, KeyError, TypeError) as exc:
+            raise AuditError(f"{last}: last record is unreadable: {exc}") from None
+        return seq, digest, file_no
+
+    @property
+    def head(self) -> tuple[int, str]:
+        """(seq, hash) of the last record; store it to detect tail truncation later."""
+        with self._lock:
+            return self._seq, self._prev
+
+    # writing ------------------------------------------------------------------------------------------
+
+    def _clean_detail(self, detail: Mapping[str, str]) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for key, value in detail.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise AuditError("audit detail keys and values must be strings")
+            clean = self._redact(value)
+            if len(key) > MAX_NAME_CHARS or len(clean) > MAX_DETAIL_CHARS:
+                raise AuditError(f"audit detail {key[:40]!r} is too long")
+            out[key] = clean
+        return out
+
+    def append(self, *, actor: str, action: str, module: str, detail: Mapping[str, str]) -> AuditRecord:
+        for name, value in (("actor", actor), ("action", action), ("module", module)):
+            if not isinstance(value, str) or len(value) > MAX_NAME_CHARS:
+                raise AuditError(f"audit {name} must be a string of at most {MAX_NAME_CHARS} characters")
+        clean = self._clean_detail(detail)
+        with self._lock:
+            body: dict[str, Any] = {
+                "seq": self._seq + 1, "ts": self._clock(), "actor": actor, "action": action,
+                "module": module, "detail": clean, "prev": self._prev,
+            }  # fmt: skip
+            body["hash"] = record_hash(body)
+            line = _canonical(body) + b"\n"
+            self._write(line)
+            self._seq, self._prev = body["seq"], body["hash"]
+        return AuditRecord(**{**body, "detail": MappingProxyType(clean)})
+
+    def _write(self, line: bytes) -> None:
+        path = self._dir / f"audit-{self._file_no:06d}.jsonl"
+        if path.exists() and path.stat().st_size > 0 and path.stat().st_size + len(line) > self._max_bytes:
+            self._file_no += 1
+            path = self._dir / f"audit-{self._file_no:06d}.jsonl"
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
+        try:
+            fd = os.open(path, flags, 0o600)
+            try:
+                os.write(fd, line)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except OSError as exc:
+            raise AuditError(f"cannot write audit record: {exc}") from exc
+
+    # reading ------------------------------------------------------------------------------------------
+
+    def tail(self, n: int) -> list[dict[str, Any]]:
+        """The last ``n`` records, oldest first."""
+        if n <= 0:
+            return []
+        out: list[dict[str, Any]] = []
+        with self._lock:
+            for path in reversed(_files(self._dir)):
+                lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+                out[:0] = [json.loads(ln) for ln in lines[-(n - len(out)) :]]
+                if len(out) >= n:
+                    break
+        return out
+
+    def verify(self, expected_head: tuple[int, str] | None = None) -> VerifyResult:
+        with self._lock:
+            return self.verify_directory(self._dir, expected_head)
+
+    @staticmethod
+    def verify_directory(directory: Path, expected_head: tuple[int, str] | None = None) -> VerifyResult:
+        prev, seq, anchor_seen = GENESIS, 0, False
+        for line in _iter_lines(directory):
+            expected = seq + 1
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                return VerifyResult(False, seq, expected, "unparseable record")
+            if not isinstance(rec, dict) or set(rec) != _FIELDS:
+                return VerifyResult(False, seq, expected, "record has the wrong fields")
+            bad = rec["seq"] if isinstance(rec["seq"], int) else expected
+            if rec["seq"] != expected:
+                return VerifyResult(False, seq, bad, f"sequence gap: expected {expected}")
+            if rec["prev"] != prev:
+                return VerifyResult(False, seq, bad, "chain broken: prev does not match")
+            if rec["hash"] != record_hash(rec):
+                return VerifyResult(False, seq, bad, "hash mismatch: record was modified")
+            prev, seq = rec["hash"], expected
+            if expected_head is not None and seq == expected_head[0]:
+                if prev != expected_head[1]:
+                    return VerifyResult(False, seq, seq, "head anchor hash does not match")
+                anchor_seen = True
+        if expected_head is not None and expected_head[0] > 0 and not anchor_seen:
+            return VerifyResult(
+                False, seq, seq + 1, f"head anchor missing: log ends at {seq}, anchor is {expected_head[0]}"
+            )
+        return VerifyResult(True, seq)

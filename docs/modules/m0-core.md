@@ -84,16 +84,22 @@ The context never exposes the core, other modules or the policy engine.
 ### State store
 
 `StateStore(path)`; `migrate()` applies `switchyard/migrations/NNNN_*.sql` in order inside a transaction after
-copying the file to `backup/`. `ModuleState(module_id)`: `create_table(name, columns)`, `execute(sql, params)`
-restricted to its own tables (statement is parsed for table names; any other table name is refused), `kv_get`,
-`kv_set`, `drop_all()`. Names match `^[a-z][a-z0-9_]{0,31}$`.
+copying the file to `backup/`. `ModuleState(module_id)`: `create_table(name, columns, primary_key)` (STRICT tables; types TEXT, INTEGER, REAL,
+BLOB), `execute(sql, params)` (one statement), `kv_get`, `kv_set`, `drop_all()`. Confinement uses SQLite's
+authorizer callback, not SQL parsing: while a module statement is prepared, any table outside `m_<id>__`
+(core tables, other modules, `sqlite_master`) and any PRAGMA, ATTACH, DDL or transaction control is denied.
+Names match `^[a-z][a-z0-9_]{0,31}$`; module ids and table names may not contain `__`, so one module cannot
+forge another's prefix (also a manifest rule). Grants persist through `SqliteGrantStore`.
 
 ### Audit log
 
 Record: `{"seq", "ts", "actor", "action", "module", "detail", "prev", "hash"}` where
 `hash = sha256(canonical_json(record without hash))` and `prev` is the previous `hash` (genesis `"0"*64`). Canonical
 JSON: sorted keys, `separators=(",", ":")`, UTF-8. `append(...)` fsyncs. `verify() -> VerifyResult(ok, first_bad_seq)`
-detects edit, deletion, reorder and truncation-with-gap. `detail` values pass through the redactor before writing.
+detects edit, deletion, insertion and reorder. Tail truncation is detected against a stored head anchor:
+`verify(expected_head=(seq, hash))`; the core keeps the head in `state.db`. A torn last line makes opening fail
+closed. `detail` values must be strings (max 1024 chars) and pass through the redactor before writing. Files
+rotate at 8 MiB with the chain running across files.
 
 ### Events and scheduler
 
