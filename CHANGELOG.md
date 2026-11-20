@@ -4,6 +4,18 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- Bundled `meter` module (M4): counts every Hermes API response by day, hour, provider and model (tokens
+  exactly as reported, errors, subagent runs, estimated cost from models.dev prices); opt-in quotas on
+  requests, tokens or USD per day or month with thresholds that fire once per period (`meter.threshold`,
+  `meter.exhausted`); burn-rate forecast. Stores no text.
+- Router cools an exhausted quota's scope down until the period ends.
+- Manifest `capabilities.optional`: requested capabilities that auto-start does not wait for.
+
+### Changed
+- Bridge (ADR-0004 decision 6): observer hooks hand modules metadata only (no message text, conversation,
+  tool traces or raw SDK objects); `subagent_stop` is forwarded.
+
 ## [0.4.0] - 2026-11-20
 
 Phase M3: router and failover.

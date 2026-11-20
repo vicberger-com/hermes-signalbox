@@ -18,6 +18,7 @@ provides_hooks:
   - post_llm_call
   - pre_api_request
   - pre_llm_call
+  - subagent_stop
 provides_middleware:
   - llm_request
 config_schema:

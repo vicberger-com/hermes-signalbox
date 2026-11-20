@@ -116,6 +116,9 @@ def cross_field(doc: Mapping[str, Any]) -> list[str]:
     raw = caps.get("request")
     requested: list[Any] = raw if isinstance(raw, list) else []
 
+    optional = caps.get("optional")
+    if isinstance(optional, list) and not set(optional) <= set(requested):
+        errors.append("$.capabilities: every 'optional' capability must also be in 'request'")
     provides_backends = bool(_section(doc, "contributes").get("secret_backends"))
     if provides_backends and "secrets.read" not in requested:
         errors.append("$.contributes: a module with 'secret_backends' must request 'secrets.read'")
@@ -191,6 +194,7 @@ class Manifest:
     update_source: str
     update_url: str | None
     update_ref: str | None
+    optional: frozenset[str] = frozenset()  # requested, but not needed to start (auto activation)
 
 
 def _entry_file(directory: Path, entry_module: str) -> Path:
@@ -239,6 +243,7 @@ def load_manifest(path: Path) -> Manifest:
         entry_class=entry_class,
         entry_file=entry_file,
         requested=frozenset(caps["request"]),
+        optional=frozenset(caps.get("optional", ())),
         net_hosts=tuple(caps.get("net_hosts", ())),
         secrets=tuple(caps.get("secrets", ())),
         contributes=MappingProxyType({k: tuple(contributes.get(k, ())) for k in CONTRIBUTION_KINDS}),

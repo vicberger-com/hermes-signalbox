@@ -197,5 +197,45 @@ def test_middleware_cannot_mutate_or_smuggle_and_is_time_bounded(tmp_path: Path)
     )  # nothing registered
     bridge.add_middleware("d", "llm_request", lambda r, c: {**r, "model": "z"})
     assert bridge.dispatch_llm_request({"model": "m", "x": threading.Lock()}, {}) is None  # not copyable
-    bridge.dispatch_hook("post_llm_call", {"x": threading.Lock()})
+    bridge.dispatch_hook("post_llm_call", {"x": threading.Lock()})  # raw objects are dropped, not copied
     bridge.close()
+
+
+def test_observer_payloads_hold_no_text() -> None:
+    from switchyard.bridge import metadata_only
+
+    class SdkMessage:
+        content = "secret answer"
+
+    raw = {
+        "model": "m",
+        "provider": "openrouter",
+        "api_duration": 1.5,
+        "retryable": True,
+        "turn_id": "t" * 1000,
+        "user_message": "my prompt",
+        "assistant_response": "the answer",
+        "child_summary": "summary",
+        "conversation_history": [{"content": "old"}],
+        "assistant_message": SdkMessage(),
+        "usage": {"input_tokens": 10, "output_tokens": 5, "note": "x", 3: 4},
+        "request": {"method": "POST", "body": {"model": "sent", "messages": [{"content": "my prompt"}]}},
+        "response": {
+            "model": "served",
+            "finish_reason": "stop",
+            "assistant_message": {"content": "the answer"},
+        },
+        "error": {"type": "RateLimitError", "message": "quota for key sk-..."},
+    }
+    out = metadata_only(raw)
+    text = repr(out)
+    for leaked in ("my prompt", "the answer", "summary", "old", "secret answer", "sk-"):
+        assert leaked not in text
+    assert out["usage"] == {"input_tokens": 10, "output_tokens": 5}
+    assert out["request"] == {"body": {"model": "sent"}} and out["response"] == {
+        "model": "served",
+        "finish_reason": "stop",
+    }
+    assert (
+        out["error"] == {"type": "RateLimitError"} and len(out["turn_id"]) == 300 and out["retryable"] is True
+    )
