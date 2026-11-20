@@ -15,7 +15,7 @@ registry's candidate list (M2) without reading another module's tables.
    `ctx.hermes_hook(name, fn)` or `ctx.hermes_middleware(kind, fn)` for names declared in `contributes.hooks`
    (`<hook>` or `middleware:<kind>`). Registrations end when the module stops.
 2. **Adapter.** `switchyard.hermes` registers, once, one Hermes callback per supported observer hook
-   (`pre_llm_call`, `pre_api_request`, `post_api_request`, `api_request_error`, `post_llm_call`) and the
+   (`pre_llm_call`, `pre_api_request`, `post_api_request`, `api_request_error`, `post_llm_call`, `subagent_stop`) and the
    `llm_request` middleware, each forwarding to the bridge in the hosting process.
 3. **Isolation.** Every module callback gets a deep copy of the hook arguments and runs on a worker thread
    with a 2 s timeout (`module.hook_timeout`); exceptions are caught and audited (`module.hook_failed`, class
@@ -29,6 +29,10 @@ registry's candidate list (M2) without reading another module's tables.
    through the same validation as `module action`, with actor `module:<caller>`. Writes across modules are not
    possible. No capability is needed, so **read-only actions must return no secret or sensitive data**
    (they are also visible to the Hermes model).
+
+6. **Metadata only** (amended in M4, Q&A 05 question 10). Observer hooks hand modules scalar fields, the
+   numeric `usage` buckets and model names from `request`, `response` and `error`; message text, conversation
+   history, tool traces and raw SDK objects never reach a module. `subagent_stop` is also forwarded.
 
 ## Consequences
 

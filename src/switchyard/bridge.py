@@ -1,7 +1,8 @@
 """Hermes hook bridge (ADR-0004). Hermes-agnostic: the adapter forwards Hermes hooks and middleware here.
 
 Modules register through ``ctx.hermes_hook`` / ``ctx.hermes_middleware``; registrations are removed when
-the module's context closes. Every callback gets a deep copy of the arguments, runs on a worker thread
+the module's context closes. Observer hooks get metadata only (no message text); middleware gets a deep copy;
+every callback runs on a worker thread
 bounded by ``timeout`` (the turn continues without it), and exceptions are caught and audited (class name
 only). An ``llm_request`` middleware can only change the request's ``model``: nothing else is adopted.
 """
@@ -17,8 +18,53 @@ from typing import Any
 from switchyard.capabilities import CORE_ACTOR, AuditSink
 
 OBSERVER_HOOKS = frozenset(
-    {"pre_llm_call", "pre_api_request", "post_api_request", "api_request_error", "post_llm_call"}
+    {
+        "pre_llm_call",
+        "pre_api_request",
+        "post_api_request",
+        "api_request_error",
+        "post_llm_call",
+        "subagent_stop",
+    }
 )
+_TEXT_KEYS = frozenset(
+    {"user_message", "assistant_response", "child_summary", "system_prompt", "final_response"}
+)
+_MAX_STR = 300
+
+
+def metadata_only(kwargs: Mapping[str, Any]) -> dict[str, Any]:
+    """Reduce an observer hook payload to metadata (ADR-0004 decision 6): scalar fields, the numeric ``usage``
+    buckets, and the model names inside ``request``/``response``/``error``. Message text, conversation
+    history, tool traces and raw SDK objects are dropped."""
+    out: dict[str, Any] = {}
+    for key, value in kwargs.items():
+        if not isinstance(key, str) or key in _TEXT_KEYS:
+            continue
+        if value is None or isinstance(value, bool | int | float):
+            out[key] = value
+        elif isinstance(value, str):
+            out[key] = value[:_MAX_STR]
+    usage = kwargs.get("usage")
+    if isinstance(usage, Mapping):
+        out["usage"] = {k: v for k, v in usage.items() if isinstance(k, str) and isinstance(v, int | float)}
+    request = kwargs.get("request")
+    body = request.get("body") if isinstance(request, Mapping) else None
+    if isinstance(body, Mapping) and isinstance(body.get("model"), str):
+        out["request"] = {"body": {"model": body["model"][:_MAX_STR]}}
+    response = kwargs.get("response")
+    if isinstance(response, Mapping):
+        out["response"] = {
+            k: str(response[k])[:_MAX_STR]
+            for k in ("model", "upstream_provider", "finish_reason")
+            if isinstance(response.get(k), str)
+        }
+    error = kwargs.get("error")
+    if isinstance(error, Mapping) and isinstance(error.get("type"), str):
+        out["error"] = {"type": error["type"][:_MAX_STR]}
+    return out
+
+
 MIDDLEWARE_KINDS = frozenset({"llm_request"})
 
 
@@ -65,8 +111,12 @@ class HermesBridge:
     # dispatch -----------------------------------------------------------------------------------------
 
     def _failed(self, module_id: str, what: str, exc: BaseException) -> None:
-        self._audit.append(actor=CORE_ACTOR, action="module.hook_failed", module=module_id,
-                           detail={"hook": what, "error": type(exc).__name__})  # fmt: skip
+        self._audit.append(
+            actor=CORE_ACTOR,
+            action="module.hook_failed",
+            module=module_id,
+            detail={"hook": what, "error": type(exc).__name__},
+        )
 
     def _run(self, module_id: str, what: str, fn: Callable[..., Any], *args: Any) -> tuple[bool, Any]:
         """Call ``fn`` on a worker thread, waiting at most ``timeout`` seconds. Returns ``(ok, result)``."""
@@ -74,8 +124,12 @@ class HermesBridge:
             future = self._pool.submit(fn, *args)
             return True, future.result(timeout=self.timeout)
         except concurrent.futures.TimeoutError:
-            self._audit.append(actor=CORE_ACTOR, action="module.hook_timeout", module=module_id,
-                               detail={"hook": what, "seconds": str(self.timeout)})  # fmt: skip
+            self._audit.append(
+                actor=CORE_ACTOR,
+                action="module.hook_timeout",
+                module=module_id,
+                detail={"hook": what, "seconds": str(self.timeout)},
+            )
         except Exception as exc:  # a module must never break a Hermes turn
             self._failed(module_id, what, exc)
         return False, None
@@ -84,12 +138,7 @@ class HermesBridge:
         with self._lock:
             entries = list(self._hooks.get(name, ()))
         for module_id, fn in entries:
-            try:
-                payload = copy.deepcopy(dict(kwargs))
-            except Exception as exc:
-                self._failed(module_id, name, exc)
-                continue
-            self._run(module_id, name, fn, payload)
+            self._run(module_id, name, fn, metadata_only(kwargs))
 
     def dispatch_llm_request(
         self, request: Mapping[str, Any], context: Mapping[str, Any]
@@ -119,8 +168,12 @@ class HermesBridge:
             if not ok or result is None:
                 continue
             if not self._model_only(snapshot, result):
-                self._audit.append(actor=CORE_ACTOR, action="module.middleware_rejected", module=module_id,
-                                   detail={"kind": "llm_request"})  # fmt: skip
+                self._audit.append(
+                    actor=CORE_ACTOR,
+                    action="module.middleware_rejected",
+                    module=module_id,
+                    detail={"kind": "llm_request"},
+                )
                 continue
             model = result["model"]
         if model == request.get("model"):

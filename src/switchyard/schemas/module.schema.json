@@ -41,6 +41,11 @@
             ]
           }
         },
+        "optional": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string"}
+        },
         "net_hosts": {
           "type": "array",
           "uniqueItems": true,

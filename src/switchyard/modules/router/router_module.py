@@ -109,6 +109,7 @@ class RouterModule:
         ctx.register_panel("router.status", self.status)
         ctx.hermes_middleware("llm_request", self.route)
         ctx.hermes_hook("api_request_error", self.on_error)
+        ctx.subscribe("meter.exhausted", self.on_exhausted)
         self.ctx = ctx
 
     def deactivate(self) -> None:
@@ -187,6 +188,10 @@ class RouterModule:
         consumer = self.settings["consumer"]
         candidates = self._candidates(provider)
         cooling = self._cooling()
+        if (
+            "all" in cooling or f"provider:{provider}" in cooling
+        ):  # a meter quota is exhausted for all of them
+            cooling.update({c.id: "quota exhausted" for c in candidates})
         paid_ok = self._paid_ok(consumer, need.tier)
         pin = self._q(f"SELECT resource FROM {self._t('pins')} WHERE consumer = ?", (consumer,))  # nosec B608
         if pin:
@@ -290,6 +295,23 @@ class RouterModule:
         sql = f"INSERT OR REPLACE INTO {self._t('cooldowns')} VALUES (?, ?, ?)"  # nosec B608
         self._q(sql, (rid, self.clock() + seconds, reason))
         self.ctx.log("router", "cooldown", resource=rid, reason=reason, seconds=seconds)
+
+    def on_exhausted(self, event: Any) -> None:
+        """``meter.exhausted``: cool the quota's scope down until the end of the quota period."""
+        data = getattr(event, "data", {})
+        scope, end = data.get("scope"), data.get("period_end")
+        if self.ctx is None or not isinstance(scope, str) or not isinstance(end, str):
+            return
+        if not (scope == "all" or scope.startswith("provider:") or _ID.match(scope)):
+            return
+        try:
+            until = datetime.strptime(end, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).timestamp()
+        except ValueError:
+            return
+        until = min(until, self.clock() + 32 * 86_400)
+        sql = f"INSERT OR REPLACE INTO {self._t('cooldowns')} VALUES (?, ?, ?)"  # nosec B608
+        self._q(sql, (scope[:200], until, f"quota {str(data.get('quota'))[:64]} exhausted"))
+        self.ctx.log("router", "quota_cooldown", scope=scope, until=end)
 
     # actions ------------------------------------------------------------------------------------------
 

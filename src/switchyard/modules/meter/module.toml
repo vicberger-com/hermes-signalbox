@@ -1,0 +1,29 @@
+# Bundled module M4: metering, quotas and budgets. Spec: README.md in this directory.
+schema = 1
+
+[module]
+id = "meter"
+name = "Meter"
+version = "0.5.0"
+license = "Apache-2.0"
+license_class = "open"
+summary = "Counts every Hermes API response by day, provider and model; quotas with once-per-period thresholds; burn-rate forecast."
+requires_core = ">=0.1,<1"
+isolation = "in-process"
+entry = "meter_module:MeterModule"
+
+[capabilities]
+optional = ["fs.read"]
+request = ["hermes.hooks", "ui.panel", "fs.read"]
+
+[contributes]
+hooks = ["post_api_request", "api_request_error", "subagent_stop"]
+commands = ["summary", "usage", "quotas", "forecast", "quota_add", "quota_remove", "prices_reload"]
+panels = ["meter.status"]
+log_streams = ["meter"]
+
+[lifecycle]
+activation = "auto"
+
+[update]
+source = "bundled"

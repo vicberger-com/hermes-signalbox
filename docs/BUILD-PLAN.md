@@ -49,7 +49,7 @@ Run every step; do not skip to code.
 | Types | mypy strict on `src/` |
 | Tests | pytest on Linux, Windows, macOS; coverage >= 90% for core, >= 85% for modules |
 | Manifest | `tools/validate_manifest.py` on every `module.toml` |
-| Static security | bandit, CodeQL (public repo), semgrep rules when M10 lands |
+| Static security | bandit, CodeQL (GitHub default setup, public repo), semgrep rules when M10 lands |
 | Secrets | gitleaks on the full history |
 | Dependencies | pip-audit clean or documented exception with expiry; license allow-list |
 | SBOM | CycloneDX JSON generated and attached |

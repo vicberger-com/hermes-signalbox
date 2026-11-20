@@ -40,6 +40,12 @@ request, so they count as an attempt but cool nothing down. Hermes's retry then 
 The choice and the paid-budget charge happen under one lock, so concurrent requests cannot overspend.
 The router cannot change provider, base URL or credentials: cross-provider routing needs a gateway resource.
 
+## Quotas (M4)
+
+When the `meter` module reports `meter.exhausted` for a quota, the router cools the quota's scope down until
+the end of the quota period: one resource (`<provider>/<model>`), a whole provider (`provider:<id>`), or
+everything (`all`). `cooldown_clear {id}` lifts it early (use the scope as the id).
+
 ## Control surface
 
 | Kind | Name | Model may run |
@@ -49,8 +55,8 @@ The router cannot change provider, base URL or credentials: cross-provider routi
 | Panel | `router.status` | |
 | Config | `[modules.router]` `consumer` (`main`), `providers` (`["openrouter"]`), `max_attempts` (3, 1-10), `cooldown_seconds` (60, 5-86400) | |
 
-Capabilities: `hermes.hooks` (required to start), `llm.free`, `llm.paid` (optional; paid stays off without
-it), `ui.panel`. The router needs the `resources` module running; without it every request passes through.
+Capabilities: `hermes.hooks` and `ui.panel` (required to start); `llm.free`, `llm.paid` (optional in the
+manifest, so auto-start does not wait for them; paid stays off without `llm.paid`). The router needs the `resources` module running; without it every request passes through.
 
 ## State and removal
 

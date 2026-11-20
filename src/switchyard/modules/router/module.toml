@@ -13,6 +13,7 @@ isolation = "in-process"
 entry = "router_module:RouterModule"
 
 [capabilities]
+optional = ["llm.free", "llm.paid"]
 request = ["hermes.hooks", "llm.free", "llm.paid", "ui.panel"]
 
 [contributes]

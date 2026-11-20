@@ -283,4 +283,6 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
   copies; exceptions are audited as `module.hook_failed`; a middleware result that changes anything other than
   `model` is dropped (`module.middleware_rejected`).
 - `ctx.call(module_id, action, args)`: another module's read-only action, actor `module:<caller>`.
-
+- Manifest `capabilities.optional` (M4): a subset of `request` that `start_auto` does not wait for; the module
+  checks it at run time with `ctx.has`.
+- Observer hooks deliver metadata only (`switchyard.bridge.metadata_only`).

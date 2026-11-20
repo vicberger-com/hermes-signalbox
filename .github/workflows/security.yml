@@ -67,22 +67,8 @@ jobs:
           echo "results: $RESULTS"
           for r in $RESULTS; do [ "$r" = "success" ] || exit 1; done
 
-  # CodeQL and Scorecard need a public repository on a personal account.
-  codeql:
-    if: ${{ !github.event.repository.private }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
-        with:
-          languages: python
-      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
-
+  # CodeQL runs through GitHub's default setup (repository settings, enabled since the repository went public);
+  # an advanced CodeQL job here is rejected while default setup is on. Scorecard needs a public repository.
   scorecard:
     if: ${{ !github.event.repository.private && github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
