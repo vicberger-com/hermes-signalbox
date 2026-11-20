@@ -34,6 +34,23 @@ class Fake(BaseHTTPRequestHandler):
             self.send_header("Location", "http://example.com/x")
             self.end_headers()
             return
+        if self.path == "/trickle":
+            import time as _t
+
+            self.send_response(200)
+            self.send_header("Content-Length", "100")
+            self.end_headers()
+            for _ in range(100):
+                self.wfile.write(b"x")
+                self.wfile.flush()
+                _t.sleep(0.1)
+            return
+        if self.path == "/short":
+            self.send_response(200)
+            self.send_header("Content-Length", "10000")
+            self.end_headers()
+            self.wfile.write(b"x" * 100)
+            return
         if self.path == "/big":
             payload = b"x" * 4_100_000
         elif self.path == "/fail":
@@ -128,7 +145,10 @@ def test_proprietary_connectors_off_until_allowed(
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     script = bin_dir / "claude_fake.py"
-    script.write_text("import sys\nprint('echo:' + sys.stdin.read().strip())\n", encoding="utf-8")
+    script.write_text(
+        "import os, sys\nprint('echo:' + sys.stdin.read().strip() + ' ' + str(os.listdir('.')))\n",
+        encoding="utf-8",
+    )
     if os.name == "nt":
         (bin_dir / "claude.cmd").write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="utf-8")
     else:
@@ -143,10 +163,11 @@ def test_proprietary_connectors_off_until_allowed(
     )
     try:
         assert off(c, "run", connector="n8n", payload=json.dumps({"task": "t"}))["result"]["answer"] == "yes"
-        assert (
-            off(c, "run", connector="claude-code", payload=json.dumps({"prompt": "hello"}))["result"].strip()
-            == "echo:hello"
-        )
+        out = off(c, "run", connector="claude-code", payload=json.dumps({"prompt": "hello"}))["result"]
+        assert out.strip() == "echo:hello []"  # ran in an empty working directory
+        from switchyard.modules.offload.offload_module import ARGV  # type: ignore[import-not-found,unused-ignore]
+
+        assert ARGV["claude"][-2:] == ["--tools", ""]  # no tools: the agent cannot read local files
         with pytest.raises(SwitchyardError, match="allow it by name"):
             off(c, "run", connector="codex", payload=json.dumps({"prompt": "x"}))
         assert off(c, "report")["runs"]["n8n"] == {"runs": 1, "failures": 0}
@@ -171,6 +192,17 @@ def test_net_broker_rules(core: Core, server: int) -> None:
     assert net.request("POST", base + "/fail", json={}).status == 500
     with pytest.raises(SwitchyardError, match="failed"):
         net.request("POST", "http://127.0.0.1:1/x", json={}, timeout=1)
+    import time
+
+    started = time.monotonic()
+    with pytest.raises(SwitchyardError, match="failed"):  # total deadline, not per read
+        net.request("POST", base + "/trickle", json={}, timeout=1)
+    assert time.monotonic() - started < 5
+    with pytest.raises(SwitchyardError, match="failed"):  # closed before Content-Length: not a success
+        net.request("POST", base + "/short", json={})
+    for bad in ("http://127.0.0.1:99999/x", "http://127.0.0.1:abc/x", "http://[127.0.0.1]:8090/x"):
+        with pytest.raises(SwitchyardError):
+            net.request("POST", bad, json={})
     actions = [r for r in core.run("audit", "tail", {"n": 50}, actor="t") if r["action"] == "net.request"]
     assert actions and all("/" not in r["detail"]["host"] for r in actions)
 

@@ -43,7 +43,7 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 | Threat | Control | Test |
 |---|---|---|
-| Data beyond what a connector declares leaves the machine | Payload fields must be a subset of `sends`; refused before any request | `test_open_connector_and_data_sent_enforced` |
+| Data beyond what a connector declares leaves the machine | Payload fields must be a subset of `sends`; refused before any request; agent CLIs without tools (Claude Code) or read-only sandbox (Codex), in an empty directory | `test_open_connector_and_data_sent_enforced` |
 | Proprietary service used without consent | Off until allowed by name | `test_proprietary_connectors_off_until_allowed` |
 | Request to an unlisted host, via redirect, or with credentials in the URL | Broker: manifest host list, no redirects, no proxies, no userinfo | `test_net_broker_rules` |
 | Payload or webhook id recorded | Audit has connector, field names, host, method and status only; listing shows scheme and host | same, and listing test |
@@ -59,3 +59,6 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| Declaring the fields sent bounds what leaves | An agent CLI with tools can read and send anything; the declaration needs the agent's own tool limits | Agent connectors |
+| A socket timeout bounds a request | It bounds each read; a total deadline is separate | Network broker |
+
