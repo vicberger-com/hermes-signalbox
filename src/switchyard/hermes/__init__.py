@@ -134,6 +134,8 @@ class HermesAdapter:
         for hook in sorted(OBSERVER_HOOKS):  # ADR-0004: one forwarder per hook; modules attach in the core
             ctx.register_hook(hook, self._forwarder(hook))
         ctx.register_middleware("llm_request", self._llm_request)
+        ctx.register_hook("transform_terminal_output", self._transform_terminal)  # ADR-0008
+        ctx.register_hook("transform_tool_result", self._transform_tool)
         if hasattr(ctx, "register_delegation_provider"):  # ADR-0007; Hermes builds without it are fine
             with contextlib.suppress(ImportError):
                 ctx.register_delegation_provider(make_provider(self.core.bridge, self.core.hosting))
@@ -160,6 +162,49 @@ class HermesAdapter:
 
         forward.__name__ = f"switchyard_{name}"
         return forward
+
+    def _transform_terminal(self, **kwargs: Any) -> str | None:
+        try:
+            if not self.core.hosting:
+                return None
+            meta = {
+                "returncode": kwargs.get("returncode"),
+                "task_id": kwargs.get("task_id"),
+                "env_type": kwargs.get("env_type"),
+                "tool_name": "terminal",
+            }
+            return self.core.bridge.dispatch_transform("terminal_output", kwargs.get("output"), meta)
+        except Exception:  # never break a tool call
+            return None
+
+    def _transform_tool(self, **kwargs: Any) -> str | None:
+        """Tool results are usually JSON: shorten long string fields (``output``, ``content``, ``stdout``,
+        ``stderr``, ``result``, ``text``) and re-encode, so the result stays valid JSON."""
+        try:
+            result = kwargs.get("result")
+            if not self.core.hosting or not isinstance(result, str):
+                return None
+            meta = {
+                "tool_name": kwargs.get("tool_name"),
+                "status": kwargs.get("status"),
+                "task_id": kwargs.get("task_id"),
+            }
+            try:
+                data = json.loads(result)
+            except ValueError:
+                return self.core.bridge.dispatch_transform("tool_result", result, meta)
+            if not isinstance(data, dict):
+                return None
+            changed = False
+            for key in ("output", "content", "stdout", "stderr", "result", "text"):
+                value = data.get(key)
+                if isinstance(value, str):
+                    new = self.core.bridge.dispatch_transform("tool_result", value, meta)
+                    if new is not None:
+                        data[key], changed = new, True
+            return json.dumps(data, ensure_ascii=False) if changed else None
+        except Exception:
+            return None
 
     def _llm_request(self, request: dict[str, Any], **context: Any) -> dict[str, Any] | None:
         """Hermes ``llm_request`` middleware: ``{"request": ...}`` only when a module changed the model."""
