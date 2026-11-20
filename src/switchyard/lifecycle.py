@@ -31,7 +31,14 @@ from pathlib import Path
 from typing import Any
 
 from switchyard.capabilities import CORE_ACTOR, AuditSink, PolicyEngine
-from switchyard.context import ContextServices, LogSink, ModuleContext, PanelRegistry
+from switchyard.context import (
+    ContextServices,
+    LogSink,
+    MemoryActionRegistry,
+    ModuleContext,
+    PanelRegistry,
+    SecretBackendPort,
+)
 from switchyard.errors import ManifestError, SwitchyardError
 from switchyard.events import EventBus
 from switchyard.host_t2 import T2Module
@@ -102,6 +109,8 @@ class ModuleManager:
         scheduler: Scheduler | None = None,
         store: StateStore | None = None,
         brokers: Mapping[str, object] | None = None,
+        actions: MemoryActionRegistry | None = None,
+        secret_backends: SecretBackendPort | None = None,
         clock: Callable[[], float] = time.monotonic,
         t2_factory: Callable[[Manifest], Any] = T2Module,
     ) -> None:
@@ -117,7 +126,8 @@ class ModuleManager:
         self._lock = threading.RLock()
         self._services = ContextServices(
             policy=policy, logs=logs, panels=panels, bus=bus, brokers=dict(brokers or {}),
-            state=store.module if store is not None else None,
+            state=store.module if store is not None else None, actions=actions,
+            secret_backends=secret_backends,
         )  # fmt: skip
         bus.set_error_handler(self._on_handler_error)
 

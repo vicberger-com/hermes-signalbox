@@ -266,3 +266,15 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
 | Leak check misses transformed secrets (e.g. base64) | **Accepted, documented.** The broker stops accidental leaks of the raw value; it cannot stop a module that deliberately encodes a secret it was granted. Grant `secrets.read` only to modules you trust |
 | Audit anchor lives in the same data directory | **Accepted, documented.** Detects editing, deletion and reordering; an attacker who can rewrite both `state.db` and the log can forge history. External anchoring (e.g. periodic signed checkpoints) is future work |
 
+## 7. Contract additions after M0 (ADR-0002)
+
+- `ModuleContext.register_action(name, handler, *, params, read_only)`: `name` declared in `contributes.commands`,
+  `params` values `bool | int | str`. Run with operation `module action {id, action, args}` (hosting process only).
+  Arguments are validated against `params`; results must be JSON and are redacted; handler exceptions become
+  `"action <name> failed: <ExceptionClass>"`. Audited as `module.action` (action name only). The Hermes model tool
+  (`switchyard_modules` action `run`, actor `hermes`) may run `read_only` actions only; `/switchyard` uses actor
+  `hermes-user`. CLI: `--args '<json object>'`; slash command: extra `key=value` words go into `args`.
+- `ModuleContext.provide_secret_backend(backend)`: in-process modules only, `secrets.read` granted, `backend.name`
+  declared in `contributes.secret_backends` (`[a-z][a-z0-9_-]{0,31}`), unique across modules. Removed when the
+  module's context closes. Audited `secret.backend_added` / `secret.backend_removed`.
+

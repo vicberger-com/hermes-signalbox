@@ -63,7 +63,11 @@
         "panels": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
         "policies": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
         "triggers": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
-        "log_streams": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+        "log_streams": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "secret_backends": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"}
+        }
       }
     },
     "lifecycle": {

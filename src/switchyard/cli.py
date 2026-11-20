@@ -53,9 +53,21 @@ def _parser() -> argparse.ArgumentParser:
                 sub.add_argument("id", help=spec.help or "module id")
             elif spec.kind is bool:
                 sub.add_argument(flag, dest=name, action="store_true", help=spec.help)
+            elif spec.kind is dict:
+                sub.add_argument(flag, dest=name, type=_json_object, required=spec.required, help=spec.help)
             else:
                 sub.add_argument(flag, dest=name, type=spec.kind, required=spec.required, help=spec.help)
     return parser
+
+
+def _json_object(text: str) -> dict[str, Any]:
+    try:
+        value = json.loads(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("expected a JSON object") from None
+    if not isinstance(value, dict):
+        raise argparse.ArgumentTypeError("expected a JSON object")
+    return value
 
 
 def _params(operation: Operation, args: argparse.Namespace) -> dict[str, Any]:
