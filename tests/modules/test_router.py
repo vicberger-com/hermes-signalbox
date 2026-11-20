@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,7 @@ import pytest
 from switchyard.contract import run_contract
 from switchyard.core import BUILTIN_MODULES, Core
 from switchyard.errors import SwitchyardError
-from switchyard.modules.router.engine import Candidate, need_for, rank, tier_for
+from switchyard.modules.router.engine import TIERS, Candidate, need_for, rank, tier_for
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "router"
@@ -92,13 +93,14 @@ def clock() -> Clock:
 
 
 @pytest.fixture
-def core(tmp_path: Path, clock: Clock) -> Iterator[Core]:
+def core(tmp_path: Path, clock: Clock, request: pytest.FixtureRequest) -> Iterator[Core]:
     catalog = tmp_path / "catalog.json"
     catalog.write_text(json.dumps(CATALOG), encoding="utf-8")
     data = tmp_path / "data"
     data.mkdir()
+    extra = str(getattr(request, "param", ""))  # extra [modules.router] lines (indirect parametrize)
     (data / "config.toml").write_text(
-        "[modules.router]\ncooldown_seconds = 60\nmax_attempts = 3\n", encoding="utf-8"
+        f"[modules.router]\ncooldown_seconds = 60\nmax_attempts = 3\n{extra}", encoding="utf-8"
     )
     c = Core(data_dir=data, hosting=True)
     for cap in ("fs.read", "ui.panel"):
@@ -127,7 +129,8 @@ def test_engine_tiers_and_sizing() -> None:
     assert [tier_for(n) for n in (1, 2000, 2001, 8001, 32001, 128001)] == ["T1", "T1", "T2", "T3", "T4", "T5"]
     need = need_for(request(chars=40_000, tools=True, image=True))
     assert (need.tier, need.tools, need.vision) == ("T3", True, True)
-    assert need_for({"messages": "junk", "tools": "junk"}).tokens == 1
+    assert need_for({"messages": [], "tools": "junk"}).tokens == 1
+    assert need_for({"messages": "junk", "tools": "junk"}).tier == "T5"  # unknown shape (H1 C-8)
     weird = Candidate(id="p/x", model="x", cost_class="weird", state="auto", tags=frozenset(), context=None)
     assert rank([weird], need_for({}), cooling={}, paid_ok=True)[1] == {"p/x": "unknown cost class"}
 
@@ -323,3 +326,201 @@ def test_r1_attempts_exhausted_stays_free_and_passthrough_is_counted(core: Core)
     rt(core, "budget", paid_requests_per_day=0)
     assert route(core, request(image=True, model="paid/big"), turn="tc") == "paid/big"  # passed through
     assert rt(core, "status")["paid_today"] == before + 1  # ... and counted
+
+
+# H1 (ADR-0013): slow routes fail closed, quota cooldowns are not shortened, every request shape is sized.
+
+
+def _router(core: Core) -> Any:
+    return core.manager._entry("router").instance
+
+
+def _slow_registry(monkeypatch: pytest.MonkeyPatch, core: Core, seconds: float) -> None:
+    inst = _router(core)
+    real = inst._candidates
+
+    def slow(*args: Any, **kwargs: Any) -> Any:
+        time.sleep(seconds)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(inst, "_candidates", slow)
+
+
+def _audits(core: Core, action: str) -> list[dict[str, Any]]:
+    return [r for r in core.run("audit", "tail", {"n": 200}, actor="t") if r["action"] == action]
+
+
+def _settle(core: Core, seconds: float = 5.0) -> None:
+    """Wait until the router is idle again (the late route has finished)."""
+    inst = _router(core)
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if inst._lock.acquire(timeout=0.05):
+            inst._lock.release()
+            time.sleep(0.05)
+            if inst._lock.acquire(blocking=False):
+                inst._lock.release()
+                return
+    raise AssertionError("router still busy")
+
+
+def _cool_free(core: Core) -> None:
+    for rid in ("openrouter/free/small:free", "openrouter/free/long:free"):
+        sent = {"body": {"model": rid.split("/", 1)[1]}}
+        core.bridge.dispatch_hook(
+            "api_request_error", {"provider": OR, "turn_id": "z", "status_code": 429, "request": sent}
+        )
+
+
+def test_h1_c1_slow_route_cold_never_sends_paid_uncharged(
+    core: Core, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    core.bridge.timeout = 0.3
+    _slow_registry(monkeypatch, core, 0.5)
+    started = time.monotonic()
+    sent = route(core, request(model="paid/big"))
+    assert time.monotonic() - started < 1.5
+    assert sent == "paid/big"  # nothing known yet: the configured model went out ...
+    _settle(core)
+    assert rt(core, "status")["paid_today"] == 1  # ... and is charged as paid pass-through
+    assert f"r{_REQ['n']}" not in _router(core)._sent  # the late choice is never recorded as sent
+    assert _audits(core, "module.router.timeout_passthrough")
+
+
+def test_h1_c1_slow_route_uses_the_remembered_free_candidate(
+    core: Core, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert route(core, request(model="paid/big")) == "free/small:free"  # warm: free candidate remembered
+    core.bridge.timeout = 0.3
+    _slow_registry(monkeypatch, core, 0.5)
+    assert route(core, request(model="paid/big")) == "free/small:free"
+    rid = f"r{_REQ['n']}"
+    _settle(core)
+    assert rt(core, "status")["paid_today"] == 0
+    assert _router(core)._sent[rid] == "openrouter/free/small:free"  # failover blames what was sent
+    [record] = _audits(core, "module.router.timeout_fallback")
+    assert record["detail"]["resource"] == "openrouter/free/small:free"
+
+
+def test_h1_c1_cooling_and_registry_change_are_respected(
+    core: Core, monkeypatch: pytest.MonkeyPatch, clock: Clock
+) -> None:
+    assert route(core, request(model="paid/big")) == "free/small:free"
+    fail(core, "free/small:free")  # cools the remembered first choice
+    core.bridge.timeout = 0.3
+    _slow_registry(monkeypatch, core, 0.5)
+    assert route(core, request(model="paid/big")) == "free/long:free"
+    _settle(core)
+    clock.now += 3600  # remembered candidates expire
+    assert route(core, request(model="paid/big")) == "paid/big"
+    _settle(core)
+    assert rt(core, "status")["paid_today"] == 1
+
+
+@pytest.mark.parametrize("core", ["hard_stop = true\n"], indirect=True)
+def test_h1_c1_no_free_candidate_charges_and_hard_stop_blocks_next(
+    core: Core, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cool_free(core)
+    assert route(core, request(model="paid/big")) == "paid/big"  # pass-through, counted (R1)
+    assert rt(core, "status")["paid_today"] == 1
+    core.bridge.timeout = 0.3
+    _slow_registry(monkeypatch, core, 0.5)
+    assert route(core, request(model="paid/big")) == "paid/big"
+    assert rt(core, "status")["paid_today"] == 2  # owed at once, before the late route ends
+    _settle(core)
+    assert rt(core, "status")["paid_today"] == 2  # never twice
+    assert _audits(core, "module.router.timeout_passthrough")
+    monkeypatch.delattr(_router(core), "_candidates")
+    core.bridge.timeout = 2.0
+    message = core.bridge.dispatch_gate({"model": "x/unknown", "turn_id": "t9"})
+    assert message is not None and "route timeout" in message
+    assert core.bridge.dispatch_gate({"model": "x/unknown", "turn_id": "t10"}) is None  # one turn only
+
+
+def test_h1_c1_late_route_neither_charges_nor_records(core: Core) -> None:
+    core.run("module", "grant", {"id": "router", "capability": "llm.paid"}, actor="t")
+    rt(core, "rule_add", consumer="main", min_tier="T1")
+    rt(core, "budget", paid_requests_per_day=5)
+    inst = _router(core)
+    big = request(chars=600_000, tools=True)
+    ctx = {"provider": OR, "turn_id": "tl", "api_request_id": "late1", "claim": lambda: False}
+    assert inst.route(big, ctx) is None
+    assert rt(core, "status")["paid_today"] == 0 and "late1" not in inst._sent
+    ctx = {**ctx, "api_request_id": "ontime", "claim": lambda: True}
+    assert inst.route(big, ctx) == {**big, "model": "paid/big"}
+    assert rt(core, "status")["paid_today"] == 1 and inst._sent["ontime"] == "openrouter/paid/big"
+
+
+def test_h1_c1_router_db_wait_is_shorter_than_the_bridge_deadline(core: Core) -> None:
+    import threading
+
+    store, inst = core.store, _router(core)
+    held, release = threading.Event(), threading.Event()
+
+    def hold() -> None:
+        with store._lock:
+            held.set()
+            release.wait(10)
+
+    t = threading.Thread(target=hold)
+    t.start()
+    held.wait(2)
+    try:
+        started = time.monotonic()
+        with pytest.raises(SwitchyardError):
+            inst.route(request(model="paid/big"), {"provider": OR, "turn_id": "tw", "api_request_id": "w1"})
+        assert time.monotonic() - started < core.bridge.timeout  # fails fast, so the fallback can run
+    finally:
+        release.set()
+        t.join()
+    assert store.core_query("PRAGMA busy_timeout")[0][0] == 5000  # the global wait is unchanged
+
+
+def test_h1_c4_error_cooldown_never_shortens_a_quota_cooldown(core: Core, clock: Clock) -> None:
+    from types import SimpleNamespace
+
+    inst = _router(core)
+    rid = "openrouter/free/small:free"
+    inst.on_exhausted(
+        SimpleNamespace(data={"scope": rid, "period_end": "2099-01-01T00:00:00Z", "quota": "q1"})
+    )
+    sql = f"SELECT until, reason FROM {inst._t('cooldowns')} WHERE resource = ?"  # noqa: S608
+    [(until, reason)] = inst._q(sql, (rid,))
+    fail(core, "free/small:free", status=429)
+    [(after, reason_after)] = inst._q(sql, (rid,))
+    assert after >= until and reason_after == reason and reason.startswith("quota")
+    clock.now += 120
+    assert route(core, request()) == "free/long:free"  # still steered away from the exhausted quota
+    other = "openrouter/free/long:free"
+    fail(core, "free/long:free", status=503)
+    [(first, _)] = inst._q(sql, (other,))
+    inst.on_exhausted(
+        SimpleNamespace(data={"scope": other, "period_end": "2099-01-01T00:00:00Z", "quota": "q2"})
+    )
+    [(second, why)] = inst._q(sql, (other,))
+    assert second >= first and why.startswith("quota")
+
+
+def test_h1_c8_every_request_shape_is_sized() -> None:
+    text = "a" * 400_000
+    shapes = [
+        {"model": "m", "input": text},
+        {"model": "m", "input": [{"role": "user", "content": [{"type": "input_text", "text": text}]}]},
+        {"model": "m", "messages": [], "system": text},
+        {"model": "m", "messages": [], "system": [{"type": "text", "text": text}]},
+        {"model": "m", "input": [], "instructions": text},
+        {"model": "m", "prompt": text},
+        {"model": "m", "contents": [{"role": "user", "parts": [{"text": text}]}]},
+        {"model": "m", "messages": [{"role": "user", "content": [{"text": text}]}]},  # Bedrock converse
+    ]
+    for shape in shapes:
+        assert TIERS.index(need_for(shape).tier) >= TIERS.index("T4"), shape
+    assert need_for({"model": "m", "unknown": text}).tier == "T5"
+    assert need_for({"model": "m"}).tier == "T5"
+    image = {
+        "model": "m",
+        "input": [{"role": "user", "content": [{"type": "input_image", "image_url": "x"}]}],
+    }
+    assert need_for(image).vision
+    assert need_for({"model": "m", "messages": [{"role": "user", "content": "hi"}]}).tier == "T1"

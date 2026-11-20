@@ -31,6 +31,7 @@ conversation that produced it.
 | Hermes features overlapping modules | installed v0.23.2 `hermes --help`, read 2026-11-20 | `hermes secrets` (Bitwarden, 1Password), `hermes security audit` (OSV), `hermes fallback`, `hermes auth` (credential pools), `hermes pause`, `hermes egress`, `hermes kanban`, Docker terminal backend. Not H1 scope; input for later phases |
 | Published wheel | release asset `hermes_switchyard-1.0.0-py3-none-any.whl`, read 2026-11-20 | Checksum matches `SHA256SUMS`; 85 entries; no `dashboard/`, no `plugin.yaml`, no `py.typed` |
 | Local gates on `a141ec0` | run 2026-11-20, Windows, Python 3.11.15 | 671 passed, 10 skipped, 94.39% branch coverage; ruff, format, mypy strict, bandit, pip-audit clean |
+| `llm_request` middleware contract (WP1) | installed v0.23.2 `hermes_cli/middleware.py` `apply_llm_request_middleware`, `agent/turn_api_request.py` lines 158-176, read 2026-11-20 | Middleware may return `{"request": ...}` to replace the provider kwargs; it cannot refuse. An exception is logged and the request is sent unmodified. Context keys: `task_id`, `turn_id`, `api_request_id`, `session_id`, `platform`, `model`, `provider`, `base_url`, `api_mode`, `api_call_count`. `llm_execution` middleware wraps the call and could refuse it (not used; a feature). `pre_llm_call` runs once per turn (`agent/turn_context.py`). Api modes: `chat_completions`, `anthropic_messages`, `codex_responses`, `bedrock_converse`, `codex_app_server` |
 | To do in the phase | each work package | Before relying on a Hermes hook, keyword argument or loader rule, read it in the installed source and add a row here (WP1: `llm_request` middleware contract; WP3: how a pip-installed plugin's dashboard files are found; WP8: `post_api_request` keyword set) |
 
 ## 3. Questions
@@ -107,6 +108,9 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 |---|---|---|---|
 | D-13 | Accepted, documented | WP0 | Single-maintainer project; both gate checks are required on every pull request |
 | D-21 | No action | - | Stale metadata in one local environment only; refreshed 2026-11-20 |
+| C-1 | Fixed | WP1 | ADR-0013: bridge fallback and claim, router fallback from remembered candidates, 1 s store budget |
+| C-4 | Fixed | WP1 | Cool-down upsert keeps the later end and the quota reason |
+| C-8 | Fixed | WP1 | All text keys sized; unknown shape is T5 |
 
 Changes visible to existing users (complete this list; it becomes the `### Changed` section):
 
@@ -114,6 +118,8 @@ Changes visible to existing users (complete this list; it becomes the `### Chang
 - A module cannot be activated while a required capability is not granted (WP5).
 - Commands that return a failed result exit with status 1; an unknown capability name exits with status 2 (WP2).
 - The classifier changes from Production/Stable to Beta (WP10).
+- A request with no recognised text key is routed as tier T5 (WP1). With `hard_stop`, the turn after a slow
+  route that let a paid model through is blocked once (WP1).
 
 ## 7. Retro (fill in after release)
 

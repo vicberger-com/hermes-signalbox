@@ -69,7 +69,7 @@ Module actions are recorded as `module.<id>.<name>`:
 | `meter` | `module.meter.quota_add`, `module.meter.quota_remove`, `module.meter.threshold` |
 | `offload` | `module.offload.offload` |
 | `resources` | `module.resources.bound`, `module.resources.import_applied`, `module.resources.pool_created`, `module.resources.pool_deleted`, `module.resources.pool_member_added`, `module.resources.pool_member_removed`, `module.resources.priority_set`, `module.resources.state_set`, `module.resources.unbound` |
-| `router` | `module.router.auto`, `module.router.budget`, `module.router.hard_stop`, `module.router.paid_decision`, `module.router.paid_passthrough`, `module.router.pin`, `module.router.quota_passthrough`, `module.router.rule_add`, `module.router.rule_remove` |
+| `router` | `module.router.auto`, `module.router.budget`, `module.router.hard_stop`, `module.router.paid_decision`, `module.router.paid_passthrough`, `module.router.pin`, `module.router.quota_passthrough`, `module.router.rule_add`, `module.router.rule_remove`, `module.router.timeout_charged`, `module.router.timeout_fallback`, `module.router.timeout_passthrough` |
 | `scanner` | `module.scanner.scan` |
 | `secrets` | `module.secrets.expiry_set`, `module.secrets.rotated` |
 | `supervisor` | `module.supervisor.ack`, `module.supervisor.alert` |
