@@ -29,6 +29,9 @@ Repository = "https://github.com/vicberger-com/hermes-switchyard"
 [project.scripts]
 switchyard = "switchyard.cli:main"
 
+[project.entry-points."hermes_agent.plugins"]
+switchyard = "switchyard.hermes"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/switchyard"]
 
@@ -56,3 +59,6 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
 python_version = "3.11"
 strict = true
 files = ["src", "tools", "templates/module/example.py"]
+# The repository root carries a Hermes plugin shim (__init__.py); map packages from these bases instead.
+explicit_package_bases = true
+mypy_path = ["src", "tools", "templates/module"]

@@ -23,6 +23,7 @@ from switchyard.context import MemoryPanelRegistry
 from switchyard.errors import SwitchyardError
 from switchyard.events import EventBus
 from switchyard.hostinfo import capacity_metrics
+from switchyard.hostlock import HostLock
 from switchyard.lifecycle import ModuleManager
 from switchyard.logs import JsonlLogSink
 from switchyard.ops import lookup
@@ -68,10 +69,16 @@ class Core:
         trusted_roots: Sequence[Path] | None = None,
         module_roots: Sequence[Path] | None = None,
         secret_backends: Sequence[Any] = (),
+        hosting: bool | None = None,
     ) -> None:
         initial = resolve_data_dir(configured=data_dir, hermes_dir=hermes_dir)
         self.config: CoreConfig = load_config(initial / "config.toml")
         self.data_dir = ensure_data_dir(self.config.data_dir or initial)
+        # hosting=True: must host (raise if another process does); None: host if free; False: never host.
+        self._host_lock = HostLock(self.data_dir / "host.lock")
+        self.hosting = bool(hosting is not False and self._host_lock.acquire())
+        if hosting is True and not self.hosting:
+            raise SwitchyardError(f"another process hosts modules for {self.data_dir}")
         self.redactor = Redactor()
         self.audit_log = AuditLog(self.data_dir / "audit", redact=self.redactor.redact)
         self.store = StateStore(self.data_dir / "state.db", backup_dir=self.data_dir / "backup")
@@ -119,7 +126,7 @@ class Core:
     def tick(self) -> None:
         """Periodic work: time triggers, idle stop, capacity metrics for capacity triggers."""
         with self._lock:
-            if self._closed:
+            if self._closed or not self.hosting:
                 return
             self.scheduler.tick()
             self.manager.tick()
@@ -134,6 +141,7 @@ class Core:
                 self.manager.deactivate(module_id, actor=CORE_ACTOR, reason="shutdown")
             self._closed = True
             self.store.close()
+            self._host_lock.release()
 
     def __enter__(self) -> Core:
         return self

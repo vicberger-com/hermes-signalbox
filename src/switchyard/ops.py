@@ -142,26 +142,37 @@ def _module_mode(core: Core, p: dict[str, Any], actor: str) -> Any:
     return {"mode": core.manager.info(p["id"]).mode}
 
 
-@op("module", "activate", "Start a module (needs the running daemon or a Hermes session).", id=ID)
+def _require_host(core: Core) -> None:
+    if not core.hosting:
+        raise SwitchyardError(
+            "this process does not host modules; use the one that does (daemon or hosting Hermes session)"
+        )
+
+
+@op("module", "activate", "Start a module (needs the hosting process: daemon or Hermes session).", id=ID)
 def _module_activate(core: Core, p: dict[str, Any], actor: str) -> Any:
+    _require_host(core)
     core.manager.activate(p["id"], actor=actor)
     return _info(core, p["id"])
 
 
 @op("module", "deactivate", "Stop a running module.", id=ID)
 def _module_deactivate(core: Core, p: dict[str, Any], actor: str) -> Any:
+    _require_host(core)
     core.manager.deactivate(p["id"], actor=actor)
     return _info(core, p["id"])
 
 
 @op("module", "health", "Run a module's health check.", id=ID)
 def _module_health(core: Core, p: dict[str, Any], actor: str) -> Any:
+    _require_host(core)
     ok, detail = core.manager.health(p["id"])
     return {"ok": ok, "detail": detail}
 
 
 @op("module", "panel", "Render one of a running module's panels as plain data.", id=ID, panel=Param(str))
 def _module_panel(core: Core, p: dict[str, Any], actor: str) -> Any:
+    _require_host(core)
     return core.panels.render(p["id"], p["panel"])
 
 

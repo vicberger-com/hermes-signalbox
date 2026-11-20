@@ -31,6 +31,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   checked at startup) and the shared operations table used by the CLI, the API and Hermes.
 - `switchyard` CLI generated from the operations table (routes through a running daemon, offline-safe
   operations run directly) and the hardened loopback control API (`switchyard api serve`).
+- Hermes plugin adapter: model tools (read and run only; no grants), `/switchyard` slash command,
+  `hermes switchyard` CLI command, daily audit verification, redaction patterns; validated with
+  `hermes plugins validate`. One hosting process per data directory via an OS file lock.
 - Coverage gate (90%) on `src/switchyard`; mypy strict and bandit now include `src/`.
 
 ### Changed
