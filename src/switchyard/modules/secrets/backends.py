@@ -226,7 +226,7 @@ class _WinCred:  # pragma: no cover - exercised on Windows only (CI windows jobs
 
         self.ctypes = ctypes
         self.CREDENTIAL = CREDENTIAL
-        advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+        advapi = ctypes.WinDLL("advapi32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]  # Windows-only names
         self.read_fn = advapi.CredReadW
         self.read_fn.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
                                  ctypes.POINTER(ctypes.POINTER(CREDENTIAL))]  # fmt: skip
@@ -241,7 +241,7 @@ class _WinCred:  # pragma: no cover - exercised on Windows only (CI windows jobs
         self.free_fn.argtypes = [ctypes.c_void_p]
 
     def _error(self, what: str) -> int:
-        code: int = self.ctypes.get_last_error()
+        code: int = self.ctypes.get_last_error()  # type: ignore[attr-defined,unused-ignore]
         if code != self.ERROR_NOT_FOUND:
             raise SecretLocked(f"Credential Manager {what} failed (error {code})")
         return code
