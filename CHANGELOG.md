@@ -4,6 +4,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-19
+
+Phase M0: the core framework.
+
 ### Added
 - `switchyard` package (phase M0, part 1): data-directory resolution, core configuration (`config.toml`),
   manifest loader returning a typed `Manifest` with entry-path containment checks, error hierarchy.
@@ -49,6 +53,13 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Module ids containing `__` are rejected; they could have collided with another module's state tables.
 - Schema `pattern` checks used Python's `$`, which accepts a trailing newline; they now follow JSON Schema
   semantics (a module id such as `"example\n"` is rejected).
+- Module SQL could not use `count(*)`: SQLite reports no database name for that read, and the authorizer
+  denied it.
+
+### Security
+- M0 security review (section 6 of `docs/modules/m0-core.md`): module SQL statements now have a work budget
+  and a 10 000-row result cap; staged updates containing symlinks are refused; on Windows the API token file
+  gets a single-user ACL (inheritance removed), and the server refuses to start if that fails.
 
 ## [0.0.1] - 2026-11-19
 

@@ -83,3 +83,18 @@ Automated in `tests/acceptance/test_m0_acceptance.py`; the template's contract r
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| Module ids could contain any `[a-z0-9_]` sequence | `__` is rejected in module ids and table names; otherwise module `a` could create `m_a__b__x` and collide with module `a__b`'s prefix | Manifest schema, state store, every module |
+| Table confinement would need SQL parsing | The `sqlite3` authorizer callback confines each module to its own `m_<id>__*` tables and denies ATTACH, PRAGMA writes and schema tables; no SQL parser | State store; modules that use SQL |
+| Modules emit prebuilt `Event` objects (`emit(event)`) | `ctx.emit(type, data)`: the core builds the event and enforces the `<module_id>.` type prefix and the 64 KiB data cap | Module API (DESIGN.md section 4) |
+| Hermes idle tasks could drive minute-level triggers | Idle tasks run only after hours of idle time. The hosting process runs its own 15 s tick thread; the idle task only re-verifies the audit chain daily | Scheduler, Hermes adapter, M1+ modules with triggers |
+| One Hermes process loads the plugin | CLI, TUI and gateway can all load it. An OS file lock (`host.lock`) picks one hosting process; the others refuse live operations | Hermes adapter, API daemon, docs |
+| The work breakdown had no explicit wiring layer | Added `core.py` (Core: assembles subsystems, audit head anchored in `meta`) and `ops.py` (one operations table for CLI, API and Hermes tools) | Every control surface |
+| Model-facing Hermes tools can expose every operation | Tools are read-and-run only; grants, modes and removal stay on human paths (`/switchyard`, CLI), because a prompt-injected model could widen its own access | Hermes adapter; every module that adds tools |
+| Hermes forwards tool errors safely | Hermes's dispatcher puts the exception message into model context, so adapter handlers catch everything and return core-written messages only | Every module tool handler |
+| T1 (in-process) modules would be signature-checked | Deferred: M0 trusts in-process code only from the bundled modules directory; anything else is forced to the T2 subprocess host. Signing returns with the first third-party module | Lifecycle, M1+ |
+| Credential-shaped test fixtures are harmless | gitleaks scans the whole history; token-shaped fixtures are assembled at runtime | All tests |
+| Python `assert` is fine for runtime checks | Stripped under `python -O`; the contract suite uses an explicit `ContractFailure` | Contract suite, any runtime check |
+| Windows sockets tolerate early replies with an unread body | The connection resets before the client reads; the API drains small unread bodies before 4xx replies | Control API |
+| The bundled git is usable from child processes | Under WindowsApps it is not executable from Python children; real-git tests skip locally and run in CI | Update control tests, local dev |
+| The authorizer tests covered every read shape | `count(*)` reads report no database name and were denied; found by the security review's DoS probe | State store tests |
+| The "Hard" delegation route would run the security review | It had no Claude login (HTTP 401); the review ran on the default route. Operator question logged | Future security gates |

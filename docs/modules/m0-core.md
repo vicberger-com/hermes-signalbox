@@ -249,3 +249,20 @@ the loopback API and the Hermes adapter on one data directory.
 
 As listed in [01-m0-prework.md](../qa/01-m0-prework.md) section 4, plus the threat tests in its question 5 table.
 Coverage target for `src/switchyard`: 90%.
+
+## 6. Security review (M0 gate)
+
+Reviewed 2026-11-19 by three fresh subagents (control surfaces; loading, isolation and updates; policy,
+secrets, state and audit) given only the M0 diff and the threat table, then triaged against the code.
+
+| Finding | Disposition |
+|---|---|
+| Recursive-CTE or cross-join query exhausts CPU/memory | **Fixed.** CTEs were already refused by the authorizer; cross joins on a module's own tables are now bounded by a progress-handler work budget and a 10 000-row cap. Also fixed: `count(*)` was wrongly denied |
+| Staged update may carry files that point outside the tree | **Fixed (adapted).** `.gitattributes`/`.gitmodules` are inert (no git runs on the staged tree after `.git` is removed), but symlinks are refused anywhere in a staged tree |
+| `api.token` readable by other Windows users | **Fixed (hardening).** Default data dirs already inherit a user-only profile ACL; the file now gets an explicit single-user ACL via `icacls`, failing closed |
+| Model tool can `activate` modules | **By design.** Activation uses only capabilities a human already granted; grants, modes and removal are not reachable from model tools |
+| Trust check at discovery and import at activation (TOCTOU) | **Accepted.** Trusted roots are the installed package directory; an attacker who can write there already controls the code. `reload` re-checks trust |
+| T2 child inherits `PATH` | **Accepted, documented.** The T2 host is a fault and capability boundary, not an OS sandbox: a subprocess module runs as the same user. OS-level sandboxing is future work |
+| Leak check misses transformed secrets (e.g. base64) | **Accepted, documented.** The broker stops accidental leaks of the raw value; it cannot stop a module that deliberately encodes a secret it was granted. Grant `secrets.read` only to modules you trust |
+| Audit anchor lives in the same data directory | **Accepted, documented.** Detects editing, deletion and reordering; an attacker who can rewrite both `state.db` and the log can forge history. External anchoring (e.g. periodic signed checkpoints) is future work |
+

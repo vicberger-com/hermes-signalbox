@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import getpass
 import http.client
 import http.server
 import json
 import os
 import stat
+import subprocess
 import sys
 import threading
 from collections.abc import Iterator
@@ -252,3 +254,17 @@ def test_client_caps_response_size(tmp_path: Path) -> None:
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL check")
+def test_token_file_acl_is_user_only_on_windows(served: tuple[ControlServer, Path]) -> None:
+    _, data = served
+    cmd = ["icacls", str(data / "api.token")]
+    out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout  # noqa: S603
+    token = str(data / "api.token")
+    # Lines: "<path> DOMAIN\\name:(F)" first, then "    DOMAIN\\name:(F)"; the path may contain spaces.
+    principals = [line.replace(token, "").split(":(")[0].strip() for line in out.splitlines() if ":(" in line]
+    # OWNER RIGHTS is the file's owner, i.e. this user; SYSTEM and Administrators can read any file anyway.
+    allowed = {getpass.getuser().lower(), "system", "administrators", "owner rights"}
+    assert principals and all(p.split("\\")[-1].lower() in allowed for p in principals), out
+    assert "(I)" not in out, out
