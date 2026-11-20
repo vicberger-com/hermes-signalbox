@@ -33,6 +33,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from switchyard.api import ControlServer
 from switchyard.bridge import OBSERVER_HOOKS
 from switchyard.capabilities import CORE_ACTOR
 from switchyard.core import Core
@@ -122,6 +123,7 @@ class HermesAdapter:
             data_dir=data_dir, hermes_dir=Path(ctx.state.data_dir), hermes_config=HermesConfigAdapter()
         )
         self._stop = threading.Event()
+        self._server: ControlServer | None = None
         self._thread: threading.Thread | None = None
 
     # registration -------------------------------------------------------------------------------------
@@ -160,6 +162,9 @@ class HermesAdapter:
         ctx.register_redaction_patterns(patterns)
         if self.core.hosting:
             self.core.manager.start_auto(actor=CORE_ACTOR)
+            if self.core.config.api.enabled:  # M9: the dashboard tab talks to this loopback API
+                self._server = ControlServer(self.core, port=self.core.config.api.port)
+                self._server.start()
             self._thread = threading.Thread(target=self._drive, name="switchyard-tick", daemon=True)
             self._thread.start()
 
@@ -249,6 +254,9 @@ class HermesAdapter:
                                        detail={"error": type(exc).__name__})  # fmt: skip
 
     def close(self) -> None:
+        if self._server is not None:
+            self._server.shutdown()
+            self._server = None
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=5)

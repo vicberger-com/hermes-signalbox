@@ -278,6 +278,16 @@ def _audit_tail(core: Core, p: dict[str, Any], actor: str) -> Any:
     return core.audit_log.tail(p["n"])
 
 
+@op("report", "show", "Operator report: health, usage, security or changes (redacted; M9).",
+    kind=Param(str, required=True))  # fmt: skip
+def _report_show(core: Core, p: dict[str, Any], actor: str) -> Any:
+    from switchyard import reports
+
+    if p["kind"] not in reports.KINDS:
+        raise UsageError(f"kind must be one of {list(reports.KINDS)}")
+    return core.redactor.redact_obj(reports.build(lambda n, v, q: core.run(n, v, q, actor=actor), p["kind"]))
+
+
 @op("host", "profile", "Show the host profile used to pick capacity defaults.", offline=True)
 def _host_profile(core: Core, p: dict[str, Any], actor: str) -> Any:
     return profile(data_dir=core.data_dir, override=core.config.host_profile).to_dict()

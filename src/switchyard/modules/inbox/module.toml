@@ -1,0 +1,27 @@
+# Bundled module M9: notification inbox. Spec: README.md in this directory.
+schema = 1
+
+[module]
+id = "inbox"
+name = "Inbox"
+version = "0.10.0"
+license = "Apache-2.0"
+license_class = "open"
+summary = "Collects operator notifications and alerts (supervisor, meter, workers, failed modules) for the dashboard; nothing leaves the machine."
+requires_core = ">=0.1,<1"
+isolation = "in-process"
+entry = "inbox_module:InboxModule"
+
+[capabilities]
+request = ["ui.panel"]
+
+[contributes]
+commands = ["list", "ack", "ack_all"]
+panels = ["inbox.status"]
+log_streams = ["inbox"]
+
+[lifecycle]
+activation = "auto"
+
+[update]
+source = "bundled"

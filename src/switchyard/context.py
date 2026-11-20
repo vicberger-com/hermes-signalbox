@@ -340,6 +340,12 @@ class ModuleContext:
         return for_module(self.module_id) if callable(for_module) else broker
 
     @property
+    def notify(self) -> object:
+        """Operator notifications (ADR-0009): ``ctx.notify.send(severity, title, detail)``.
+        Needs ``notify``."""
+        return self._broker("notify")
+
+    @property
     def secrets(self) -> object:
         """Secrets broker facade. Needs ``secrets.read``."""
         return self._broker("secrets.read")

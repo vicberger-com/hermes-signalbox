@@ -292,4 +292,5 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
   (`gate:pre_llm_call` declared; blocks a turn with a prefixed reason; fails open).
 - ADR-0007: `ctx.hermes_delegation(route, roles)` (`hermes.delegation`; one module); Hermes backend `switchyard`.
 - ADR-0008: `ctx.hermes_transform(kind, fn)` (`hermes.output`; returns kept line ranges; core rebuilds).
+- ADR-0009: `ctx.notify.send(severity, title, detail)` (`notify`); `report show`; dashboard tab via the control API.
 
