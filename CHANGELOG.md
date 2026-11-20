@@ -18,6 +18,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   the build tools; `[build-system]` pins `hatchling>=1.27,<2`. A pip install has no dashboard tab in Hermes
   0.23 (use `hermes plugins install` for it).
 - CI (H1 D-12, D-23): Python 3.11 to 3.14; the skipped tests must match `tests/skip_allowlist.json` per OS.
+- Updates (H1 D-2, D-15): git is the first runnable git on `PATH` (Windows hosts with Hermes Desktop put a
+  packaged git first that other processes may not run), or `[tools] git` when set; `config show` prints the
+  git in use. Programs found in the working directory stay refused, now tested on every OS.
 - Bridge: `ctx.hermes_middleware` takes an optional `fallback`; middleware gets `context["claim"]`
   (ADR-0013). State store: `ModuleState.deadline(seconds)` bounds a thread's store waits.
 - Router: a request with no recognised text key is sized as tier T5. With `hard_stop = true` the turn after

@@ -359,7 +359,14 @@ def _config_show(core: Core, p: dict[str, Any], actor: str) -> Any:
         "api": {"enabled": c.api.enabled, "port": c.api.port},
         "log": {"level": c.log_level},
         "host": {"profile": c.host_profile},
+        # H1 D-2: which git the update operations run, and whether it was configured
+        "tools": {"git_configured": c.git, "git": _git_in_use(core)},
     }
+
+
+def _git_in_use(core: Core) -> str | None:
+    executable = getattr(core.updates.fetcher, "executable", None)  # GitFetcher; test fetchers have none
+    return executable() if callable(executable) else None
 
 
 def lookup(noun: str, verb: str) -> Operation:

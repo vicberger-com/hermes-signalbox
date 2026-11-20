@@ -69,3 +69,62 @@ def test_helper_planted_in_the_working_directory_is_refused(
     assert find_program(name) is None  # in the working directory, even when PATH lists it
     assert find_program(sys.executable) is not None
     assert find_program("definitely-not-a-program-xyz") is None
+
+
+# H1 WP4: program resolution (findings D-2, D-15) ----------------------------------------------------------
+
+
+def _fake_program(directory: Path, name: str, works: bool) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        path = directory / f"{name}.cmd"
+        path.write_text(
+            "@echo off\r\n" + ("echo fake 1.0\r\n" if works else "exit /b 5\r\n"), encoding="utf-8"
+        )
+    else:
+        path = directory / name
+        path.write_text("#!/bin/sh\n" + ("echo fake 1.0\n" if works else "exit 5\n"), encoding="utf-8")
+        path.chmod(0o755)
+    return path
+
+
+def test_h1_d2_first_runnable_candidate_wins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from switchyard.process import find_runnable, program_candidates
+
+    name = "sy-fake-tool"
+    broken = _fake_program(tmp_path / "a", name, works=False)
+    good = _fake_program(tmp_path / "b", name, works=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(tmp_path / "a"), "relative-dir", str(tmp_path / "b")]))
+    found = program_candidates(name)
+    assert [Path(p).resolve() for p in found] == [broken.resolve(), good.resolve()]
+    assert Path(find_runnable(name) or "").resolve() == good.resolve()
+    assert find_runnable(name, configured=str(broken)) is None  # a configured path is never second-guessed
+    assert Path(find_runnable(name, configured=str(good)) or "").resolve() == good.resolve()
+    assert find_runnable(name, configured="relative/tool") is None
+    monkeypatch.setenv("PATH", str(tmp_path / "a"))
+    assert find_runnable(name) is None
+
+
+def test_h1_d15_working_directory_hit_from_path_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shutil
+
+    from switchyard import process
+
+    planted = _fake_program(tmp_path, "sy-planted", works=True)
+    monkeypatch.chdir(tmp_path)
+    # shutil.which returns an absolute path inside the working directory (PATH lists it): still refused
+    monkeypatch.setattr(shutil, "which", lambda name, path=None: str(planted.resolve()))
+    assert process.find_program("sy-planted") is None
+    assert process.program_candidates("sy-planted") == []
+
+
+def test_h1_d2_git_resolves_and_runs_here() -> None:
+    """On a machine with any runnable git (every CI runner, and this workstation with Git for Windows behind
+    the Hermes Desktop copy), the updates path finds it."""
+    from switchyard.updates import git_usable, resolved_git
+
+    assert git_usable() is True
+    assert resolved_git() is not None

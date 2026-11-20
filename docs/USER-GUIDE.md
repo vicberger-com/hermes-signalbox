@@ -142,6 +142,11 @@ switchyard module update <id> --ref <sha> --digest <digest>
 switchyard module rollback <id>
 ```
 
+Updates run git. Switchyard uses the first git on `PATH` that it can actually run (on Windows with Hermes
+Desktop, the packaged copy that comes first on `PATH` cannot be run by other programs, so a Git for Windows
+install behind it is used). To choose one, set `[tools] git = "<absolute path>"` in `config.toml`;
+`switchyard config show` prints the git in use.
+
 An update that adds capabilities, hosts, secrets or contributions, or weakens isolation, is refused unless you
 pass `--accept-wider`. A failed health check rolls the update back. The `updates` module checks on a schedule
 and alerts; it never installs.

@@ -65,14 +65,59 @@ def find_program(name: str) -> str | None:
     directory are refused.
     """
     exe = shutil.which(name)
-    if exe is None or not os.path.isabs(exe):
-        return None
-    try:
-        if Path(exe).resolve().parent == Path.cwd().resolve():
-            return None
-    except OSError:
+    if exe is None or not os.path.isabs(exe) or not _outside_cwd(exe):
         return None
     return exe
+
+
+def _outside_cwd(exe: str) -> bool:
+    try:
+        return Path(exe).resolve().parent != Path.cwd().resolve()
+    except OSError:
+        return False
+
+
+def program_candidates(name: str) -> list[str]:
+    """Every absolute ``name`` on PATH, in PATH order, minus anything in the working directory (H1 D-2)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry or not os.path.isabs(entry):
+            continue  # relative PATH entries resolve against the working directory
+        exe = shutil.which(name, path=entry)
+        if exe is None or not os.path.isabs(exe) or not _outside_cwd(exe):
+            continue
+        key = os.path.normcase(os.path.realpath(exe))
+        if key not in seen:
+            seen.add(key)
+            out.append(exe)
+    return out
+
+
+def _runs(exe: str, probe: Sequence[str], timeout: float) -> bool:
+    try:
+        # Fixed argv from an absolute path; no shell.
+        subprocess.run([exe, *probe], capture_output=True, timeout=timeout, check=True)  # noqa: S603 # nosec B603
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return True
+
+
+def find_runnable(
+    name: str, *, configured: str | None = None, probe: Sequence[str] = ("--version",), timeout: float = 30.0
+) -> str | None:
+    """The first ``name`` on PATH that this process can actually run (H1 D-2: on Windows, Hermes Desktop
+    puts a packaged git first on PATH that other processes may not execute). ``configured`` (an absolute path
+    from the core settings) is used alone: if it does not run, the answer is ``None``, never another
+    program."""
+    if configured is not None:
+        if not os.path.isabs(configured) or not os.path.isfile(configured):
+            return None
+        return configured if _runs(configured, probe, timeout) else None
+    for exe in program_candidates(name):
+        if _runs(exe, probe, timeout):
+            return exe
+    return None
 
 
 class ProcessBroker:

@@ -213,7 +213,9 @@ class Core:
             call=self._module_call,
         )
         self.manager.discover(roots)
-        self.updates = UpdateController(self.manager, self.audit, self.data_dir, fetcher or GitFetcher())
+        self.updates = UpdateController(
+            self.manager, self.audit, self.data_dir, fetcher or GitFetcher(configured=self.config.git)
+        )
         self._lock = threading.RLock()
         self._closed = False
 

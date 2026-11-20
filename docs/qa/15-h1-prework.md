@@ -124,13 +124,15 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 | D-26 | Fixed | #79 | Unknown capability exits 2; dotted nested output; readiness line flushed |
 | B-20 | Fixed | #79 | `_unsupported` runs the Host/Origin check first |
 | B-24 | Fixed | #79 | `handle_error` is silent for dropped connections, one line (class only) otherwise |
-| D-3 | Fixed (adapted) | WP3 | `verify` job (tag on `main`, annotated, matches version, full gate, wheel check) gates `release`; notes from the CHANGELOG. Tag signing deferred (D2); tag ruleset and environment protection need the owner (B-H1-1) |
-| D-5 | Fixed (adapted) | WP3 | `py.typed`, `plugin.yaml` and `dashboard/` in the wheel; Hermes 0.23.2 shows the tab only for directory installs, documented in the guide |
-| D-6 | Fixed | WP3 | CI `package` job: wheel and sdist built, file list checked, clean install and CLI smoke test; release SBOM from a clean environment with only the wheel |
-| D-12 | Fixed | WP3 | Per-OS skip allow-list enforced in CI; FileLock timeout test runs on every OS |
-| D-23 | Fixed | WP3 | CI matrix 3.11 to 3.14; leaking SQLite connections in tests closed |
-| D-24 | Fixed | WP3 | `tools/release_notes.py` feeds `--notes-file`; compare links in the CHANGELOG; post-tag changes under `[Unreleased]` |
-| D-25 | Fixed | WP3 | `hatchling>=1.27,<2` in `[build-system]` |
+| D-3 | Fixed (adapted) | #80 | `verify` job (tag on `main`, annotated, matches version, full gate, wheel check) gates `release`; notes from the CHANGELOG. Tag signing deferred (D2); tag ruleset and environment protection need the owner (B-H1-1) |
+| D-5 | Fixed (adapted) | #80 | `py.typed`, `plugin.yaml` and `dashboard/` in the wheel; Hermes 0.23.2 shows the tab only for directory installs, documented in the guide |
+| D-6 | Fixed | #80 | CI `package` job: wheel and sdist built, file list checked, clean install and CLI smoke test; release SBOM from a clean environment with only the wheel |
+| D-12 | Fixed | #80 | Per-OS skip allow-list enforced in CI; FileLock timeout test runs on every OS |
+| D-23 | Fixed | #80 | CI matrix 3.11 to 3.14; leaking SQLite connections in tests closed |
+| D-24 | Fixed | #80 | `tools/release_notes.py` feeds `--notes-file`; compare links in the CHANGELOG; post-tag changes under `[Unreleased]` |
+| D-25 | Fixed | #80 | `hatchling>=1.27,<2` in `[build-system]` |
+| D-2 | Fixed | WP4 | `find_runnable` tries each `PATH` candidate with `--version`; `[tools] git` override; `config show` names it; git tests run on this workstation |
+| D-15 | Fixed | WP4 | Test forces an absolute working-directory hit on every OS; shared `_outside_cwd` check also guards `program_candidates` |
 
 Changes visible to existing users (complete this list; it becomes the `### Changed` section):
 

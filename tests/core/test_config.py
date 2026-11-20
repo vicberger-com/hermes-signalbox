@@ -64,3 +64,15 @@ def test_oversize_file_is_refused(tmp_path: Path) -> None:
     path.write_text("#" * (MAX_CONFIG_BYTES + 1), encoding="utf-8")
     with pytest.raises(ConfigError, match="too large"):
         load_config(path)
+
+
+def test_h1_d2_tools_git_must_be_absolute() -> None:
+    from switchyard.config import parse_config
+    from switchyard.errors import ConfigError
+
+    absolute = str(Path(__file__).resolve())
+    assert parse_config({"tools": {"git": absolute}}).git == absolute
+    assert parse_config({}).git is None
+    for bad in ({"tools": {"git": "git"}}, {"tools": {"git": 1}}, {"tools": {"svn": "/x"}}):
+        with pytest.raises(ConfigError):
+            parse_config(bad)
