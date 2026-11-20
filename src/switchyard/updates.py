@@ -35,7 +35,7 @@ from switchyard.capabilities import CORE_ACTOR, AuditSink
 from switchyard.errors import ManifestError, UpdateError
 from switchyard.lifecycle import ModuleManager, ModuleStatus
 from switchyard.manifest import Manifest, load_manifest
-from switchyard.process import find_program
+from switchyard.process import find_runnable
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 GIT_TIMEOUT_S = 300
@@ -159,29 +159,38 @@ def _check_ref(ref: str) -> None:
         raise UpdateError("ref must be a full 40-character lower-case commit SHA")
 
 
-def git_usable(git: str = "git") -> bool:
-    """True if this process can run ``git`` (some sandboxed installs cannot)."""
-    exe = find_program(git)
-    if exe is None:
-        return False
-    try:
-        subprocess.run([exe, "--version"], capture_output=True, timeout=30, check=True)  # noqa: S603 # nosec B603
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return True
+def resolved_git(git: str = "git", configured: str | None = None) -> str | None:
+    """The git this process will run: ``configured`` (``[tools] git``) or the first runnable one on PATH."""
+    return find_runnable(git, configured=configured)
+
+
+def git_usable(git: str = "git", configured: str | None = None) -> bool:
+    """True if this process can run git (H1 D-2: the first git on PATH may be one it may not execute)."""
+    return resolved_git(git, configured) is not None
 
 
 class GitFetcher:
     """Fetch one exact commit with the system ``git``. Used only by the core (T0)."""
 
-    def __init__(self, *, git: str = "git", allow_file_protocol: bool = False) -> None:
+    def __init__(
+        self, *, git: str = "git", allow_file_protocol: bool = False, configured: str | None = None
+    ) -> None:
         self._git = git
+        self._configured = configured
         self._allow_file = allow_file_protocol
+        self._exe: str | None = None
+
+    def executable(self) -> str | None:
+        """The resolved git, probed once per fetcher (and again after it stops working)."""
+        if self._exe is None:
+            self._exe = resolved_git(self._git, self._configured)
+        return self._exe
 
     def _run(self, args: list[str], cwd: Path) -> str:
-        exe = find_program(self._git)
+        exe = self.executable()
         if exe is None:
-            raise UpdateError("git executable not found")
+            where = "[tools] git" if self._configured else "PATH"
+            raise UpdateError(f"no git this process can run was found ({where})")
         env = {k: v for k in _GIT_ENV_ALLOW if (v := os.environ.get(k)) is not None}
         env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
                     # never discover a repository (and its config) above the working directory (M12 review)
@@ -194,6 +203,7 @@ class GitFetcher:
                 cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=GIT_TIMEOUT_S, check=False
             )
         except (OSError, subprocess.SubprocessError) as exc:
+            self._exe = None  # look again next time
             raise UpdateError(f"git could not run: {type(exc).__name__}") from None
         if done.returncode != 0:
             raise UpdateError(f"git {args[0]} failed (exit {done.returncode})")
@@ -261,6 +271,7 @@ class UpdateController:
         self._modules_dir = (data_dir / "modules").resolve()
         self._staging = data_dir / "staging"
         self._fetcher = fetcher
+        self.fetcher = fetcher  # read-only use: config show reports the git it resolved
         self._checking = threading.Lock()
         self._check_state = threading.Lock()
         self._last_check: tuple[float, list[dict[str, Any]]] | None = None

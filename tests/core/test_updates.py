@@ -192,7 +192,10 @@ needs_git = pytest.mark.skipif(not git_usable(), reason="no git executable this 
 
 
 def _git(cwd: Path, *args: str) -> str:
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()  # noqa: S603, S607
+    from switchyard.updates import resolved_git
+
+    exe = resolved_git() or "git"  # the same git the fetcher uses (H1 D-2)
+    return subprocess.run([exe, *args], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()  # noqa: S603
 
 
 @needs_git

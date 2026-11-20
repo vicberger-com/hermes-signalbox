@@ -62,6 +62,7 @@ CLI exit codes: 0 success; 1 operation error, or a result that reports failure (
 | `[api] port` | `0` | Port; `0` picks a free one (written to `api.port`) |
 | `[log] level` | `INFO` | DEBUG, INFO, WARNING, ERROR |
 | `[host] profile` | `auto` | auto, tiny, laptop, workstation, server: capacity defaults |
+| `[tools] git` | first runnable `git` on `PATH` | Absolute path of the git used by module updates. When set, only this git is used. `config show` prints the git in use (`tools.git`) |
 | `[modules.<id>]` | | Module settings: see each module's README |
 
 ## Audit actions

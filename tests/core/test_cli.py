@@ -226,3 +226,10 @@ def test_h1_d9_serve_removes_its_files_on_termination(data: Path) -> None:
     finally:
         tool._stop_daemon(proc)
     assert not (data / "api.port").exists() and not (data / "api.token").exists()
+
+
+def test_h1_d2_config_show_names_the_git_in_use(data: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(_run(data, "--json", "config", "show")) == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert shown["tools"]["git_configured"] is None
+    assert shown["tools"]["git"] is None or Path(shown["tools"]["git"]).is_absolute()
