@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in Switchyard or a bundled module does not work as documented.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go to the private advisory form, not here. Never paste secret values, tokens or
+        `api.token`; `switchyard audit tail` output is redacted, but check it before posting.
+  - type: input
+    id: version
+    attributes:
+      label: Switchyard version
+      description: "`switchyard version`"
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Hermes version and operating system
+      placeholder: "Hermes 0.23.2, Windows 11"
+    validations:
+      required: true
+  - type: input
+    id: module
+    attributes:
+      label: Module
+      description: Module id, or "core".
+      placeholder: "router"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Commands you ran (`switchyard ...` or `/switchyard ...`) and the relevant config keys.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output or audit records
+      render: text

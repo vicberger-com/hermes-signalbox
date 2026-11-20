@@ -1,0 +1,49 @@
+name: Feature request
+description: Suggest a change to the core or a bundled module. For a new module, use "Module proposal".
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - core
+        - Hermes integration
+        - dashboard
+        - secrets
+        - resources
+        - router
+        - meter
+        - activation
+        - supervisor
+        - workers
+        - trimmer
+        - inbox
+        - scanner
+        - offload
+        - updates
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security impact
+      description: New capabilities, hosts contacted, data sent, or anything the model could newly do.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
