@@ -15,8 +15,15 @@ Status: accepted, 2026-11-20. Phase: M7. Q&A: [08-m7-prework.md](../qa/08-m7-pre
    because Hermes shows them to the model.
 4. Observer hooks gain `subagent_start`; `metadata_only` adds `goal_sha` for `child_goal` and keeps
    `child_subagent_id`/`parent_subagent_id`; goal, context and summary text never reach modules.
-5. A child started from a routed goal is marked; `llm_request` middleware receives `delegated: true` for its
-   requests, so the router does not replace the model the role chose.
+5. A route may also carry `consumer` (`subagent:<role>`) and `free_only`, kept by Switchyard and never sent
+   to Hermes. The first child started with that goal consumes the route (pending routes die with their owner);
+   until its `subagent_stop`, its requests reach `llm_request` middleware with `delegated`,
+   `delegated_consumer` and `delegated_free_only`, so the router routes the child **within the role's consumer**
+   with the same paid rules, per-request budget charge, quotas and failover as the main session (M7 review:
+   skipping children let paid routes go uncharged).
+6. Every role the operator defines is offered to the model; the operator chooses the menu. A persona's profile
+   model is declared `paid` by the operator; a paid persona needs the module's `llm.paid` grant, and the router
+   still steers its requests.
 
 ## Consequences
 

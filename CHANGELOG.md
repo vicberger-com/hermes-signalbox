@@ -4,12 +4,22 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-20
+
+Phase M7: workers, personas and teams.
+
 ### Added
 - ADR-0007: `hermes.delegation` capability and a `switchyard` Hermes delegation backend (`ctx.hermes_delegation`);
   `subagent_start` observer hook with a goal digest; `delegated` marker for routed children's requests.
 - Bundled `workers` module (M7): worker roles bound to a model pool or a Hermes profile (persona), teams, a
   restart-safe ledger, stuck-worker and repeated-delegation detection.
-- Router `explain` takes a `consumer`; requests from routed children keep their role's model.
+- Router `explain` takes a `consumer`; requests from routed children are routed within their role's consumer.
+
+### Security
+- M7 security review (`src/switchyard/modules/workers/README.md`): routed children's requests are routed and
+  charged per request within the role's consumer; paid personas need `llm.paid`; the child marker is consumed
+  once, cleared with its owner and removed on `subagent_stop`; ledger pruning covers running rows; goal digests
+  fold case and punctuation.
 
 ## [0.7.0] - 2026-11-20
 

@@ -91,5 +91,6 @@ code and the Hermes v0.23.2 sources.
 | (low) 400/413/422 cooled resources down | **Fixed.** Attempt only |
 | (low) `ctx.call` needs no capability | **Accepted, documented** (ADR-0004): read-only actions must return no secret or sensitive data; the existing ones return metadata only |
 
-**Delegated children (M7).** Requests from a subagent whose model a worker role chose (ADR-0007) pass through
-unchanged. `explain {consumer}` answers for any consumer, such as `subagent:<role>`.
+**Delegated children (M7).** Requests from a subagent started by a worker role (ADR-0007) are routed within
+that role's consumer `subagent:<role>`, with paid rules, budget, quotas and failover; `free_only` children never
+get a paid model. `explain {consumer}` answers for any consumer, such as `subagent:<role>`.

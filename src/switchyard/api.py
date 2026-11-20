@@ -130,16 +130,15 @@ class _Handler(BaseHTTPRequestHandler):
         if getattr(self, "_body_read", False):
             return
         self._body_read = True
-        try:
-            length = int(self.headers.get("Content-Length", ""))
-        except ValueError:
-            return
-        if 0 < length <= MAX_BODY_BYTES and "Transfer-Encoding" not in self.headers:
-            self.rfile.read(length)
-        elif (
-            "Transfer-Encoding" in self.headers
-        ):  # unknown length: discard what has arrived, briefly, bounded
-            self.connection.settimeout(0.2)
+        if "Transfer-Encoding" not in self.headers:
+            try:
+                length = int(self.headers.get("Content-Length", ""))
+            except ValueError:
+                return
+            if 0 < length <= MAX_BODY_BYTES:
+                self.rfile.read(length)
+        else:  # unknown length (usually no Content-Length at all): discard what arrives, briefly, bounded
+            self.connection.settimeout(0.5)
             remaining = MAX_BODY_BYTES
             try:
                 while remaining > 0:

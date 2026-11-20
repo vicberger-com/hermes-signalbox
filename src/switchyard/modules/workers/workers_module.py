@@ -80,7 +80,14 @@ class WorkersModule:
         text, num, real = "TEXT", "INTEGER", "REAL"
         ctx.state.create_table(
             "roles",
-            [("name", text), ("description", text), ("profile", text), ("tier", text), ("max_minutes", num)],
+            [
+                ("name", text),
+                ("description", text),
+                ("profile", text),
+                ("tier", text),
+                ("max_minutes", num),
+                ("paid", num),
+            ],
             primary_key=["name"],
         )
         ctx.state.create_table(
@@ -119,7 +126,14 @@ class WorkersModule:
             "roles": {},
             "teams": {},
             "ledger": {"state": str, "limit": int},
-            "role_set": {"name": str, "description": str, "profile": str, "tier": str, "max_minutes": int},
+            "role_set": {
+                "name": str,
+                "description": str,
+                "profile": str,
+                "tier": str,
+                "max_minutes": int,
+                "paid": bool,
+            },
             "role_remove": {"name": str},
             "team_set": {"name": str, "roles": str, "description": str},
             "team_remove": {"name": str},
@@ -153,7 +167,8 @@ class WorkersModule:
         return str(self.ctx.state.table(name))
 
     def _role(self, name: str) -> tuple[Any, ...] | None:
-        sql = f"SELECT name, description, profile, tier, max_minutes FROM {self._t('roles')} WHERE name = ?"  # nosec B608
+        cols = "name, description, profile, tier, max_minutes, paid"
+        sql = f"SELECT {cols} FROM {self._t('roles')} WHERE name = ?"  # nosec B608
         rows = self._q(sql, (name,))
         return rows[0] if rows else None
 
@@ -185,7 +200,7 @@ class WorkersModule:
             out.append((name, text))
         return out
 
-    def route(self, meta: dict[str, Any]) -> dict[str, str]:
+    def route(self, meta: dict[str, Any]) -> dict[str, Any]:
         """Route one task. Returns a route or ``{"refuse": code}`` (the core writes the message)."""
         if self.ctx is None:
             return {"refuse": "workers_stopped"}
@@ -213,10 +228,16 @@ class WorkersModule:
             self._record_route(role_name, goal, target, "routed")
             return answer
 
-    def _target(self, role: tuple[Any, ...]) -> tuple[dict[str, str], str]:
-        name, _desc, profile, tier, _max = role
+    def _target(self, role: tuple[Any, ...]) -> tuple[dict[str, Any], str]:
+        name, _desc, profile, tier, _max, paid = role
+        consumer = f"subagent:{name}"
         if profile:
-            return {"profile": profile}, f"profile:{profile}"
+            # A persona runs its profile's own model. The operator declares whether that model is paid; a paid
+            # persona needs this module's llm.paid grant, and the child's requests are still steered by the
+            # router within the role's consumer (paid rules, budget, quotas) (M7 review).
+            if paid and not self.ctx.has("llm.paid"):
+                return {"refuse": "paid_not_granted"}, ""
+            return {"profile": profile, "consumer": consumer, "free_only": not paid}, f"profile:{profile}"
         try:
             plan = self.ctx.call(
                 "router", "explain", {"consumer": f"subagent:{name}", "tokens": TIER_TOKENS[tier]}
@@ -230,7 +251,13 @@ class WorkersModule:
             if option.get("cost_class") == "paid" and not self.ctx.has("llm.paid"):
                 paid_blocked = True
                 continue
-            return {"model": option["model"], "provider": option["provider"]}, str(option["chosen"])
+            route = {
+                "model": option["model"],
+                "provider": option["provider"],
+                "consumer": consumer,
+                "free_only": not self.ctx.has("llm.paid"),
+            }
+            return route, str(option["chosen"])
         return {"refuse": "paid_not_granted" if paid_blocked else "no_model_available"}, ""
 
     # Hermes observers ---------------------------------------------------------------------------------
@@ -318,12 +345,20 @@ class WorkersModule:
         }
 
     def roles(self) -> dict[str, Any]:
-        sql = f"SELECT name, description, profile, tier, max_minutes FROM {self._t('roles')} ORDER BY name"  # nosec B608
+        cols = "name, description, profile, tier, max_minutes, paid"
+        sql = f"SELECT {cols} FROM {self._t('roles')} ORDER BY name"  # nosec B608
         rows = self._q(sql)
         return {
             "roles": [
-                {"name": n, "description": d, "profile": p or None, "tier": t, "max_minutes": m}
-                for n, d, p, t, m in rows
+                {
+                    "name": n,
+                    "description": d,
+                    "profile": p or None,
+                    "tier": t,
+                    "max_minutes": m,
+                    "paid": bool(pd),
+                }
+                for n, d, p, t, m, pd in rows
             ]
         }
 
@@ -346,8 +381,15 @@ class WorkersModule:
         return {"runs": [dict(zip(keys, row, strict=True)) for row in rows]}
 
     def role_set(
-        self, name: str, description: str = "", profile: str = "", tier: str = "T2", max_minutes: int = 30
+        self,
+        name: str,
+        description: str = "",
+        profile: str = "",
+        tier: str = "T2",
+        max_minutes: int = 30,
+        paid: bool = False,
     ) -> dict[str, Any]:
+        """``paid`` declares that a persona's profile model is paid (pool roles: cost from the registry)."""
         _check(_NAME, name, "role name")
         if profile:
             _check(_PROFILE, profile, "profile name")
@@ -360,15 +402,22 @@ class WorkersModule:
             if self._role(name) is None and count >= MAX_ROLES:
                 raise SwitchyardError(f"at most {MAX_ROLES} roles")
             self._q(
-                f"INSERT OR REPLACE INTO {self._t('roles')} VALUES (?, ?, ?, ?, ?)",  # nosec B608
-                (name, _line(description, 200), profile, tier, max_minutes),
+                f"INSERT OR REPLACE INTO {self._t('roles')} VALUES (?, ?, ?, ?, ?, ?)",  # nosec B608
+                (
+                    name,
+                    _line(description, 200),
+                    profile,
+                    tier,
+                    max_minutes,
+                    int(bool(paid) and bool(profile)),
+                ),
             )
         self.ctx.audit(
             "role_set", role=name, target=f"profile:{profile}" if profile else f"pool:subagent:{name}"
         )
         return {
             "role": name,
-            "consumer": None if profile else f"subagent:{name}",
+            "consumer": f"subagent:{name}",
             "profile": profile or None,
             "note": "takes effect in new Hermes sessions (the delegate_task schema is built per session)",
         }
