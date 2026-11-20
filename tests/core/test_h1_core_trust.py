@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -63,9 +64,7 @@ def test_h1_a3_loaded_module_must_come_from_inside(tmp_path: Path) -> None:
     assert not loaded_inside(type("M", (), {}), inside)
 
 
-@pytest.mark.skipif(
-    not hasattr(__import__("os"), "name") or __import__("os").name != "nt", reason="junctions"
-)
+@pytest.mark.skipif(sys.platform != "win32", reason="directory junctions are a Windows feature")
 def test_h1_a3_junction_package_does_not_run(tmp_path: Path) -> None:
     import _winapi  # type: ignore[import-not-found]
 
