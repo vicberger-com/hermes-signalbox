@@ -31,6 +31,7 @@ from switchyard.paths import ensure_data_dir, resolve_data_dir
 from switchyard.scheduler import Scheduler
 from switchyard.secrets import Redactor, SecretsBroker
 from switchyard.state import SqliteGrantStore, StateStore
+from switchyard.updates import Fetcher, GitFetcher, UpdateController
 
 BUILTIN_MODULES = Path(switchyard.__file__).resolve().parent / "modules"
 _HEAD_KEY = "audit.head"
@@ -70,6 +71,7 @@ class Core:
         module_roots: Sequence[Path] | None = None,
         secret_backends: Sequence[Any] = (),
         hosting: bool | None = None,
+        fetcher: Fetcher | None = None,
     ) -> None:
         initial = resolve_data_dir(configured=data_dir, hermes_dir=hermes_dir)
         self.config: CoreConfig = load_config(initial / "config.toml")
@@ -108,6 +110,7 @@ class Core:
             brokers={"secrets.read": self.secrets},
         )  # fmt: skip
         self.manager.discover(roots)
+        self.updates = UpdateController(self.manager, self.audit, self.data_dir, fetcher or GitFetcher())
         self._lock = threading.RLock()
         self._closed = False
 
