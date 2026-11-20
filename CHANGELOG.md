@@ -4,6 +4,13 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- Bug-report and feature-request issue forms; wiki framework, page templates and generated wiki source with
+  `tools/wiki_publish.py` (both merged after the v1.0.0 tag).
+- Phase H1 (hardening, target v1.0.1) and H2 (first real install) in `docs/BUILD-PLAN.md`, with rules for
+  maintenance phases; H1 pre-work Q&A `docs/qa/15-h1-prework.md`; findings index and the full engineering
+  review under `docs/qa/h1/`. No code change.
+
 ## [1.0.0] - 2026-11-20
 
 Phase R1: hardening review, documentation, first stable release. Review dispositions:
