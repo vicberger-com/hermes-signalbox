@@ -28,9 +28,10 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from switchyard.capabilities import CORE_ACTOR
 from switchyard.errors import CapabilityDenied, ManifestError
@@ -38,6 +39,16 @@ from switchyard.lifecycle import ModuleStatus
 from switchyard.manifest import Manifest, load_manifest
 
 ACTOR = "contract"
+
+
+def _toml_table(name: str, values: Mapping[str, Any]) -> str:
+    """Minimal TOML writer for flat settings (str, int, bool, lists of those); JSON literals fit TOML."""
+    lines = [f"[{name}]"]
+    for key, value in values.items():
+        if not isinstance(value, (str, int, bool, list)):
+            raise ValueError(f"setting {key!r}: unsupported type {type(value).__name__}")
+        lines.append(f"{key} = {json.dumps(value)}")
+    return "\n".join(lines) + "\n"
 
 
 class ContractFailure(Exception):
@@ -74,7 +85,8 @@ class ContractReport:
         return "\n".join(lines)
 
 
-def run_contract(module_dir: Path) -> ContractReport:
+def run_contract(module_dir: Path, *, settings: Mapping[str, Any] | None = None) -> ContractReport:
+    """Run the contract. ``settings`` become the module's ``[modules.<id>]`` table for the run."""
     module_dir = Path(module_dir).resolve()
     try:
         manifest = load_manifest(module_dir)
@@ -82,17 +94,23 @@ def run_contract(module_dir: Path) -> ContractReport:
         return ContractReport("", [Check("manifest", False, "; ".join(exc.errors)[:500])])
     report = ContractReport(manifest.id, [Check("manifest", True)])
     with tempfile.TemporaryDirectory(prefix="switchyard-contract-") as tmp:
-        _run(manifest, module_dir, Path(tmp), report)
+        _run(manifest, module_dir, Path(tmp), report, dict(settings or {}))
     return report
 
 
-def _run(manifest: Manifest, module_dir: Path, tmp: Path, report: ContractReport) -> None:
+def _run(
+    manifest: Manifest, module_dir: Path, tmp: Path, report: ContractReport, settings: dict[str, Any]
+) -> None:
     from switchyard.core import Core  # local import: core pulls in every subsystem
 
     root = tmp / "modules"
     root.mkdir()
     shutil.copytree(module_dir, root / manifest.id, ignore=shutil.ignore_patterns("__pycache__", ".git"))
     mid = manifest.id
+    data = tmp / "data"
+    data.mkdir()
+    if settings:
+        (data / "config.toml").write_text(_toml_table(f"modules.{mid}", settings), encoding="utf-8")
 
     def check(name: str, fn: Callable[[], str]) -> bool:
         try:
@@ -104,7 +122,7 @@ def _run(manifest: Manifest, module_dir: Path, tmp: Path, report: ContractReport
         report.checks.append(Check(name, True, detail))
         return True
 
-    with Core(data_dir=tmp / "data", trusted_roots=[root], module_roots=[root], hosting=True) as core:
+    with Core(data_dir=data, trusted_roots=[root], module_roots=[root], hosting=True) as core:
 
         def discover() -> str:
             _expect(core.manager.ids() == [mid], f"discovered {core.manager.ids()}")

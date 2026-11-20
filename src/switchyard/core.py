@@ -28,6 +28,7 @@ from switchyard.lifecycle import ModuleManager
 from switchyard.logs import JsonlLogSink
 from switchyard.ops import lookup
 from switchyard.paths import ensure_data_dir, resolve_data_dir
+from switchyard.process import ProcessBroker
 from switchyard.scheduler import Scheduler
 from switchyard.secrets import Redactor, SecretsBroker
 from switchyard.state import SqliteGrantStore, StateStore
@@ -100,6 +101,7 @@ class Core:
         self.logs = JsonlLogSink(self.data_dir / "logs", redact=self.redactor.redact)
         self.panels = MemoryPanelRegistry()
         self.actions = MemoryActionRegistry()
+        self.processes = ProcessBroker(self.policy, self.audit)
         self.secrets = SecretsBroker(list(secret_backends), self.policy, self.audit, self.redactor)
         trusted = list(trusted_roots) if trusted_roots is not None else [BUILTIN_MODULES]
         roots = (
@@ -108,7 +110,8 @@ class Core:
         self.manager = ModuleManager(
             policy=self.policy, audit=self.audit, bus=self.bus, logs=self.logs, panels=self.panels,
             trusted_roots=trusted, scheduler=self.scheduler, store=self.store,
-            brokers={"secrets.read": self.secrets}, actions=self.actions, secret_backends=self.secrets,
+            brokers={"secrets.read": self.secrets, "process.spawn": self.processes}, actions=self.actions,
+            secret_backends=self.secrets, config=lambda mid: self.config.modules.get(mid, {}),
         )  # fmt: skip
         self.manager.discover(roots)
         self.updates = UpdateController(self.manager, self.audit, self.data_dir, fetcher or GitFetcher())

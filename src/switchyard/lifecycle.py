@@ -111,6 +111,7 @@ class ModuleManager:
         brokers: Mapping[str, object] | None = None,
         actions: MemoryActionRegistry | None = None,
         secret_backends: SecretBackendPort | None = None,
+        config: Callable[[str], Mapping[str, Any]] | None = None,
         clock: Callable[[], float] = time.monotonic,
         t2_factory: Callable[[Manifest], Any] = T2Module,
     ) -> None:
@@ -127,7 +128,7 @@ class ModuleManager:
         self._services = ContextServices(
             policy=policy, logs=logs, panels=panels, bus=bus, brokers=dict(brokers or {}),
             state=store.module if store is not None else None, actions=actions,
-            secret_backends=secret_backends,
+            secret_backends=secret_backends, config=config, audit=audit,
         )  # fmt: skip
         bus.set_error_handler(self._on_handler_error)
 
@@ -406,10 +407,16 @@ class ModuleManager:
         self._record("module.mode_changed", module_id, actor, mode=mode)
 
     def start_auto(self, *, actor: str) -> None:
-        """Activate every ``auto`` module that is not running or failed."""
+        """Activate every ``auto`` module that is stopped or verified and holds every capability it requests.
+
+        A module still waiting for grants is left alone (``module.auto_skipped``) rather than failed."""
         for module_id in self.ids():
             e = self._entries[module_id]
             if e.mode == "auto" and e.status in (ModuleStatus.VERIFIED, ModuleStatus.STOPPED):
+                missing = sorted(e.manifest.requested - self._policy.granted(module_id))
+                if missing:
+                    self._record("module.auto_skipped", module_id, actor, missing=",".join(missing))
+                    continue
                 self.activate(module_id, actor=actor)
 
     def touch(self, module_id: str) -> None:

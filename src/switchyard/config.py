@@ -38,6 +38,7 @@ class CoreConfig:
     api: ApiConfig = field(default_factory=ApiConfig)
     log_level: str = "INFO"
     host_profile: str = "auto"
+    modules: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)  # [modules.<id>] tables
 
 
 def _table(doc: Mapping[str, Any], key: str, allowed: frozenset[str]) -> Mapping[str, Any]:
@@ -58,7 +59,7 @@ def _choice(value: Any, name: str, allowed: frozenset[str]) -> str:
 
 def parse_config(doc: Mapping[str, Any]) -> CoreConfig:
     """Validate a parsed TOML document and build ``CoreConfig``."""
-    unknown = set(doc) - {"data_dir", "api", "log", "host"}
+    unknown = set(doc) - {"data_dir", "api", "log", "host", "modules"}
     if unknown:
         raise ConfigError(f"unknown key(s) {sorted(unknown)}")
 
@@ -83,7 +84,13 @@ def parse_config(doc: Mapping[str, Any]) -> CoreConfig:
     profile = _choice(
         _table(doc, "host", frozenset({"profile"})).get("profile", "auto"), "host.profile", HOST_PROFILES
     )
-    return CoreConfig(data_dir=data_dir, api=ApiConfig(enabled, port), log_level=level, host_profile=profile)
+    modules = doc.get("modules", {})
+    if not isinstance(modules, Mapping) or not all(isinstance(v, Mapping) for v in modules.values()):
+        raise ConfigError("modules: expected one table per module id ([modules.<id>])")
+    return CoreConfig(
+        data_dir=data_dir, api=ApiConfig(enabled, port), log_level=level, host_profile=profile,
+        modules={str(k): dict(v) for k, v in modules.items()},
+    )  # fmt: skip
 
 
 def load_config(path: Path) -> CoreConfig:

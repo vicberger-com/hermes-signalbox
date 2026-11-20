@@ -8,6 +8,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Module actions (`ctx.register_action`, operation `module action`; the Hermes model tool runs read-only
   actions only) and module-provided secret backends (`ctx.provide_secret_backend`,
   `contributes.secret_backends`; trusted in-process modules only). ADR-0002.
+- M1 bundled `secrets` module: Windows Credential Manager (ctypes), macOS keychain (read), Secret Service
+  via `secret-tool`, Vaultwarden via `bw`, development env backend (off by default); age and expiry by name;
+  rotation of generated values; `secrets.status` panel. No new dependencies.
+- `ctx.config`, `ctx.spawn` (process broker), `ctx.audit`; `run_contract(settings=...)`; `[modules.<id>]`
+  tables in `config.toml`. Auto modules wait for their grants instead of failing.
 
 ## [0.1.0] - 2026-11-19
 

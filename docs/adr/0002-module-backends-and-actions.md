@@ -26,6 +26,13 @@ both (backends; `rotate` and `expire`), and every later module needs operations.
    if it is `read_only`. Actions require the hosting process. Each call is audited (`module.action`, names
    only; arguments are not recorded).
 
+3. **Supporting context members (added while building M1).** `ctx.config` (read-only copy of
+   `[modules.<id>]` from the core `config.toml`); `ctx.spawn` (process broker for `process.spawn`: argv list, no
+   shell, minimal environment, timeout, audited by program name and exit code only); `ctx.audit(event, **names)`
+   (records `module.<id>.<event>`, values truncated and redacted). A module that provides backends may leave
+   `capabilities.secrets` empty. `start_auto` skips an `auto` module until all requested capabilities are granted
+   (`module.auto_skipped`) instead of failing it.
+
 ## Consequences
 
 - The core stays interface-only for secrets; M1 can ship OS-store and Vaultwarden backends as a module.
