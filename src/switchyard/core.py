@@ -24,6 +24,7 @@ from switchyard.context import MemoryActionRegistry, MemoryPanelRegistry
 from switchyard.errors import SwitchyardError
 from switchyard.events import EventBus
 from switchyard.fsread import FsBroker
+from switchyard.hermesconfig import ConfigWriter, HermesConfigPort
 from switchyard.hostinfo import capacity_metrics
 from switchyard.hostlock import HostLock
 from switchyard.lifecycle import ModuleManager
@@ -75,6 +76,7 @@ class Core:
         secret_backends: Sequence[Any] = (),
         hosting: bool | None = None,
         fetcher: Fetcher | None = None,
+        hermes_config: HermesConfigPort | None = None,
     ) -> None:
         initial = resolve_data_dir(configured=data_dir, hermes_dir=hermes_dir)
         self.config: CoreConfig = load_config(initial / "config.toml")
@@ -111,10 +113,19 @@ class Core:
         roots = (
             list(module_roots) if module_roots is not None else [BUILTIN_MODULES, self.data_dir / "modules"]
         )
+        brokers: dict[str, object] = {"secrets.read": self.secrets, "process.spawn": self.processes,
+                                      "fs.read": self.files}  # fmt: skip
+        self.hermes_config = (
+            ConfigWriter(hermes_config, self.audit, self.data_dir / "hermes-config-backups")
+            if hermes_config
+            else None
+        )
+        if self.hermes_config is not None:
+            brokers["hermes.config.write"] = self.hermes_config
         self.manager = ModuleManager(
             policy=self.policy, audit=self.audit, bus=self.bus, logs=self.logs, panels=self.panels,
             trusted_roots=trusted, scheduler=self.scheduler, store=self.store,
-            brokers={"secrets.read": self.secrets, "process.spawn": self.processes, "fs.read": self.files},
+            brokers=brokers,
             actions=self.actions,
             secret_backends=self.secrets, config=lambda mid: self.config.modules.get(mid, {}),
             bridge=self.bridge, call=self._module_call,

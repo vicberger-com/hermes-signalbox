@@ -228,3 +228,31 @@ def test_hooks_and_middleware_are_forwarded_to_the_bridge(
     monkeypatch.setattr(bridge, "dispatch_llm_request", broken)
     ctx.hooks["pre_llm_call"](user_message="hi")  # swallowed: never breaks a Hermes turn
     assert ctx.middleware["llm_request"](request={"model": "x"}) is None
+
+
+def test_config_port_uses_the_public_hermes_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+    import types
+
+    from switchyard.hermes.config_port import HermesConfigAdapter
+
+    stored: dict[str, Any] = {"skills": {"disabled": ["a"]}, "model": "m"}
+    saved: list[tuple[dict[str, Any], bool]] = []
+    config_mod = types.ModuleType("hermes_cli.config")
+    config_mod.load_config = lambda: json.loads(json.dumps(stored))  # type: ignore[attr-defined]
+    config_mod.save_config = lambda cfg, merge_existing=False: saved.append((cfg, merge_existing))  # type: ignore[attr-defined]
+    tools_mod = types.ModuleType("tools.skills_tool")
+    tools_mod.find_all_skills = lambda skip_disabled=False: [
+        {"name": "a", "category": "c", "description": "d"}
+    ]  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "hermes_cli", types.ModuleType("hermes_cli"))
+    monkeypatch.setitem(sys.modules, "hermes_cli.config", config_mod)
+    monkeypatch.setitem(sys.modules, "tools", types.ModuleType("tools"))
+    monkeypatch.setitem(sys.modules, "tools.skills_tool", tools_mod)
+    port = HermesConfigAdapter()
+    assert port.get("skills.disabled") == ["a"] and port.get("model.default") is None
+    port.set("plugins.disabled", ["x"])
+    assert saved[-1] == ({"skills": {"disabled": ["a"]}, "model": "m", "plugins": {"disabled": ["x"]}}, True)
+    port.set("skills.disabled", [])
+    assert saved[-1][0]["skills"] == {"disabled": []}
+    assert port.skills() == [{"name": "a", "category": "c", "description": "d"}]

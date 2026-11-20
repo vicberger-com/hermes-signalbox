@@ -4,6 +4,13 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- `hermes.config.write` broker (ADR-0005, `ctx.hermes_config`): allow-listed Hermes config keys written
+  through Hermes's public config API, each change backed up, audited, read back and rolled back on failure;
+  `revert` restores any backup.
+- Bundled `activation` module (M5): skill inventory with prompt cost, presets (names, categories, `*`),
+  index-size benchmark, timed presets that restore the previous state, restore and undo.
+
 ## [0.5.0] - 2026-11-20
 
 Phase M4: metering, quotas and budgets.
