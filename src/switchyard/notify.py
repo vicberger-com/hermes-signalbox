@@ -42,11 +42,12 @@ class NotifyBroker:
             raise SwitchyardError(f"severity must be one of {list(SEVERITIES)}")
         if not isinstance(title, str) or not title.strip() or not isinstance(detail, str):
             raise SwitchyardError("title must be non-empty text and detail text")
+        # redact before truncating, so a secret cut in half by the cap is still removed (M9 review)
         data = {
             "module": module_id,
             "severity": severity,
-            "title": self._redact(_line(title, MAX_TITLE)),
-            "detail": self._redact(_line(detail, MAX_DETAIL)),
+            "title": _line(self._redact(title), MAX_TITLE),
+            "detail": _line(self._redact(detail), MAX_DETAIL),
         }
         self._audit.append(
             actor=CORE_ACTOR, action="module.notify", module=module_id, detail={"severity": severity}

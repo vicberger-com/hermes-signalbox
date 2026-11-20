@@ -217,3 +217,60 @@ def test_dashboard_backend_proxy(core: Core, monkeypatch: pytest.MonkeyPatch, tm
         with pytest.raises(HTTPException):
             asyncio.run(call)
     assert {c[1] for c in calls} <= {"list", "show", "panel", "activate", "deactivate", "action"} | {"show"}
+
+
+def test_dashboard_api_profile_refuses_privileged_ops(core: Core) -> None:
+    from switchyard.api import ApiClient, ControlServer
+
+    server = ControlServer(core, profile="dashboard")
+    server.start()
+    try:
+        client = ApiClient.from_data_dir(core.data_dir)
+        assert any(m["id"] == "inbox" for m in client.request("module", "list", {}))
+        for noun, verb, params in [
+            ("module", "grant", {"id": "inbox", "capability": "ui.panel"}),
+            ("module", "revoke", {"id": "inbox", "capability": "ui.panel"}),
+            ("module", "mode", {"id": "inbox", "mode": "manual"}),
+        ]:
+            with pytest.raises(SwitchyardError, match="not available on this API"):
+                client.request(noun, verb, params)
+        core.bus.publish("meter", "meter.exhausted", {"quota": "day"})
+        items = client.request("module", "action", {"id": "inbox", "action": "list", "args": {}})["items"]
+        client.request("module", "action", {"id": "inbox", "action": "ack", "args": {"id": items[0]["id"]}})
+        for cap in ("hermes.output", "ui.panel"):
+            core.run("module", "grant", {"id": "trimmer", "capability": cap}, actor="t")
+        core.run("module", "activate", {"id": "trimmer"}, actor="t")
+        with pytest.raises(SwitchyardError, match="read-only"):  # other module actions: model rights only
+            client.request("module", "action", {"id": "trimmer", "action": "preview", "args": {"text": "x"}})
+        assert (
+            client.request("module", "action", {"id": "trimmer", "action": "report", "args": {}})["tools"]
+            == []
+        )
+    finally:
+        server.shutdown()
+    with pytest.raises(SwitchyardError):
+        ControlServer(core, profile="root")
+
+
+def test_review_fixes(core: Core) -> None:
+    from switchyard.manifest import validate_document
+    from switchyard.notify import NotifyBroker
+
+    secret = "TOPSECRETVALUE12345"  # noqa: S105 - test value
+    broker = NotifyBroker(core.bus.publish, core.audit, lambda s: s.replace(secret, "[redacted]"))
+    out = broker.send("tester", "info", "x" * 112 + secret)
+    assert "TOPSECRE" not in out["title"]
+    core.bus.publish(
+        "evil", "core.notify", {"title": "fake", "severity": "critical"}
+    )  # wrong source: ignored
+    assert all(i["title"] != "fake" for i in ib(core, "list", state="all")["items"])
+    doc = {"schema": 1, "module": {"id": "core"}}
+    assert any("reserved" in e for e in validate_document(doc))
+    inst = core.manager._entry("inbox").instance
+    inst.on_event.__globals__["KEEP"] = 5
+    core.bus.publish("supervisor", "supervisor.alert", {"key": "audit:chain", "severity": "critical"})
+    for i in range(20):
+        core.bus.publish("workers", "workers.loop", {"role": f"r{i}"})
+    kept = ib(core, "list", state="all", limit=500)["items"]
+    assert len(kept) == 5 and any(i["severity"] == "critical" for i in kept)
+    inst.on_event.__globals__["KEEP"] = 1000

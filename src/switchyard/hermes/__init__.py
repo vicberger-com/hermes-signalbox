@@ -163,8 +163,17 @@ class HermesAdapter:
         if self.core.hosting:
             self.core.manager.start_auto(actor=CORE_ACTOR)
             if self.core.config.api.enabled:  # M9: the dashboard tab talks to this loopback API
-                self._server = ControlServer(self.core, port=self.core.config.api.port)
-                self._server.start()
+                try:
+                    server = ControlServer(self.core, port=self.core.config.api.port, profile="dashboard")
+                    server.start()
+                    self._server = server
+                except (OSError, SwitchyardError) as exc:  # a busy port must not stop the tick (M9 review)
+                    self.core.audit.append(
+                        actor=CORE_ACTOR,
+                        action="api.start_failed",
+                        module="",
+                        detail={"error": type(exc).__name__},
+                    )
             self._thread = threading.Thread(target=self._drive, name="switchyard-tick", daemon=True)
             self._thread.start()
 
