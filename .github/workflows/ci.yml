@@ -37,6 +37,8 @@ jobs:
       - name: Validate module manifests
         shell: bash
         run: python tools/validate_manifest.py templates $([ -d modules ] && echo modules)
+      - name: Check wiki source
+        run: python tools/wiki_publish.py --check
 
   # Single stable check to require in the branch ruleset; matrix job names change, this one does not.
   ci-required:

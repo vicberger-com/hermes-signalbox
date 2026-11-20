@@ -22,6 +22,7 @@ Start with the [user guide](docs/USER-GUIDE.md).
 |---|---|
 | [docs/USER-GUIDE.md](docs/USER-GUIDE.md) | Install, first run, grants, activation, dashboard, updates, uninstall |
 | [docs/REFERENCE.md](docs/REFERENCE.md) | Every operation, tool, core setting, audit action and event |
+| [docs/wiki/README.md](docs/wiki/README.md) | Wiki framework: structure, page types, templates, publishing |
 | [AGENTS.md](AGENTS.md) | Execution contract for the building agent: flow, auto-accept rule, stop conditions |
 | [docs/DESIGN.md](docs/DESIGN.md) | Architecture, trust model, module contract, Hermes integration points |
 | [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md) | Phase order, per-module loop, gates, definition of done |
