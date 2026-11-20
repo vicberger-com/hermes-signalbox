@@ -1,4 +1,4 @@
-# Switchyard module manifest. Schema: schemas/module.schema.json
+# Switchyard module manifest. Schema: src/switchyard/schemas/module.schema.json
 # Validate: python tools/validate_manifest.py <this file>
 schema = 1
 

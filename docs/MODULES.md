@@ -2,7 +2,7 @@
 
 Each section is the starting scope. The phase's research and pre-work Q&A refine it into `docs/modules/<id>.md`.
 "Sources" lists upstream projects to study or reuse; the reuse class for each is in
-[THIRD-PARTY.md](THIRD-PARTY.md). Capabilities use the names in `schemas/module.schema.json`.
+[THIRD-PARTY.md](THIRD-PARTY.md). Capabilities use the names in `src/switchyard/schemas/module.schema.json`.
 
 ## M0 core
 

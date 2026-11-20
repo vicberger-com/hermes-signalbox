@@ -116,7 +116,7 @@ misuse through the control API, tampered audit trail, dependency confusion.
 
 ## 5. Module contract
 
-A module is a directory with `module.toml` (schema: `schemas/module.schema.json`), an entry class and tests.
+A module is a directory with `module.toml` (schema: `src/switchyard/schemas/module.schema.json`), an entry class and tests.
 Template: `templates/module/`.
 
 | A module may contribute | Through |
