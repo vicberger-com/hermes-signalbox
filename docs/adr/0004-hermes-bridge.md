@@ -1,0 +1,34 @@
+# ADR-0004: Hermes hook bridge and read-only cross-module calls
+
+Status: accepted, 2026-11-19. Phase: M3. Q&A: [04-m3-prework.md](../qa/04-m3-prework.md) question 10.
+
+## Context
+
+The router (M3), metering (M4) and later modules must observe Hermes LLM traffic and, for routing, change the
+model of a request. Hermes plugins register hooks and middleware once, at `register(ctx)`; Switchyard modules
+start and stop later and must stay isolated from each other and from Hermes. The router also needs the
+registry's candidate list (M2) without reading another module's tables.
+
+## Decision
+
+1. **Bridge.** The core keeps a `HermesBridge` (no Hermes import). A module granted `hermes.hooks` registers
+   `ctx.hermes_hook(name, fn)` or `ctx.hermes_middleware(kind, fn)` for names declared in `contributes.hooks`
+   (`<hook>` or `middleware:<kind>`). Registrations end when the module stops.
+2. **Adapter.** `switchyard.hermes` registers, once, one Hermes callback per supported observer hook
+   (`pre_llm_call`, `pre_api_request`, `post_api_request`, `api_request_error`, `post_llm_call`) and the
+   `llm_request` middleware, each forwarding to the bridge in the hosting process.
+3. **Isolation.** Every module callback gets a shallow copy of the hook arguments; exceptions are caught,
+   audited (`module.hook_failed`, class name only) and the turn continues. Observer return values are ignored.
+4. **Middleware limits.** An `llm_request` callback returns `None` (no change) or a new request dict. The
+   bridge accepts it only if it differs from the input in the `model` key alone and the new model is a
+   non-empty string; anything else is discarded and audited (`module.middleware_rejected`). Base URL,
+   credentials, messages and tools can never be changed by a module.
+5. **Cross-module calls.** `ctx.call(module_id, action, args)` runs another module's **read-only** action
+   through the same validation as `module action`, with actor `module:<caller>`. Writes across modules are not
+   possible.
+
+## Consequences
+
+- Modules get Hermes traffic without each one registering with Hermes, and a failing module cannot break a turn.
+- Routing is limited to choosing among models of the active provider; cross-provider routing would need a
+  gateway resource running as its own process.

@@ -112,6 +112,8 @@ class ModuleManager:
         actions: MemoryActionRegistry | None = None,
         secret_backends: SecretBackendPort | None = None,
         config: Callable[[str], Mapping[str, Any]] | None = None,
+        bridge: Any = None,
+        call: Callable[[str, str, str, Mapping[str, Any]], Any] | None = None,
         clock: Callable[[], float] = time.monotonic,
         t2_factory: Callable[[Manifest], Any] = T2Module,
     ) -> None:
@@ -128,7 +130,7 @@ class ModuleManager:
         self._services = ContextServices(
             policy=policy, logs=logs, panels=panels, bus=bus, brokers=dict(brokers or {}),
             state=store.module if store is not None else None, actions=actions,
-            secret_backends=secret_backends, config=config, audit=audit,
+            secret_backends=secret_backends, config=config, audit=audit, bridge=bridge, call=call,
         )  # fmt: skip
         bus.set_error_handler(self._on_handler_error)
 

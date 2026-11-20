@@ -198,6 +198,12 @@ class FakeHermesCtx:
     def register_redaction_patterns(self, patterns: list[str]) -> int:
         return len(patterns)
 
+    def register_hook(self, *_a: Any, **_kw: Any) -> None:
+        pass
+
+    def register_middleware(self, *_a: Any, **_kw: Any) -> None:
+        pass
+
 
 @pytest.fixture
 def surfaces(

@@ -32,6 +32,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from switchyard.bridge import OBSERVER_HOOKS
 from switchyard.capabilities import CORE_ACTOR
 from switchyard.core import Core
 from switchyard.errors import SwitchyardError
@@ -125,12 +126,36 @@ class HermesAdapter:
             description="Run the switchyard CLI against this profile's data directory.",
         )
         ctx.register_idle_task("switchyard-audit-verify", self._idle_verify, interval_hours=24)
+        for hook in sorted(OBSERVER_HOOKS):  # ADR-0004: one forwarder per hook; modules attach in the core
+            ctx.register_hook(hook, self._forwarder(hook))
+        ctx.register_middleware("llm_request", self._llm_request)
         patterns = [p for p in DEFAULT_PATTERNS if _LITERAL_PREFIX.match(p)]
         ctx.register_redaction_patterns(patterns)
         if self.core.hosting:
             self.core.manager.start_auto(actor=CORE_ACTOR)
             self._thread = threading.Thread(target=self._drive, name="switchyard-tick", daemon=True)
             self._thread.start()
+
+    def _forwarder(self, name: str) -> Any:
+        def forward(**kwargs: Any) -> None:
+            try:
+                if self.core.hosting:
+                    self.core.bridge.dispatch_hook(name, kwargs)
+            except Exception as exc:  # never break a Hermes turn
+                del exc
+
+        forward.__name__ = f"switchyard_{name}"
+        return forward
+
+    def _llm_request(self, request: dict[str, Any], **context: Any) -> dict[str, Any] | None:
+        """Hermes ``llm_request`` middleware: ``{"request": ...}`` only when a module changed the model."""
+        try:
+            if not self.core.hosting or not isinstance(request, dict):
+                return None
+            changed = self.core.bridge.dispatch_llm_request(request, context)
+        except Exception:
+            return None
+        return {"request": changed} if changed is not None else None
 
     def driver_alive(self) -> bool:
         return self._thread is not None and self._thread.is_alive()

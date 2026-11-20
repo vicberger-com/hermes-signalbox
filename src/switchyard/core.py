@@ -17,6 +17,7 @@ from typing import Any
 
 import switchyard
 from switchyard.audit import AuditLog, AuditRecord, VerifyResult
+from switchyard.bridge import HermesBridge
 from switchyard.capabilities import CORE_ACTOR, PolicyEngine
 from switchyard.config import CoreConfig, load_config
 from switchyard.context import MemoryActionRegistry, MemoryPanelRegistry
@@ -104,6 +105,7 @@ class Core:
         self.actions = MemoryActionRegistry()
         self.processes = ProcessBroker(self.policy, self.audit)
         self.files = FsBroker(self.policy, self.audit)
+        self.bridge = HermesBridge(self.audit)
         self.secrets = SecretsBroker(list(secret_backends), self.policy, self.audit, self.redactor)
         trusted = list(trusted_roots) if trusted_roots is not None else [BUILTIN_MODULES]
         roots = (
@@ -115,11 +117,17 @@ class Core:
             brokers={"secrets.read": self.secrets, "process.spawn": self.processes, "fs.read": self.files},
             actions=self.actions,
             secret_backends=self.secrets, config=lambda mid: self.config.modules.get(mid, {}),
+            bridge=self.bridge, call=self._module_call,
         )  # fmt: skip
         self.manager.discover(roots)
         self.updates = UpdateController(self.manager, self.audit, self.data_dir, fetcher or GitFetcher())
         self._lock = threading.RLock()
         self._closed = False
+
+    def _module_call(self, caller: str, module_id: str, action: str, args: Mapping[str, Any]) -> Any:
+        from switchyard.ops import run_action
+
+        return run_action(self, module_id, action, args, actor=f"module:{caller}", read_only_only=True)
 
     def verify_audit(self) -> VerifyResult:
         return self.audit_log.verify(expected_head=self.audit.stored_head())

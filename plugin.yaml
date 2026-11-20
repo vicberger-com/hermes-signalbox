@@ -12,7 +12,14 @@ provides_tools:
   - switchyard_modules
   - switchyard_audit
   - switchyard_host
-provides_hooks: []
+provides_hooks:
+  - api_request_error
+  - post_api_request
+  - post_llm_call
+  - pre_api_request
+  - pre_llm_call
+provides_middleware:
+  - llm_request
 config_schema:
   data_dir:
     type: string

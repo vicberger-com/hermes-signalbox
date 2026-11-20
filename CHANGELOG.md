@@ -4,6 +4,12 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- Hermes hook bridge (ADR-0004): modules granted `hermes.hooks` observe `pre_llm_call`, `pre_api_request`,
+  `post_api_request`, `api_request_error`, `post_llm_call` and register `llm_request` middleware that may
+  change only the request's `model`; failures are isolated and audited. `ctx.call` runs another module's
+  read-only action.
+
 ## [0.3.0] - 2026-11-19
 
 Phase M2: resource registry and pools.
