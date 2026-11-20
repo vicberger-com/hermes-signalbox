@@ -131,15 +131,6 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 | D-23 | Fixed | #80 | CI matrix 3.11 to 3.14; leaking SQLite connections in tests closed |
 | D-24 | Fixed | #80 | `tools/release_notes.py` feeds `--notes-file`; compare links in the CHANGELOG; post-tag changes under `[Unreleased]` |
 | D-25 | Fixed | #80 | `hatchling>=1.27,<2` in `[build-system]` |
-| D-1 | Fixed | #79 | Guide grants `ui.panel`; table of capabilities needed to start; walkthrough test runs the guide on every CI OS |
-| D-7 | Fixed | #79 | Guide step 0 is `switchyard api serve`; `[daemon]` marks in `--help`, the guide and REFERENCE |
-| D-8 | Fixed | #79 | Failed results exit 1 naming the missing grants; `missing_grants` in list/show; inactive panel message |
-| D-9 | Fixed | #79 | SIGTERM/SIGBREAK handlers; client clears files left by a dead daemon under `host.lock`; 0.5 s connect timeout |
-| D-10 | Fixed | #79 | Guide section 2 explains the two stores; `config show` prints `data_dir_source` |
-| D-20 | Fixed | #79 | Description lists only the enum's actions; test keeps them equal |
-| D-26 | Fixed | #79 | Unknown capability exits 2; dotted nested output; readiness line flushed |
-| B-20 | Fixed | #79 | `_unsupported` runs the Host/Origin check first |
-| B-24 | Fixed | #79 | `handle_error` is silent for dropped connections, one line (class only) otherwise |
 | D-2 | Fixed | WP4 | `find_runnable` tries each `PATH` candidate with `--version`; `[tools] git` override; `config show` names it; git tests run on this workstation |
 | D-15 | Fixed | WP4 | Test forces an absolute working-directory hit on every OS; shared `_outside_cwd` check also guards `program_candidates` |
 
