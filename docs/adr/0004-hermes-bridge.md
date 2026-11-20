@@ -17,15 +17,18 @@ registry's candidate list (M2) without reading another module's tables.
 2. **Adapter.** `switchyard.hermes` registers, once, one Hermes callback per supported observer hook
    (`pre_llm_call`, `pre_api_request`, `post_api_request`, `api_request_error`, `post_llm_call`) and the
    `llm_request` middleware, each forwarding to the bridge in the hosting process.
-3. **Isolation.** Every module callback gets a shallow copy of the hook arguments; exceptions are caught,
-   audited (`module.hook_failed`, class name only) and the turn continues. Observer return values are ignored.
+3. **Isolation.** Every module callback gets a deep copy of the hook arguments and runs on a worker thread
+   with a 2 s timeout (`module.hook_timeout`); exceptions are caught and audited (`module.hook_failed`, class
+   name only); the turn continues either way. Observer return values are ignored.
 4. **Middleware limits.** An `llm_request` callback returns `None` (no change) or a new request dict. The
-   bridge accepts it only if it differs from the input in the `model` key alone and the new model is a
-   non-empty string; anything else is discarded and audited (`module.middleware_rejected`). Base URL,
-   credentials, messages and tools can never be changed by a module.
+   bridge accepts it only if it differs from the input in the `model` key alone (type-strict comparison) and
+   the new model is a non-empty string; anything else is discarded and audited (`module.middleware_rejected`).
+   Only the `model` value is adopted into the live request, so base URL, credentials, messages and tools can
+   never be changed by a module.
 5. **Cross-module calls.** `ctx.call(module_id, action, args)` runs another module's **read-only** action
    through the same validation as `module action`, with actor `module:<caller>`. Writes across modules are not
-   possible.
+   possible. No capability is needed, so **read-only actions must return no secret or sensitive data**
+   (they are also visible to the Hermes model).
 
 ## Consequences
 

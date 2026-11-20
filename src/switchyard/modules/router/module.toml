@@ -1,0 +1,28 @@
+# Bundled module M3: router and failover. Spec: README.md in this directory.
+schema = 1
+
+[module]
+id = "router"
+name = "Router"
+version = "0.4.0"
+license = "Apache-2.0"
+license_class = "open"
+summary = "Picks the model for each Hermes request from the registry: free first, paid only by rule and budget, failover with cool-down."
+requires_core = ">=0.1,<1"
+isolation = "in-process"
+entry = "router_module:RouterModule"
+
+[capabilities]
+request = ["hermes.hooks", "llm.free", "llm.paid", "ui.panel"]
+
+[contributes]
+hooks = ["middleware:llm_request", "api_request_error"]
+commands = ["status", "explain", "pin", "auto", "rule_add", "rule_remove", "budget", "cooldown_clear"]
+panels = ["router.status"]
+log_streams = ["router"]
+
+[lifecycle]
+activation = "auto"
+
+[update]
+source = "bundled"

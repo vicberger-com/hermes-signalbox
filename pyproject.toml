@@ -58,6 +58,7 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
 # Bandit's B608 is still marked per line with "nosec B608".
 "src/switchyard/modules/secrets/secrets_module.py" = ["S608"]
 "src/switchyard/modules/resources/resources_module.py" = ["S608"]
+"src/switchyard/modules/router/router_module.py" = ["S608"]
 
 [tool.mypy]
 python_version = "3.11"

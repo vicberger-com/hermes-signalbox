@@ -8,7 +8,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Hermes hook bridge (ADR-0004): modules granted `hermes.hooks` observe `pre_llm_call`, `pre_api_request`,
   `post_api_request`, `api_request_error`, `post_llm_call` and register `llm_request` middleware that may
   change only the request's `model`; failures are isolated and audited. `ctx.call` runs another module's
-  read-only action.
+  read-only action; `ctx.has(capability)` checks a grant without an audit record.
+- Bundled `router` module (M3): picks the model for each Hermes request from the consumer's registry pool
+  within the active provider: tiers T1-T5 by request size, free and self-hosted first, paid only with the
+  `llm.paid` grant + a tier rule + daily budget (each paid choice audited), pins, failover with cool-down
+  across Hermes retries, bounded per turn. Decisions keep no prompt text.
 
 ## [0.3.0] - 2026-11-19
 

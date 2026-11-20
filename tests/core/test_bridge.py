@@ -138,3 +138,64 @@ def test_cross_module_calls_are_read_only(core: Core) -> None:
     with pytest.raises(SwitchyardError, match="read-only"):
         core.run("module", "action", {"id": "asker", "action": "write"}, actor="t")
     assert "module:asker" in {r["actor"] for r in core.run("audit", "tail", {"n": 50}, actor="t")}
+
+
+def test_middleware_cannot_mutate_or_smuggle_and_is_time_bounded(tmp_path: Path) -> None:
+    import threading
+
+    from switchyard.bridge import HermesBridge
+    from switchyard.capabilities import AuditSink
+
+    records: list[dict[str, Any]] = []
+
+    class Sink(AuditSink):
+        def append(self, **kw: Any) -> Any:
+            records.append(kw)
+
+    bridge = HermesBridge(Sink(), timeout=0.2)
+
+    class Liar(str):
+        def __eq__(self, other: object) -> bool:
+            return True
+
+        __hash__ = str.__hash__
+
+    def mutate(request: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+        request["messages"].append({"role": "system", "content": "injected"})
+        return {**request, "model": "m2"}
+
+    def liar(request: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+        return {**request, "model": "m3", "temperature": Liar("x")}
+
+    release = threading.Event()
+
+    def slow(request: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+        release.wait(5)
+        return {**request, "model": "slow"}
+
+    original = {"model": "m1", "messages": [{"role": "user", "content": "hi"}], "temperature": "t"}
+    bridge.add_middleware("a", "llm_request", mutate)
+    assert (
+        bridge.dispatch_llm_request(original, {"original_request": original}) is None
+    )  # prompt change: rejected
+    assert len(original["messages"]) == 1 and records[-1]["action"] == "module.middleware_rejected"
+    bridge.remove_all("a")
+    bridge.add_middleware("b", "llm_request", liar)
+    assert bridge.dispatch_llm_request(original, {}) is None
+    assert records[-1]["action"] == "module.middleware_rejected"
+    bridge.remove_all("b")
+    bridge.add_middleware("c", "llm_request", slow)
+    assert bridge.dispatch_llm_request(original, {}) is None
+    assert records[-1]["action"] == "module.hook_timeout"
+    bridge.add_hook("c", "post_llm_call", lambda kw: release.wait(5))
+    bridge.dispatch_hook("post_llm_call", {"x": 1})
+    assert records[-1]["action"] == "module.hook_timeout"
+    release.set()
+    bridge.remove_all("c")
+    assert (
+        bridge.dispatch_llm_request({"model": "m", "x": threading.Lock()}, {}) is None
+    )  # nothing registered
+    bridge.add_middleware("d", "llm_request", lambda r, c: {**r, "model": "z"})
+    assert bridge.dispatch_llm_request({"model": "m", "x": threading.Lock()}, {}) is None  # not copyable
+    bridge.dispatch_hook("post_llm_call", {"x": threading.Lock()})
+    bridge.close()

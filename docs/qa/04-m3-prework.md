@@ -52,12 +52,18 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 
 ## 4. Acceptance tests (written before code)
 
-- [ ] Deterministic routing per tier (T1 to T5) over a fixed candidate list.
-- [ ] Paid never used without a matching rule, the `llm.paid` grant and remaining budget.
-- [ ] Failover within a bounded number of attempts; a failed resource cools down.
-- [ ] Every paid decision audited.
+- [x] Deterministic routing per tier (T1 to T5) over a fixed candidate list.
+- [x] Paid never used without a matching rule, the `llm.paid` grant and remaining budget.
+- [x] Failover within a bounded number of attempts; a failed resource cools down.
+- [x] Every paid decision audited.
 
 ## 5. Retro (fill in after merge)
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| Hook payloads look like the middleware request | `api_request_error` carries the sanitized kwargs under `request.body` and the agent's configured model at the top level; read the real Hermes source shape and use it in tests | Every module that consumes Hermes hooks (M4 metering) |
+| Routing only needs to gate what it chooses | Pass-through sends the configured default; a gate must cover the fallback path too | Any policy module |
+| Shallow copies isolate callbacks | Nested lists are shared; deep-copy inputs and adopt only the allowed field | Bridge, any future middleware kind |
+| Exception isolation is enough | A hung callback stalls every turn; bound time too | Bridge |
+| A frozen test clock is harmless | Ids built from the clock collide; add a sequence | Any module ordering by time |
+
