@@ -25,6 +25,8 @@ class FakeCtx:
         self.cli: dict[str, dict[str, Any]] = {}
         self.idle: dict[str, dict[str, Any]] = {}
         self.patterns: list[str] = []
+        self.hooks: dict[str, Callable[..., Any]] = {}
+        self.middleware: dict[str, Callable[..., Any]] = {}
 
     def get_config(self, key: str, default: Any = None) -> Any:
         return self.settings.get(key, default)
@@ -54,6 +56,12 @@ class FakeCtx:
     def register_redaction_patterns(self, patterns: list[str]) -> int:
         self.patterns.extend(patterns)
         return len(patterns)
+
+    def register_hook(self, name: str, fn: Callable[..., Any]) -> None:
+        self.hooks[name] = fn
+
+    def register_middleware(self, kind: str, fn: Callable[..., Any]) -> None:
+        self.middleware[kind] = fn
 
 
 @pytest.fixture(autouse=True)
@@ -191,3 +199,31 @@ def test_data_dir_setting_overrides_plugin_data(tmp_path: Path) -> None:
         assert adapter_mod.current().core.data_dir == custom
     finally:
         adapter_mod.shutdown()
+
+
+def test_hooks_and_middleware_are_forwarded_to_the_bridge(
+    ctx: FakeCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    register(ctx)
+    assert set(ctx.hooks) == {
+        "pre_llm_call",
+        "pre_api_request",
+        "post_api_request",
+        "api_request_error",
+        "post_llm_call",
+    }
+    assert set(ctx.middleware) == {"llm_request"}
+    assert ctx.middleware["llm_request"](request={"model": "x"}, provider="p") is None  # no module changed it
+    ctx.hooks["post_api_request"](model="x", usage={})  # no subscribers: no error
+    bridge = adapter_mod.current().core.bridge
+    monkeypatch.setattr(bridge, "dispatch_llm_request", lambda r, c: {**r, "model": "y"})
+    assert ctx.middleware["llm_request"](request={"model": "x"}) == {"request": {"model": "y"}}
+    assert ctx.middleware["llm_request"](request="not a dict") is None
+
+    def broken(*_a: Any, **_k: Any) -> None:
+        raise RuntimeError("bridge bug")
+
+    monkeypatch.setattr(bridge, "dispatch_hook", broken)
+    monkeypatch.setattr(bridge, "dispatch_llm_request", broken)
+    ctx.hooks["pre_llm_call"](user_message="hi")  # swallowed: never breaks a Hermes turn
+    assert ctx.middleware["llm_request"](request={"model": "x"}) is None

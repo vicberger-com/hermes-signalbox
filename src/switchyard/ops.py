@@ -196,10 +196,20 @@ def _module_remove(core: Core, p: dict[str, Any], actor: str) -> Any:
 )  # fmt: skip
 def _module_action(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
-    action = core.actions.get(p["id"], p["action"])
-    if actor == MODEL_ACTOR and not action.read_only:
+    return run_action(core, p["id"], p["action"], p["args"] or {}, actor=actor,
+                      read_only_only=actor == MODEL_ACTOR)  # fmt: skip
+
+
+def run_action(
+    core: Core, module_id: str, name: str, raw: Mapping[str, Any], *, actor: str, read_only_only: bool
+) -> Any:
+    """Validate and run one module action; shared by ``module action`` and ``ctx.call`` (ADR-0004)."""
+    action = core.actions.get(module_id, name)
+    if read_only_only and not action.read_only:
         raise SwitchyardError(f"action {action.name!r} is not read-only; run it from /switchyard or the CLI")
-    raw = p["args"] or {}
+    if not isinstance(raw, Mapping):
+        raise UsageError("action arguments must be an object")
+    p = {"id": module_id}
     unknown = sorted(set(raw) - set(action.params))
     if unknown:
         raise UsageError(f"unknown argument(s) {unknown} for action {action.name!r}")

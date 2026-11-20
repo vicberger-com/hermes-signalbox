@@ -277,4 +277,10 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
 - `ModuleContext.provide_secret_backend(backend)`: in-process modules only, `secrets.read` granted, `backend.name`
   declared in `contributes.secret_backends` (`[a-z][a-z0-9_-]{0,31}`), unique across modules. Removed when the
   module's context closes. Audited `secret.backend_added` / `secret.backend_removed`.
+- `ctx.hermes_hook(name, fn)` / `ctx.hermes_middleware("llm_request", fn)` (ADR-0004): needs `hermes.hooks` and the
+  name (or `middleware:<kind>`) in `contributes.hooks`. The adapter registers one forwarder per hook and the
+  `llm_request` middleware with Hermes (`provides_hooks`, `provides_middleware` in `plugin.yaml`). Callbacks get
+  copies; exceptions are audited as `module.hook_failed`; a middleware result that changes anything other than
+  `model` is dropped (`module.middleware_rejected`).
+- `ctx.call(module_id, action, args)`: another module's read-only action, actor `module:<caller>`.
 

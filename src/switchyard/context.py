@@ -97,6 +97,8 @@ class ContextServices:
     actions: MemoryActionRegistry | None = None
     config: Callable[[str], Mapping[str, Any]] | None = None  # module id -> its [modules.<id>] settings
     audit: Any = None  # AuditSink for ``ctx.audit``
+    bridge: Any = None  # HermesBridge (ADR-0004)
+    call: Callable[[str, str, str, Mapping[str, Any]], Any] | None = None  # (caller, module, action, args)
     secret_backends: SecretBackendPort | None = None
 
 
@@ -204,6 +206,43 @@ class ModuleContext:
         self._services.audit.append(actor=self.module_id, action=f"module.{self.module_id}.{event}",
                                     module=self.module_id, detail=clean)  # fmt: skip
 
+    def call(self, module_id: str, action: str, args: Mapping[str, Any] | None = None) -> Any:
+        """Run another module's read-only action (ADR-0004)."""
+        self._open()
+        if self._services.call is None:
+            raise SwitchyardError("cross-module calls are not available in this host")
+        return self._services.call(self.module_id, module_id, action, dict(args or {}))
+
+    def _bridge_check(self, declared: str) -> Any:
+        self._open()
+        self._services.policy.require(self.module_id, "hermes.hooks", hook=declared)
+        if declared not in self._manifest.contributes["hooks"]:
+            raise SwitchyardError(
+                f"hook {declared!r} is not declared in contributes.hooks of {self.module_id!r}"
+            )
+        if self._services.bridge is None:
+            raise SwitchyardError("the Hermes bridge is not available in this host")
+        return self._services.bridge
+
+    def hermes_hook(self, name: str, fn: Callable[[dict[str, Any]], Any]) -> None:
+        """Observe a Hermes hook (``fn(kwargs)``; return value ignored). Needs ``hermes.hooks``."""
+        from switchyard.bridge import OBSERVER_HOOKS
+
+        if name not in OBSERVER_HOOKS:
+            raise SwitchyardError(f"unsupported Hermes hook {name!r}; supported: {sorted(OBSERVER_HOOKS)}")
+        self._bridge_check(name).add_hook(self.module_id, name, fn)
+
+    def hermes_middleware(self, kind: str, fn: Callable[[dict[str, Any], dict[str, Any]], Any]) -> None:
+        """Register Hermes middleware: ``fn(request, context) -> new request | None``.
+
+        Needs ``hermes.hooks``; only the ``model`` key may change (ADR-0004).
+        """
+        from switchyard.bridge import MIDDLEWARE_KINDS
+
+        if kind not in MIDDLEWARE_KINDS:
+            raise SwitchyardError(f"unsupported middleware {kind!r}; supported: {sorted(MIDDLEWARE_KINDS)}")
+        self._bridge_check(f"middleware:{kind}").add_middleware(self.module_id, kind, fn)
+
     def health_report(self, ok: bool, detail: str = "") -> None:
         """Push a health state between ``health()`` polls. ``detail`` must not contain secret values."""
         self._open()
@@ -299,3 +338,5 @@ class ModuleContext:
             self._services.actions.remove_all(self.module_id)
         if self._services.secret_backends is not None:
             self._services.secret_backends.remove_backends(self.module_id)
+        if self._services.bridge is not None:
+            self._services.bridge.remove_all(self.module_id)
