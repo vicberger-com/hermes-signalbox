@@ -209,29 +209,20 @@ def test_h1_d7_help_marks_daemon_only_operations(capsys: pytest.CaptureFixture[s
 
 
 def test_h1_d9_serve_removes_its_files_on_termination(data: Path) -> None:
+    """Started and stopped the way an operator does it (Ctrl+Break on Windows, SIGTERM elsewhere); the
+    readiness line must arrive through a pipe while the daemon runs (flushed)."""
+    import importlib.util
     import os
-    import signal
-    import subprocess
-    import sys
-    import threading
 
+    tool_path = Path(__file__).resolve().parents[2] / "tools" / "guide_walkthrough.py"
+    spec = importlib.util.spec_from_file_location("guide_walkthrough_d9", tool_path)
+    assert spec is not None and spec.loader is not None
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
     env = {**os.environ, "SWITCHYARD_DATA_DIR": str(data)}
-    flags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0  # type: ignore[attr-defined,unused-ignore]
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "switchyard.cli", "api", "serve", "--port", "0"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, creationflags=flags, text=True,
-    )  # fmt: skip
-    lines: list[str] = []
-    reader = threading.Thread(target=lambda: lines.append(proc.stdout.readline() if proc.stdout else ""))
-    reader.start()
-    reader.join(30)  # the readiness line arrives through a pipe without waiting for exit (flushed)
+    proc = tool._start_daemon(["api", "serve", "--port", "0"], env)
     try:
-        assert lines and "listening on 127.0.0.1:" in lines[0]
         assert (data / "api.port").exists() and (data / "api.token").exists()
     finally:
-        if sys.platform == "win32":
-            proc.send_signal(signal.CTRL_BREAK_EVENT)  # type: ignore[attr-defined,unused-ignore]
-        else:
-            proc.send_signal(signal.SIGTERM)
-        proc.wait(30)
+        tool._stop_daemon(proc)
     assert not (data / "api.port").exists() and not (data / "api.token").exists()

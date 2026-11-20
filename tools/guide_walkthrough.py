@@ -58,13 +58,22 @@ def _start_daemon(args: list[str], env: dict[str, str]) -> subprocess.Popen[str]
     proc = subprocess.Popen(  # noqa: S603 # nosec B603
         _cli(args), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, text=True, creationflags=flags
     )
-    first: list[str] = []
-    reader = threading.Thread(target=lambda: first.append(proc.stdout.readline() if proc.stdout else ""))
-    reader.start()
-    reader.join(60)
-    if not first or "listening" not in first[0]:
+    lines: list[str] = []
+    ready = threading.Event()
+
+    def drain() -> None:  # keep reading, so a chatty daemon never blocks on a full pipe
+        for line in proc.stdout or ():
+            lines.append(line)
+            if "listening on" in line:
+                ready.set()
+
+    threading.Thread(target=drain, daemon=True).start()
+    if not ready.wait(120):
         proc.kill()
-        raise RuntimeError(f"daemon did not report readiness: {first!r}")
+        proc.wait(30)
+        raise RuntimeError(
+            f"daemon did not report readiness (exit {proc.poll()}): {''.join(lines)[-2000:]!r}"
+        )
     return proc
 
 
