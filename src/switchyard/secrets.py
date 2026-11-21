@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, TypeVar
 
 from switchyard.capabilities import AuditSink, PolicyEngine
-from switchyard.errors import SwitchyardError
+from switchyard.errors import NotAvailable, SwitchyardError
 
 T = TypeVar("T")
 REF_PREFIX = "secret://"
@@ -47,7 +47,7 @@ DEFAULT_PATTERNS: tuple[str, ...] = (
 )
 
 
-class SecretUnavailable(SwitchyardError):
+class SecretUnavailable(NotAvailable):
     """No available backend holds the secret (or the backend is locked). Fail closed."""
 
 

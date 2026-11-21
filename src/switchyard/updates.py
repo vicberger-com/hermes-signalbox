@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from switchyard.capabilities import CORE_ACTOR, AuditSink
-from switchyard.errors import ManifestError, SwitchyardError, UpdateError
+from switchyard.errors import ChannelNotFound, ManifestError, SwitchyardError, UpdateError
 from switchyard.gitfetch import (
     _CHANNEL as _CHANNEL,
 )
@@ -380,7 +380,7 @@ class UpdateController:
                 out.append(self.check(info.id))
             except UpdateError as exc:
                 # Generic text: messages can carry local paths, and check results reach core.read modules.
-                reason = "channel not found" if "not found" in str(exc) else "check failed"
+                reason = "channel not found" if isinstance(exc, ChannelNotFound) else "check failed"
                 self._record("module.update_check_failed", info.id, CORE_ACTOR, reason=str(exc)[:300])
                 out.append({"id": info.id, "channel": m.update_channel, "error": reason})
         return out

@@ -26,7 +26,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from switchyard.capabilities import AuditSink, PolicyEngine
-from switchyard.errors import SwitchyardError
+from switchyard.errors import SwitchyardError, UsageError
 
 DEFAULT_MAX_BYTES = 1 << 20
 CEILING_BYTES = 32 << 20
@@ -75,7 +75,7 @@ def check_local_path(path: str | Path, *, windows: bool | None = None) -> Path:
             )
         for part in pure.parts[1:]:
             if _device_stem(part) in _RESERVED:
-                raise SwitchyardError("fs.read refuses Windows device names")
+                raise UsageError("fs.read refuses Windows device names")
         return Path(text)
     if not text.startswith("/"):
         raise SwitchyardError("fs.read needs an absolute path")
@@ -111,7 +111,7 @@ class FsBroker:
             or isinstance(max_bytes, bool)
             or not 0 < max_bytes <= CEILING_BYTES
         ):
-            raise SwitchyardError(f"max_bytes must be between 1 and {CEILING_BYTES}")
+            raise UsageError(f"max_bytes must be between 1 and {CEILING_BYTES}")
         self._policy.require(module_id, "fs.read", path=str(raw))
         flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
         try:

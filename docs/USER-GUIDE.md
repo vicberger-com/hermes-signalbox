@@ -68,7 +68,8 @@ switchyard config show            # data directory in use, why, and core setting
 
 In a Hermes session the same operations are under `/switchyard`, for example `/switchyard module list`.
 
-Exit codes: 0 success, 1 error or a failed result, 2 usage error, 3 capability denied.
+Exit codes: 0 success, 1 error or a failed result, 2 usage error (unknown name or invalid value), 3 refused by
+policy (capability not granted, or not declared by the module).
 
 **When Hermes hosts the modules** (Hermes Desktop, or any running gateway: it serves every profile and loads the
 plugin as soon as it is enabled). The gateway is then the hosting process, so do not start `switchyard api

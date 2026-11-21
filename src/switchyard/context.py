@@ -18,55 +18,13 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import Any, Protocol
 
-from switchyard.capabilities import AuditSink, PolicyEngine
+from switchyard.capabilities import PolicyEngine
 from switchyard.errors import NotAvailable, PolicyRefused, SwitchyardError, UsageError
 from switchyard.manifest import Manifest
 
 _EVENT_SUFFIX = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*\Z")
-
-
-if TYPE_CHECKING:  # the facade classes, for annotations only: importing them here would be circular
-    from switchyard.core import CoreView
-    from switchyard.fsread import ModuleFs
-    from switchyard.hermesconfig import ModuleConfig
-    from switchyard.net import ModuleNet
-    from switchyard.notify import ModuleNotify
-    from switchyard.process import ModuleProcess
-    from switchyard.schedule import ModuleSchedule
-    from switchyard.secrets import ModuleSecrets
-    from switchyard.state import ModuleState
-
-
-def _facade_types() -> dict[str, type]:
-    """The facade classes by name, imported on demand (``typing.get_type_hints`` on ``ModuleContext``)."""
-    from switchyard.core import CoreView
-    from switchyard.fsread import ModuleFs
-    from switchyard.hermesconfig import ModuleConfig
-    from switchyard.net import ModuleNet
-    from switchyard.notify import ModuleNotify
-    from switchyard.process import ModuleProcess
-    from switchyard.schedule import ModuleSchedule
-    from switchyard.secrets import ModuleSecrets
-    from switchyard.state import ModuleState
-
-    classes: list[type] = [CoreView, ModuleFs, ModuleConfig, ModuleNet, ModuleNotify, ModuleProcess]
-    classes += [ModuleSchedule, ModuleSecrets, ModuleState]
-    return {c.__name__: c for c in classes}
-
-
-class BridgePort(Protocol):
-    """What a module context uses of the Hermes bridge (ADR-0004); ``HermesBridge`` implements it."""
-
-    def add_hook(self, module_id: str, name: str, fn: Callable[..., Any]) -> None: ...
-    def add_gate(self, module_id: str, fn: Callable[..., Any]) -> None: ...
-    def add_transform(self, module_id: str, kind: str, fn: Callable[..., Any]) -> None: ...
-    def add_middleware(
-        self, module_id: str, kind: str, fn: Callable[..., Any], fallback: Callable[..., Any] | None = None
-    ) -> None: ...
-    def set_delegation(self, module_id: str, route: Callable[..., Any], roles: Callable[[], Any]) -> None: ...
-    def remove_all(self, module_id: str) -> None: ...
 
 
 class LogSink(Protocol):
@@ -136,11 +94,11 @@ class ContextServices:
     panels: PanelRegistry
     bus: EventBusPort
     brokers: Mapping[str, object] = field(default_factory=dict)
-    state: Callable[[str], ModuleState] | None = None  # module id -> namespaced store (``StateStore.module``)
+    state: Callable[[str], object] | None = None  # module id -> namespaced store (``StateStore.module``)
     actions: MemoryActionRegistry | None = None
     config: Callable[[str], Mapping[str, Any]] | None = None  # module id -> its [modules.<id>] settings
-    audit: AuditSink | None = None  # for ``ctx.audit``
-    bridge: BridgePort | None = None  # HermesBridge (ADR-0004)
+    audit: Any = None  # AuditSink for ``ctx.audit``
+    bridge: Any = None  # HermesBridge (ADR-0004)
     call: Callable[[str, str, str, Mapping[str, Any]], Any] | None = None  # (caller, module, action, args)
     secret_backends: SecretBackendPort | None = None
 
@@ -278,7 +236,7 @@ class ModuleContext:
         self._services.bus.subscribe(self.module_id, type_, handler)
 
     @property
-    def state(self) -> ModuleState:
+    def state(self) -> object:
         """This module's namespaced store (tables ``m_<id>__*`` and key/value rows)."""
         self._open()
         if self._services.state is None:
@@ -319,12 +277,10 @@ class ModuleContext:
             raise NotAvailable("cross-module calls are not available in this host")
         return self._services.call(self.module_id, module_id, action, dict(args or {}))
 
-    def _hermes_port(self, capability: str, declared: str | None, **detail: str) -> BridgePort:
-        """The shared checks of every Hermes registration (H1 A-30): the context is open, ``capability`` is
-        held, ``declared`` (when given) is listed in ``contributes.hooks``, and this host has a bridge."""
+    def _bridge_check(self, declared: str) -> Any:
         self._open()
-        self._services.policy.require(self.module_id, capability, **detail)
-        if declared is not None and declared not in self._manifest.contributes["hooks"]:
+        self._services.policy.require(self.module_id, "hermes.hooks", hook=declared)
+        if declared not in self._manifest.contributes["hooks"]:
             raise SwitchyardError(
                 f"hook {declared!r} is not declared in contributes.hooks of {self.module_id!r}"
             )
@@ -338,14 +294,13 @@ class ModuleContext:
 
         if name not in OBSERVER_HOOKS:
             raise SwitchyardError(f"unsupported Hermes hook {name!r}; supported: {sorted(OBSERVER_HOOKS)}")
-        self._hermes_port("hermes.hooks", name, hook=name).add_hook(self.module_id, name, fn)
+        self._bridge_check(name).add_hook(self.module_id, name, fn)
 
     def hermes_gate(self, fn: Callable[[dict[str, Any]], str | None]) -> None:
         """Register a turn gate (ADR-0006): ``fn(metadata) -> reason | None`` runs before each Hermes turn; a
         reason blocks the turn with that message. Needs ``hermes.hooks`` and ``gate:pre_llm_call`` declared in
         ``contributes.hooks``."""
-        gate = "gate:pre_llm_call"
-        self._hermes_port("hermes.hooks", gate, hook=gate).add_gate(self.module_id, fn)
+        self._bridge_check("gate:pre_llm_call").add_gate(self.module_id, fn)
 
     def hermes_transform(self, kind: str, fn: Callable[[tuple[str, ...], dict[str, Any]], Any]) -> None:
         """Shorten Hermes output (ADR-0008): ``kind`` is ``terminal_output`` or ``tool_result``;
@@ -354,15 +309,26 @@ class ModuleContext:
         ``contributes.hooks``."""
         if kind not in ("terminal_output", "tool_result"):
             raise SwitchyardError(f"unsupported transform {kind!r}")
-        port = self._hermes_port("hermes.output", f"transform:{kind}", transform=kind)
-        port.add_transform(self.module_id, kind, fn)
+        self._open()
+        self._services.policy.require(self.module_id, "hermes.output", transform=kind)
+        if f"transform:{kind}" not in self._manifest.contributes["hooks"]:
+            raise SwitchyardError(
+                f"hook 'transform:{kind}' is not declared in contributes.hooks of {self.module_id!r}"
+            )
+        if self._services.bridge is None:
+            raise NotAvailable("the Hermes bridge is not available in this host")
+        self._services.bridge.add_transform(self.module_id, kind, fn)
 
     def hermes_delegation(self, route: Callable[[dict[str, Any]], Any], roles: Callable[[], Any]) -> None:
         """Route Hermes ``delegate_task`` tasks (ADR-0007). ``roles() -> [(name, description)]`` feeds the
         ``worker_role`` schema enum;
         ``route(meta) -> {"model", "provider"} | {"profile"} | {"refuse": code}``.
         Needs ``hermes.delegation``; one module at a time."""
-        self._hermes_port("hermes.delegation", None).set_delegation(self.module_id, route, roles)
+        self._open()
+        self._services.policy.require(self.module_id, "hermes.delegation")
+        if self._services.bridge is None:
+            raise NotAvailable("the Hermes bridge is not available in this host")
+        self._services.bridge.set_delegation(self.module_id, route, roles)
 
     def hermes_middleware(
         self,
@@ -380,8 +346,7 @@ class ModuleContext:
 
         if kind not in MIDDLEWARE_KINDS:
             raise SwitchyardError(f"unsupported middleware {kind!r}; supported: {sorted(MIDDLEWARE_KINDS)}")
-        hook = f"middleware:{kind}"
-        self._hermes_port("hermes.hooks", hook, hook=hook).add_middleware(self.module_id, kind, fn, fallback)
+        self._bridge_check(f"middleware:{kind}").add_middleware(self.module_id, kind, fn, fallback)
 
     def health_report(self, ok: bool, detail: str = "") -> None:
         """Push a health state between ``health()`` polls. ``detail`` must not contain secret values."""
@@ -442,48 +407,46 @@ class ModuleContext:
         return _Guarded(facade, self, capability)
 
     @property
-    def notify(self) -> ModuleNotify:
+    def notify(self) -> object:
         """Operator notifications (ADR-0009): ``ctx.notify.send(severity, title, detail)``.
         Needs ``notify``."""
-        return cast("ModuleNotify", self._broker("notify"))  # a _Guarded proxy with that interface
+        return self._broker("notify")
 
     @property
-    def secrets(self) -> ModuleSecrets:
+    def secrets(self) -> object:
         """Secrets broker facade. Needs ``secrets.read``."""
-        return cast("ModuleSecrets", self._broker("secrets.read"))  # a _Guarded proxy with that interface
+        return self._broker("secrets.read")
 
     @property
-    def net(self) -> ModuleNet:
+    def net(self) -> object:
         """Outbound network facade (host allow-list enforced inside). Needs ``net.outbound``."""
-        return cast("ModuleNet", self._broker("net.outbound"))  # a _Guarded proxy with that interface
+        return self._broker("net.outbound")
 
     @property
-    def schedule(self) -> ModuleSchedule:
+    def schedule(self) -> object:
         """Trigger registration facade. Needs ``schedule``."""
-        return cast("ModuleSchedule", self._broker("schedule"))  # a _Guarded proxy with that interface
+        return self._broker("schedule")
 
     @property
-    def fs(self) -> ModuleFs:
+    def fs(self) -> object:
         """File-read facade (ADR-0003). Needs ``fs.read``."""
-        return cast("ModuleFs", self._broker("fs.read"))  # a _Guarded proxy with that interface
+        return self._broker("fs.read")
 
     @property
-    def core(self) -> CoreView:
+    def core(self) -> object:
         """Read-only view of module states and the audit chain (ADR-0006). Needs ``core.read``."""
-        return cast("CoreView", self._broker("core.read"))  # a _Guarded proxy with that interface
+        return self._broker("core.read")
 
     @property
-    def hermes_config(self) -> ModuleConfig:
+    def hermes_config(self) -> object:
         """Hermes config writes (ADR-0005): allow-listed keys, backed up, audited, rolled back on failure.
         Needs ``hermes.config.write``."""
-        return cast(
-            "ModuleConfig", self._broker("hermes.config.write")
-        )  # a _Guarded proxy with that interface
+        return self._broker("hermes.config.write")
 
     @property
-    def spawn(self) -> ModuleProcess:
+    def spawn(self) -> object:
         """Process launcher facade. Needs ``process.spawn``."""
-        return cast("ModuleProcess", self._broker("process.spawn"))  # a _Guarded proxy with that interface
+        return self._broker("process.spawn")
 
     # lifecycle ----------------------------------------------------------------------------------------
 

@@ -16,14 +16,11 @@ from typing import TYPE_CHECKING, Any
 
 from switchyard.capabilities import CAPABILITIES
 from switchyard.errors import CapabilityDenied, SwitchyardError
+from switchyard.errors import UsageError as UsageError  # re-exported: older imports use switchyard.ops
 from switchyard.hostinfo import profile
 
 if TYPE_CHECKING:
     from switchyard.core import Core
-
-
-class UsageError(SwitchyardError):
-    """The operation or its parameters are invalid."""
 
 
 # The actor the Hermes adapter uses for model-initiated tool calls. Human paths use other actors.
