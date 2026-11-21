@@ -4,11 +4,6 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
-### Fixed
-- Release workflow: the annotated-tag check fetches the pushed tag object first. `actions/checkout` rewrites a
-  pushed tag as a lightweight ref, so the check refused every tag; v1.0.1's release run stopped there and
-  published nothing.
-
 ## [1.0.1] - 2026-11-20
 
 Maintenance release from phase H1: fixes for the 2026-11-20 evaluation of v1.0.0 (every High and Medium
@@ -23,6 +18,11 @@ finding; index in `docs/qa/h1/findings-index.md`).
 - A grant whose capability a module's manifest no longer requests is removed (audited `policy.revoked`).
 - A module whose hooks time out 3 times is paused for 60 seconds (`module.hooks_paused`); an expired
   activation preset ends at the next turn.
+
+### Fixed
+- Release workflow: the annotated-tag check fetches the pushed tag object first (`actions/checkout`
+  rewrites a pushed tag as a lightweight ref, so the check refused every tag). The first `v1.0.1` tag's run
+  stopped there and published nothing; the tag was re-created on the fixed commit.
 
 ### Security
 - Module updates: the swap step re-checks, under the core lock, that the installed module is still the one
