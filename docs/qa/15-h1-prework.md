@@ -167,6 +167,16 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 | A-13 | Fixed | WP9 | `_recover` widens its window until the last record is whole; `MAX_RECORD_BYTES` 128 KiB |
 | A-14 | Fixed | WP9 | Write loop; zero progress raises `AuditError` without advancing the chain |
 | B-4 | Fixed | WP9 | Header fields cut to 256 characters; an over-long line is re-serialised with `{"truncated": true}` |
+| D-14 | Fixed | WP10 | Classifier `4 - Beta`; support and deprecation policy in SECURITY.md |
+| A-26 | Fixed | WP10 | m0-core section 4 lists what the bus actually publishes; `policy.denied` is audit-only |
+| A-28 | Fixed | WP10 | m0-core disposition corrected: CTEs allowed, bounded by the work budget and row cap |
+| C-11 | Fixed | WP10 | README and docstrings say `import_preview` is operator-only (code unchanged; matches R1) |
+| C-12 | Fixed | WP10 | Same as D-17 |
+| C-13 | Fixed | WP10 | `switchyard.modkit`: `StateTables` (7 modules), `int_setting` (5), `default_models_dev_cache` (2); no module splits |
+| D-16 | Fixed | WP10 | Pre-commit revs frozen to ruff v0.17.6 and gitleaks v8.30.1 (CI versions); note removed; test |
+| D-17 | Fixed | WP10 | Dashboard manifest 1.0.0; test that all version fields agree |
+| D-18 | Fixed | WP10 | Moved to `docs/qa/2026-11-20-docs-gap-audit-r1.md` with a historical note |
+| D-19 | Fixed | WP10 | "Generated" wording dropped; missing flags, directory, events and states added; test checks every operation |
 | D-25 | Fixed | #80 | `hatchling>=1.27,<2` in `[build-system]` |
 | D-2 | Fixed | #81 | `find_runnable` tries each `PATH` candidate with `--version`; `[tools] git` override; `config show` names it; git tests run on this workstation |
 | D-15 | Fixed | #81 | Test forces an absolute working-directory hit on every OS; shared `_outside_cwd` check also guards `program_candidates` |

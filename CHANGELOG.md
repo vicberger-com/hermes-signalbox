@@ -12,6 +12,17 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   never charge or record. Cool-downs are never shortened by a later error. Every request shape is sized.
 
 ### Changed
+- Project status is **Beta** (`Development Status :: 4 - Beta`; H1 D-14). SECURITY.md states the support and
+  deprecation policy: breaking changes only in minor releases, with the operator step in this file.
+- Documentation and metadata (H1 WP10). The dashboard manifest version matches the package, and a test checks
+  every version field (D-17). Pre-commit hooks are pinned to the same ruff and gitleaks versions as CI (D-16).
+  REFERENCE.md no longer claims to be generated; it documents `--json`, `--data-dir`, `backup/`, the
+  `trigger.*` and `module.*` events and the module states and modes, and a test checks every operation is
+  listed (D-19). `docs_gap_audit.md` moved to `docs/qa/` as a historical record (D-18). DESIGN section 6 lists
+  only the Hermes mechanisms the plugin uses. Docs corrected: `policy.denied` is an audit record, not an event
+  (A-26); CTEs are allowed and bounded by the work budget (A-28); the resources module's `import_preview` is
+  operator-only (C-11). Shared module helpers (`switchyard.modkit`) replace seven copies of the state helpers
+  and four of the integer-setting check (C-13).
 - Audit log and startup (H1 WP9). A torn last line (a crash mid-write) is repaired when the log is opened, so
   startup no longer reports it as tampering; a record whose final newline was stripped now fails `verify` (A-9).
   `audit tail` splits on `\n` only, so records holding U+2028/U+2029 read back (A-8). A failed start releases the

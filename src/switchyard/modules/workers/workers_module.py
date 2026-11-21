@@ -23,9 +23,11 @@ import secrets
 import threading
 import time
 from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 from switchyard.errors import SwitchyardError
+from switchyard.modkit import StateTables, int_setting
 
 _NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
 _PROFILE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")
@@ -47,14 +49,10 @@ def _line(text: str, limit: int) -> str:
     return " ".join(str(text).split())[:limit]
 
 
-def _int_setting(cfg: dict[str, Any], key: str, default: int, low: int, high: int) -> int:
-    value = cfg.get(key, default)
-    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
-        raise SwitchyardError(f"[modules.workers] {key} must be an integer from {low} to {high}")
-    return value
+_int_setting = partial(int_setting, "workers")
 
 
-class WorkersModule:
+class WorkersModule(StateTables):
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self.ctx: Any = None
         self.clock = clock
@@ -158,13 +156,6 @@ class WorkersModule:
         return True, f"{running} running, {stuck} stuck"
 
     # helpers ------------------------------------------------------------------------------------------
-
-    def _q(self, sql: str, params: tuple[Any, ...] = ()) -> list[tuple[Any, ...]]:
-        rows: list[tuple[Any, ...]] = self.ctx.state.execute(sql, params)
-        return rows
-
-    def _t(self, name: str) -> str:
-        return str(self.ctx.state.table(name))
 
     def _role(self, name: str) -> tuple[Any, ...] | None:
         cols = "name, description, profile, tier, max_minutes, paid"

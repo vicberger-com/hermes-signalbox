@@ -238,8 +238,10 @@ reactivate if it was running, health check; any failure restores the previous di
 
 ## 4. Events
 
-`module.discovered|verified|granted|revoked|activated|deactivated|failed|removed|updated|rolled_back`,
-`policy.denied`, `trigger.fired|skipped`, `audit.verify_failed`.
+Published on the event bus by the core: the lifecycle's `module.*` records (`module.verified`, `module.activated`,
+`module.deactivated`, `module.failed`, `module.removed`, ... as audited), `module.rejected` (`path`, `reason`),
+`trigger.fired` (`trigger`, `owner`), `trigger.skipped` (`trigger`, `owner`, `reason`) and `core.notify`.
+`policy.denied` and `audit.verify_failed` are audit records only, not events (H1 A-26).
 
 ## 5. Acceptance tests
 
@@ -266,7 +268,7 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
 
 | Finding | Disposition |
 |---|---|
-| Recursive-CTE or cross-join query exhausts CPU/memory | **Fixed.** CTEs were already refused by the authorizer; cross joins on a module's own tables are now bounded by a progress-handler work budget and a 10 000-row cap. Also fixed: `count(*)` was wrongly denied |
+| Recursive-CTE or cross-join query exhausts CPU/memory | **Fixed.** CTEs, including `WITH RECURSIVE`, are allowed by the authorizer (corrected in H1 A-28; some CTE forms are denied as table access); they and cross joins on a module's own tables are bounded by a progress-handler work budget and a 10 000-row cap. Also fixed: `count(*)` was wrongly denied |
 | Staged update may carry files that point outside the tree | **Fixed (adapted).** `.gitattributes`/`.gitmodules` are inert (no git runs on the staged tree after `.git` is removed), but symlinks are refused anywhere in a staged tree |
 | `api.token` readable by other Windows users | **Fixed (hardening).** Default data dirs already inherit a user-only profile ACL; the file now gets an explicit single-user ACL via `icacls`, failing closed |
 | Model tool can `activate` modules | **By design.** Activation uses only capabilities a human already granted; grants, modes and removal are not reachable from model tools |

@@ -1,7 +1,15 @@
 # Reference
 
-Generated from the code for v1.0.0 (operations table: `switchyard.ops.OPERATIONS`). How to use them:
-[USER-GUIDE.md](USER-GUIDE.md).
+Written by hand against the code (operations table: `switchyard.ops.OPERATIONS`; a test checks that every
+operation is listed here). How to use them: [USER-GUIDE.md](USER-GUIDE.md).
+
+Global CLI options, before the noun: `--json` (print results as JSON) and `--data-dir PATH` (use this data
+directory; it wins over `SWITCHYARD_DATA_DIR`).
+
+Module states: `verified` (manifest valid, not running), `active` (running), `stopped` (deactivated or idle-stopped)
+and `failed` (activation, health or a hook failed; `error` names the exception class). Modes: `manual` (only the
+operator starts it), `auto` (started with the host; the model may start it too) and `disabled` (never started).
+A bundled module's default mode is its manifest's `lifecycle.activation`.
 
 ## Operations
 
@@ -97,6 +105,8 @@ Module actions are recorded as `module.<id>.<name>`:
 | `scanner.finding` | scanner | `severity`, `title` |
 | `workers.loop` | workers | `role`, `goal_sha` |
 | `workers.stuck` | workers | `role`, `child`, `minutes` |
+| `trigger.fired`, `trigger.skipped` | scheduler | `trigger`, `owner` (and `reason` when skipped) |
+| `module.*`, `module.rejected` | lifecycle | `module` and the audit detail; `path`, `reason` for rejected |
 
 Subscribing to `*` or to `core.*` events needs `core.read`.
 
@@ -110,4 +120,5 @@ Subscribing to `*` or to `core.*` events needs `core.read`.
 | `logs/` | Per-stream JSON Lines logs, 20 MB per stream plus one rotated file |
 | `modules/` | Modules you installed from git (run as subprocesses) |
 | `staging/` | Update staging, previous versions (3 kept), SBOM deltas |
+| `backup/` | State database backups taken before schema migrations |
 | `host.lock`, `api.token`, `api.port` | Hosting lock; API token and port (user-only permissions) |
