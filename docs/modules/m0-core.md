@@ -9,7 +9,8 @@ contract need an ADR.
 ```
 src/switchyard/
   __init__.py        version, public re-exports
-  errors.py          SwitchyardError, ManifestError, CapabilityDenied, AuditError, StateError, UpdateError
+  errors.py          SwitchyardError; the kinds UsageError, PolicyRefused (CapabilityDenied), NotAvailable;
+                     ManifestError, ConfigError, AuditError, StateError, UpdateError
   paths.py           data-directory resolution
   config.py          CoreConfig (TOML, tomllib), defaults, env override SWITCHYARD_DATA_DIR
   manifest.py        load + validate module.toml -> Manifest (frozen dataclass)
@@ -187,8 +188,8 @@ reading. `GET /v1/health` needs no token; with an `X-Switchyard-Challenge` heade
 returns `proof`, the HMAC-SHA256 of `switchyard-api-v1:<challenge>` keyed with the token. The client checks that
 proof before it sends the token, so a process that took over a dead daemon's port never receives it
 (`ApiUntrusted`). A failure to connect lets the CLI run an offline operation locally; a failure after the request
-was sent is `ApiOutcomeUnknown`: the daemon may have applied it, and nothing runs again. Status codes: 400 usage, 401 token, 403 Host/Origin/denied, 404 route,
-409 operation error, 411/413/415 framing, 500 unexpected (class name only). Socket timeout 10 s per read, and the
+was sent is `ApiOutcomeUnknown`: the daemon may have applied it, and nothing runs again. Status codes: 400 usage, 401 token, 403 Host/Origin/denied/policy refused, 404 route,
+409 operation error, 503 not available, 411/413/415 framing, 500 unexpected (class name only). Socket timeout 10 s per read, and the
 whole request must arrive within 10 s; at most 16 connections are handled at once, and further ones are closed at
 once. The token file is restricted before the token is written. Request lines are
 never logged; `Server: switchyard`. Routes `POST /v1/<noun>/<verb>` map 1:1 to CLI

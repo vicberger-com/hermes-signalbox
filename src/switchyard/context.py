@@ -21,7 +21,7 @@ from types import MappingProxyType
 from typing import Any, Protocol
 
 from switchyard.capabilities import PolicyEngine
-from switchyard.errors import SwitchyardError
+from switchyard.errors import NotAvailable, PolicyRefused, SwitchyardError, UsageError
 from switchyard.manifest import Manifest
 
 _EVENT_SUFFIX = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*\Z")
@@ -76,7 +76,7 @@ class MemoryActionRegistry:
     def get(self, module_id: str, name: str) -> Action:
         action = self._actions.get((module_id, name))
         if action is None:
-            raise SwitchyardError(f"unknown action {name!r} for module {module_id!r} (is it running?)")
+            raise UsageError(f"unknown action {name!r} for module {module_id!r} (is it running?)")
         return action
 
 
@@ -121,7 +121,7 @@ class MemoryPanelRegistry:
     def render(self, module_id: str, panel_id: str) -> Any:
         render = self._panels.get((module_id, panel_id))
         if render is None:
-            raise SwitchyardError(f"unknown panel {panel_id!r} for module {module_id!r}")
+            raise UsageError(f"unknown panel {panel_id!r} for module {module_id!r}")
         return render()
 
 
@@ -208,7 +208,7 @@ class ModuleContext:
         """Write to one of the module's declared ``log_streams``."""
         self._open()
         if stream not in self._manifest.contributes["log_streams"]:
-            raise SwitchyardError(f"log stream {stream!r} is not declared by module {self.module_id!r}")
+            raise PolicyRefused(f"log stream {stream!r} is not declared by module {self.module_id!r}")
         self._services.logs.write(self.module_id, stream, event, fields)
 
     def register_panel(self, panel_id: str, render: Callable[[], Any]) -> None:
@@ -216,7 +216,7 @@ class ModuleContext:
         self._open()
         self._services.policy.require(self.module_id, "ui.panel", panel=panel_id)
         if panel_id not in self._manifest.contributes["panels"]:
-            raise SwitchyardError(f"panel {panel_id!r} is not declared by module {self.module_id!r}")
+            raise PolicyRefused(f"panel {panel_id!r} is not declared by module {self.module_id!r}")
         self._services.panels.add(self.module_id, panel_id, render)
 
     def emit(self, type_: str, data: Mapping[str, Any]) -> None:
@@ -224,7 +224,7 @@ class ModuleContext:
         self._open()
         prefix = f"{self.module_id}."
         if not (type_.startswith(prefix) and _EVENT_SUFFIX.match(type_[len(prefix) :])):
-            raise SwitchyardError(f"event type {type_!r} must look like '{prefix}<name>'")
+            raise UsageError(f"event type {type_!r} must look like '{prefix}<name>'")
         self._services.bus.publish(self.module_id, type_, data)
 
     def subscribe(self, type_: str, handler: Callable[..., None]) -> None:
@@ -240,7 +240,7 @@ class ModuleContext:
         """This module's namespaced store (tables ``m_<id>__*`` and key/value rows)."""
         self._open()
         if self._services.state is None:
-            raise SwitchyardError("state store is not available in this host")
+            raise NotAvailable("state store is not available in this host")
         return self._services.state(self.module_id)
 
     @property
@@ -260,7 +260,7 @@ class ModuleContext:
                 f"audit event {event!r} must look like '<name>[.<name>]' with at most 16 fields"
             )
         if self._services.audit is None:
-            raise SwitchyardError("the audit log is not available in this host")
+            raise NotAvailable("the audit log is not available in this host")
         clean = {_audit_key(str(k)): _audit_value(str(v)) for k, v in detail.items()}
         self._services.audit.append(actor=self.module_id, action=f"module.{self.module_id}.{event}",
                                     module=self.module_id, detail=clean)  # fmt: skip
@@ -274,7 +274,7 @@ class ModuleContext:
         """Run another module's read-only action (ADR-0004)."""
         self._open()
         if self._services.call is None:
-            raise SwitchyardError("cross-module calls are not available in this host")
+            raise NotAvailable("cross-module calls are not available in this host")
         return self._services.call(self.module_id, module_id, action, dict(args or {}))
 
     def _bridge_check(self, declared: str) -> Any:
@@ -285,7 +285,7 @@ class ModuleContext:
                 f"hook {declared!r} is not declared in contributes.hooks of {self.module_id!r}"
             )
         if self._services.bridge is None:
-            raise SwitchyardError("the Hermes bridge is not available in this host")
+            raise NotAvailable("the Hermes bridge is not available in this host")
         return self._services.bridge
 
     def hermes_hook(self, name: str, fn: Callable[[dict[str, Any]], Any]) -> None:
@@ -316,7 +316,7 @@ class ModuleContext:
                 f"hook 'transform:{kind}' is not declared in contributes.hooks of {self.module_id!r}"
             )
         if self._services.bridge is None:
-            raise SwitchyardError("the Hermes bridge is not available in this host")
+            raise NotAvailable("the Hermes bridge is not available in this host")
         self._services.bridge.add_transform(self.module_id, kind, fn)
 
     def hermes_delegation(self, route: Callable[[dict[str, Any]], Any], roles: Callable[[], Any]) -> None:
@@ -327,7 +327,7 @@ class ModuleContext:
         self._open()
         self._services.policy.require(self.module_id, "hermes.delegation")
         if self._services.bridge is None:
-            raise SwitchyardError("the Hermes bridge is not available in this host")
+            raise NotAvailable("the Hermes bridge is not available in this host")
         self._services.bridge.set_delegation(self.module_id, route, roles)
 
     def hermes_middleware(
@@ -372,9 +372,9 @@ class ModuleContext:
         spec = dict(params or {})
         for key, kind in spec.items():
             if not _ACTION_NAME.match(key) or kind not in ACTION_PARAM_KINDS:
-                raise SwitchyardError(f"action {name!r}: parameter {key!r} must be bool, int or str")
+                raise UsageError(f"action {name!r}: parameter {key!r} must be bool, int or str")
         if self._services.actions is None:
-            raise SwitchyardError("module actions are not available in this host")
+            raise NotAvailable("module actions are not available in this host")
         self._services.actions.add(Action(self.module_id, name, handler, spec, bool(read_only)))
 
     # capability-gated ---------------------------------------------------------------------------------
@@ -391,9 +391,9 @@ class ModuleContext:
         self._services.policy.require(self.module_id, "secrets.read")
         name = getattr(backend, "name", None)
         if not isinstance(name, str) or name not in self._manifest.contributes["secret_backends"]:
-            raise SwitchyardError(f"secret backend {name!r} is not declared by module {self.module_id!r}")
+            raise PolicyRefused(f"secret backend {name!r} is not declared by module {self.module_id!r}")
         if self._services.secret_backends is None:
-            raise SwitchyardError("the secrets broker is not available in this host")
+            raise NotAvailable("the secrets broker is not available in this host")
         self._services.secret_backends.add_backend(self.module_id, backend)
 
     def _broker(self, capability: str) -> object:
@@ -401,7 +401,7 @@ class ModuleContext:
         self._services.policy.require(self.module_id, capability)
         broker = self._services.brokers.get(capability)
         if broker is None:
-            raise SwitchyardError(f"{capability!r} is not available in this host")
+            raise NotAvailable(f"{capability!r} is not available in this host")
         for_module = getattr(broker, "for_module", None)
         facade = for_module(self.module_id) if callable(for_module) else broker
         return _Guarded(facade, self, capability)

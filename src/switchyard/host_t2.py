@@ -23,7 +23,7 @@ import threading
 from typing import IO, Any
 
 from switchyard.context import ModuleContext
-from switchyard.errors import SwitchyardError
+from switchyard.errors import NotAvailable, SwitchyardError, UsageError
 from switchyard.manifest import Manifest
 from switchyard.rpc import Channel, Message, ProtocolError, RemoteError, read_frame, write_frame
 
@@ -59,14 +59,14 @@ def child_environment() -> dict[str, str]:
 def _text(params: dict[str, Any], key: str) -> str:
     value = params.get(key)
     if not isinstance(value, str):
-        raise SwitchyardError(f"parameter {key!r} must be a string")
+        raise UsageError(f"parameter {key!r} must be a string")
     return value
 
 
 def _obj(params: dict[str, Any], key: str) -> dict[str, Any]:
     value = params.get(key)
     if not isinstance(value, dict):
-        raise SwitchyardError(f"parameter {key!r} must be an object")
+        raise UsageError(f"parameter {key!r} must be an object")
     return value
 
 
@@ -177,7 +177,7 @@ class T2Module:
     def _call(self, method: str, params: dict[str, Any], timeout: float | None = None) -> Any:
         with self._call_lock:
             if self._channel is None:
-                raise SwitchyardError(f"module {self._manifest.id!r} is not running")
+                raise NotAvailable(f"module {self._manifest.id!r} is not running")
             try:
                 return self._channel.request(method, params, timeout or self._timeout)
             except RemoteError:
@@ -202,7 +202,7 @@ class T2Module:
 
     def deactivate(self) -> None:
         if self._channel is None:
-            raise SwitchyardError(f"module {self._manifest.id!r} is not running")
+            raise NotAvailable(f"module {self._manifest.id!r} is not running")
         try:
             self._call("deactivate", {})
         finally:
@@ -247,7 +247,7 @@ class T2Module:
         if method == "ctx.subscribe":
             handler_id = params.get("handler_id")
             if not isinstance(handler_id, int):
-                raise SwitchyardError("handler_id must be an integer")
+                raise UsageError("handler_id must be an integer")
 
             def forward(event: Any) -> None:
                 payload = {
@@ -263,7 +263,7 @@ class T2Module:
         if method == "ctx.health_report":
             ok = params.get("ok")
             if not isinstance(ok, bool):
-                raise SwitchyardError("ok must be a boolean")
+                raise UsageError("ok must be a boolean")
             ctx.health_report(ok, str(params.get("detail", ""))[:200])
             return None
         if method == "ctx.state":
@@ -271,10 +271,10 @@ class T2Module:
         if method == "ctx.broker":
             member = _BROKERS.get(_text(params, "capability"))
             if member is None:
-                raise SwitchyardError("unknown capability broker")
+                raise UsageError("unknown capability broker")
             getattr(ctx, member)  # policy check; raises CapabilityDenied when not granted
-            raise SwitchyardError("capability brokers are not available to subprocess modules in M0")
-        raise SwitchyardError(f"unknown method {method!r}")
+            raise NotAvailable("capability brokers are not available to subprocess modules in M0")
+        raise UsageError(f"unknown method {method!r}")
 
     @staticmethod
     def _state(ctx: ModuleContext, op: str, args: Any) -> Any:

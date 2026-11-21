@@ -67,7 +67,8 @@ def test_live_operation_needs_the_daemon(data: Path, capsys: pytest.CaptureFixtu
 
 
 def test_operation_error_exit_code(data: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(_run(data, "module", "mode", "ext", "--mode", "sometimes")) == 1
+    # An invalid value is a usage error (exit 2) since 1.1 (H1 A-31); it was a generic error (exit 1).
+    assert main(_run(data, "module", "mode", "ext", "--mode", "sometimes")) == 2
     assert "invalid mode" in capsys.readouterr().err
 
 

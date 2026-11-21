@@ -16,7 +16,7 @@ import types
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
-from switchyard.errors import SwitchyardError
+from switchyard.errors import SwitchyardError, UsageError
 from switchyard.rpc import Channel, RemoteError, read_frame, write_frame
 
 PACKAGE_ROOT = "_switchyard_t2"
@@ -187,12 +187,12 @@ class ChildHost:
         if method == "panel":
             render = self.panels.get(str(params.get("panel_id")))
             if render is None:
-                raise SwitchyardError("unknown panel")
+                raise UsageError("unknown panel")
             return render()
         if method == "event":
             handler = self.handlers.get(params.get("handler_id"))  # type: ignore[arg-type]
             if handler is None:
-                raise SwitchyardError("unknown handler")
+                raise UsageError("unknown handler")
             event = params["event"]
             handler(
                 types.SimpleNamespace(
@@ -200,7 +200,7 @@ class ChildHost:
                 )
             )
             return None
-        raise SwitchyardError(f"unknown method {method!r}")
+        raise UsageError(f"unknown method {method!r}")
 
 
 def main() -> None:  # pragma: no cover - exercised through real subprocesses in tests/core/test_host_t2.py

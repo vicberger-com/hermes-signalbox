@@ -12,7 +12,7 @@ from sy_testing import GOOD, write_module
 
 from switchyard.contract import run_contract
 from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import SwitchyardError, UpdateError
+from switchyard.errors import ChannelNotFound, SwitchyardError, UpdateError
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "updates"
@@ -29,7 +29,7 @@ class Heads:
 
     def latest(self, url: str, channel: str) -> str:
         if (url, channel) not in self.heads:
-            raise UpdateError("channel not found")
+            raise ChannelNotFound("channel not found")
         return self.heads[(url, channel)]
 
 

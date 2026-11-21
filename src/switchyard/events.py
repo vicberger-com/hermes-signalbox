@@ -28,7 +28,7 @@ from types import MappingProxyType
 from typing import Any
 
 from switchyard.capabilities import CORE_ACTOR, AuditSink
-from switchyard.errors import SwitchyardError
+from switchyard.errors import SwitchyardError, UsageError
 
 MAX_DATA_BYTES = 64 * 1024
 MAX_DEPTH = 8
@@ -65,7 +65,7 @@ def _check_pattern(pattern: str) -> None:
         return
     if _TYPE.match(pattern):
         return
-    raise SwitchyardError(f"invalid subscription pattern {pattern!r} (exact type, '<prefix>.*' or '*')")
+    raise UsageError(f"invalid subscription pattern {pattern!r} (exact type, '<prefix>.*' or '*')")
 
 
 def _matches(pattern: str, type_: str) -> bool:
@@ -92,7 +92,7 @@ def _check_json(value: Any, depth: int = 0) -> None:
     if isinstance(value, Mapping):
         for key, item in value.items():
             if not isinstance(key, str):
-                raise SwitchyardError("event data keys must be strings")
+                raise UsageError("event data keys must be strings")
             _check_json(item, depth + 1)
         return
     raise SwitchyardError(f"event data contains a {type(value).__name__}, which is not JSON-compatible")
@@ -101,7 +101,7 @@ def _check_json(value: Any, depth: int = 0) -> None:
 def encode_data(data: Mapping[str, Any]) -> str:
     """Validate and encode event data. Raises ``SwitchyardError``."""
     if not isinstance(data, Mapping):
-        raise SwitchyardError("event data must be a mapping")
+        raise UsageError("event data must be a mapping")
     _check_json(data)
     text = json.dumps(data, separators=(",", ":"), allow_nan=False)
     if len(text.encode("utf-8")) > MAX_DATA_BYTES:

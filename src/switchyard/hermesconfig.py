@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from switchyard.capabilities import AuditSink
-from switchyard.errors import SwitchyardError
+from switchyard.errors import SwitchyardError, UsageError
 
 # Hermes has no strict skill-name rule; accept any printable name without commas (preset lists are
 # comma-separated), surrounding spaces or control characters.
@@ -169,11 +169,11 @@ class ConfigWriter:
     def _validate_new(value: Any, old: list[str]) -> list[str]:
         """Names the caller adds must be valid; names already in Hermes's list are kept as they are."""
         if not isinstance(value, list) or len(value) > MAX_NAMES:
-            raise SwitchyardError(f"value must be a list of at most {MAX_NAMES} names")
+            raise UsageError(f"value must be a list of at most {MAX_NAMES} names")
         kept = set(old)
         for item in value:
             if not isinstance(item, str) or (item not in kept and not _NAME.match(item)):
-                raise SwitchyardError(f"invalid name {str(item)[:80]!r}")
+                raise UsageError(f"invalid name {str(item)[:80]!r}")
         return sorted(set(value))
 
     def backups(self, n: int = 20) -> list[dict[str, Any]]:
@@ -192,7 +192,7 @@ class ConfigWriter:
     def revert(self, module_id: str, backup_id: str, *, actor: str) -> dict[str, Any]:
         """Restore the value a backup recorded before its change. The revert is itself backed up."""
         if not isinstance(backup_id, str) or not _BACKUP_ID.match(backup_id):
-            raise SwitchyardError(f"invalid backup id {str(backup_id)[:40]!r}")
+            raise UsageError(f"invalid backup id {str(backup_id)[:40]!r}")
         path = self._dir / f"{backup_id}.json"
         try:
             record = json.loads(path.read_text(encoding="utf-8"))

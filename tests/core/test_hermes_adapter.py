@@ -147,7 +147,7 @@ def test_tool_errors_are_json_and_carry_no_foreign_messages(
 ) -> None:
     register(ctx)
     out = _tool(ctx, "switchyard_modules", action="activate", id="ghost")
-    assert out == {"ok": False, "error": "SwitchyardError", "message": "unknown module 'ghost'"}
+    assert out == {"ok": False, "error": "UsageError", "message": "unknown module 'ghost'"}  # H1 A-31
     assert _tool(ctx, "switchyard_modules")["error"] == "UsageError"  # no action
     assert _tool(ctx, "switchyard_modules", action="list", id=7)["error"] == "UsageError"
 
