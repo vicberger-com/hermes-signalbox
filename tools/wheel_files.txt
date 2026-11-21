@@ -20,6 +20,7 @@ switchyard/config.py
 switchyard/context.py
 switchyard/contract.py
 switchyard/core.py
+switchyard/discovery.py
 switchyard/errors.py
 switchyard/events.py
 switchyard/fsread.py
