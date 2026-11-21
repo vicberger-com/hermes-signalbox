@@ -31,6 +31,9 @@ Hourly rows are kept 7 days, daily rows `retention_days` (default 90).
 
 Each threshold fires once per quota and period: `meter.threshold` (audited as `module.meter.threshold`), and
 at 100 % also `meter.exhausted`. The router (M3) cools the quota's scope down until the period ends.
+Responses check quotas against a quota list cached for up to 30 seconds (1.1, H1 C-14): with no quotas there
+is no quota work per response; a quota added in this process applies at once, one added from another process
+within 30 seconds.
 `summary` totals cover every row (the model list is capped at 200, with `truncated`). `forecast {name}` projects the period total and the exhaustion time from the average rate over the last 24
 hours (or since the period start).
 

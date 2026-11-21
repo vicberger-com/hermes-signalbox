@@ -104,6 +104,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Module storage is bounded (H1 A-25 #93): one stored value is at most 4 MiB, a module has at most 64 tables,
   and a module's tables plus key/value rows are capped at 256 MiB. Over the cap a module can still read and
   delete, but its inserts, updates and `kv_set` fail with a "storage quota" error until it deletes data.
+- Less work per model call (H1 C-14 #114). The router reuses a registry answer for up to 5 seconds and records
+  a decision with one statement; the meter does no quota work when no quotas are set (quotas added from
+  another process apply within 30 seconds); tool results are no longer parsed when no module trims them.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

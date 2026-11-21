@@ -256,6 +256,8 @@ class HermesAdapter:
                 self._note_not_hosting()
             if not self.core.hosting or not isinstance(result, str):
                 return None
+            if not self.core.bridge.has_transform("tool_result"):  # H1 C-14: no parse when nothing trims
+                return None
             meta = {
                 "tool_name": kwargs.get("tool_name"),
                 "status": kwargs.get("status"),

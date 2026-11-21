@@ -454,3 +454,39 @@ def test_h1_c10_integral_float_counts_are_kept() -> None:
     assert _count(12.4) == (12, False)
     assert _count(float("nan")) == (0, True)
     assert _count(-1.0) == (0, True)
+
+
+def test_h1_c14_no_quota_queries_per_response_without_quotas(
+    core: Core, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inst = core.manager._entry("meter").instance
+    response(core, "paid/big", usage())  # warm up (first call may read the quota list)
+    statements: list[str] = []
+    real = inst._q
+
+    def counting(sql: str, params: tuple[Any, ...] = ()) -> Any:
+        statements.append(sql)
+        return real(sql, params)
+
+    monkeypatch.setattr(inst, "_q", counting)
+    for _ in range(5):
+        response(core, "paid/big", usage())
+    assert not [s for s in statements if "quotas" in s or "sum(" in s.lower()]  # no quota work at all
+    assert len(statements) == 10  # the two upserts per response, nothing else
+
+
+def test_h1_c14_a_quota_added_in_another_process_is_seen_within_the_ttl(core: Core, clock: Clock) -> None:
+    inst = core.manager._entry("meter").instance
+    events: list[Any] = []
+    core.bus.subscribe("test", "meter.*", events.append)
+    response(core, "paid/big", usage())  # caches "no quotas"
+    t = inst._t("quotas")
+    inst._q(  # what quota_add in another process leaves behind: a row this process has not cached
+        f"INSERT INTO {t} (name, scope, metric, period, limit_value, thresholds) VALUES (?, ?, ?, ?, ?, ?)",  # noqa: S608
+        ("x", "all", "requests", "day", 1, "100"),
+    )
+    response(core, "paid/big", usage())
+    assert events == []  # still cached
+    clock.now += inst.QUOTA_CACHE_SECONDS + 1
+    response(core, "paid/big", usage())
+    assert [e.type for e in events] == ["meter.threshold", "meter.exhausted"]

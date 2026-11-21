@@ -78,7 +78,7 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | C-11 | Low | resources | H1 should | WP10 | see [review C](review-C-modules.md) | fixed in #87 |
 | C-12 | Low | dashboard | H1 should | WP10 | see [review C](review-C-modules.md) | fixed in #87 |
 | C-13 | Low | code quality | H1 should | WP10 | see [review C](review-C-modules.md) | fixed in #87 |
-| C-14 | Low | adapter / router / meter | Backlog 1.1 | - | private until fixed | backlog #114 |
+| C-14 | Low | adapter / router / meter | Backlog 1.1 | 1.1 | see [review C](review-C-modules.md) | fixed in #152 (backlog #114) |
 | C-15 | Low | secrets | H1 should | WP6 | see [review C](review-C-modules.md) | fixed in #83 |
 | C-16 | Low | activation | H1 should | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
 | C-17 | Low | config | Backlog 1.1 | 1.1 | see [review C](review-C-modules.md) | fixed in #150 (backlog #115) |
