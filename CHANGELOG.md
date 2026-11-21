@@ -70,6 +70,8 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Scheduler (H1 B-5 #98, B-19 #110). A cron job no longer runs again when the wall clock steps back (NTP
   correction, DST fall-back): minutes already passed are skipped for steps of up to 3 hours, and a larger step
   counts as a clock correction. A removed module's job worker thread is released.
+- `ctx.audit` keeps long field names apart (a name over 64 characters keeps a short digest of the whole name)
+  and marks cut values with `[truncated]` (H1 A-27 #94).
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

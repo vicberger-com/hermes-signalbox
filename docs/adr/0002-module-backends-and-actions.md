@@ -29,7 +29,8 @@ both (backends; `rotate` and `expire`), and every later module needs operations.
 3. **Supporting context members (added while building M1).** `ctx.config` (read-only copy of
    `[modules.<id>]` from the core `config.toml`); `ctx.spawn` (process broker for `process.spawn`: argv list, no
    shell, minimal environment, timeout, audited by program name and exit code only); `ctx.audit(event, **names)`
-   (records `module.<id>.<event>`, values truncated and redacted). A module that provides backends may leave
+   (records `module.<id>.<event>`, at most 16 fields; names over 64 characters keep a digest so they stay
+   distinct, values over 256 characters end in `[truncated]`; values redacted). A module that provides backends may leave
    `capabilities.secrets` empty. `start_auto` skips an `auto` module until all requested capabilities are granted
    (`module.auto_skipped`) instead of failing it.
 
