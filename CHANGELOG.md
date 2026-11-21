@@ -45,6 +45,8 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   this version cannot talk to a daemon started by 1.0.x; restart the daemon after upgrading.
 - `fs.read` refuses the remaining Windows device aliases (H1 B-6 #99): superscript forms (`COM¹`, `LPT³.txt`)
   and names with a colon (`NUL:`, `CON:stream`). Alternate data streams on ordinary files stay allowed.
+- `net.outbound` drops a module-supplied `Host` header (any case), so a request always goes to the host the
+  allow-list checked (H1 B-22, part 1 of #111).
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,
