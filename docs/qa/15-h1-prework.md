@@ -158,15 +158,15 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 | C-9 | Fixed | #85 | `core.adapter_error` once per hook and class, warning logged; gate dispatch separated from observer dispatch |
 | C-10 | Fixed | #85 | Finite float counts are rounded |
 | C-16 | Fixed | #85 | `health()` is read-only; expiry at the next turn or apply/restore |
-| A-2 | Fixed | WP9 | `PolicyEngine._deny`/`_refuse` clip values to 1000 characters with a `[+N chars]` marker; the denial is always recorded |
-| A-8 | Fixed | WP9 | `tail` and `_iter_lines` split on `\n` only |
-| A-9 | Fixed | WP9 | Torn tail repaired on open (`audit.torn_tail_repaired`); `verify` requires the final newline; docstring corrected |
-| A-10 | Fixed | WP9 | `Core.__init__` releases the host lock and closes the store on any start failure; `StateStore` closes its connection if a pragma fails |
-| A-11 | Fixed | WP9 | `ack_audit`: append, re-anchor, then clear the flag |
-| A-12 | Fixed | WP9 | `verify_directory` reads bytes and reports decode errors and `RecursionError` as `unparseable record` |
-| A-13 | Fixed | WP9 | `_recover` widens its window until the last record is whole; `MAX_RECORD_BYTES` 128 KiB |
-| A-14 | Fixed | WP9 | Write loop; zero progress raises `AuditError` without advancing the chain |
-| B-4 | Fixed | WP9 | Header fields cut to 256 characters; an over-long line is re-serialised with `{"truncated": true}` |
+| A-2 | Fixed | #86 | `PolicyEngine._deny`/`_refuse` clip values to 1000 characters with a `[+N chars]` marker; the denial is always recorded |
+| A-8 | Fixed | #86 | `tail` and `_iter_lines` split on `\n` only |
+| A-9 | Fixed | #86 | Torn tail repaired on open (`audit.torn_tail_repaired`); `verify` requires the final newline; docstring corrected |
+| A-10 | Fixed | #86 | `Core.__init__` releases the host lock and closes the store on any start failure; `StateStore` closes its connection if a pragma fails |
+| A-11 | Fixed | #86 | `ack_audit`: append, re-anchor, then clear the flag |
+| A-12 | Fixed | #86 | `verify_directory` reads bytes and reports decode errors and `RecursionError` as `unparseable record` |
+| A-13 | Fixed | #86 | `_recover` widens its window until the last record is whole; `MAX_RECORD_BYTES` 128 KiB |
+| A-14 | Fixed | #86 | Write loop; zero progress raises `AuditError` without advancing the chain |
+| B-4 | Fixed | #86 | Header fields cut to 256 characters; an over-long line is re-serialised with `{"truncated": true}` |
 | D-14 | Fixed | WP10 | Classifier `4 - Beta`; support and deprecation policy in SECURITY.md |
 | A-26 | Fixed | WP10 | m0-core section 4 lists what the bus actually publishes; `policy.denied` is audit-only |
 | A-28 | Fixed | WP10 | m0-core disposition corrected: CTEs allowed, bounded by the work budget and row cap |
