@@ -23,7 +23,7 @@ shown.
 | Kind | Name | Model may run |
 |---|---|---|
 | Action | `connectors` (declarations, enabled state), `report` (runs and failures) | yes |
-| Action | `run {connector, payload: JSON object}` | no |
+| Action | `run {connector, payload}` (`payload`: a JSON object encoded as a string) | no |
 | Panel | `offload.status` | |
 | Config | `[modules.offload]` `allow` ([]), `jevk5_url`, `n8n_webhook`, `timeout_seconds` (60, 5-600) | |
 

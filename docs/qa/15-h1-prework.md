@@ -217,3 +217,45 @@ Changes visible to existing users (complete this list; it becomes the `### Chang
 |---|---|---|
 | A release that passes its own gates is ready to be called stable | It had never been installed or run in a real Hermes | Maturity label; H2 exists |
 | The user guide was correct because it was written from the code | Its first activation example was never executed | Guide commands now run in CI |
+
+## Phase H2 results (2026-11-20)
+
+Scope agreed with the operator (Q-SY-H2-1): free OpenRouter models only (no `llm.paid`, every auxiliary task
+pinned to a `:free` model); the newest Hermes in a separate scratch install, leaving the desktop on v0.23.2; offload
+checked with Claude Code only. The newest stable Hermes is **v0.23.3** (`caafe53`). `v2026.9.24` is an older
+date-named tag on a different commit, not a newer release, which corrects the WP11 research note.
+
+### What ran
+
+| Check | Where | Result |
+|---|---|---|
+| Install as documented (`hermes plugins install ... --ref 4414dd8`) | Hermes Desktop v0.23.2, profile `switchyard-test` | Installed and enabled; the plugin loads; audit chain verifies |
+| Modules start after grants | same | `meter`, `resources`, `router`, `trimmer` started in the gateway host; modules without grants were skipped (audit `module.auto_skipped`) |
+| Real turns | same, via `hermes -p switchyard-test chat -q` (runs in the gateway) | 2 turns, 8-10 s; the router ran on each (catalog empty, so pass-through) |
+| Real turns with a catalog | scratch Hermes v0.23.2 (`ae2a81c`), Hermes's own `AIAgent` loop, Switchyard loaded by Hermes's plugin discovery | 15 free OpenRouter models imported from models.dev; 8 requests, 2-12 s each, all on the free model |
+| Metered vs Hermes-reported usage | same | Exact match: 9 262 input and 610 output tokens over 8 requests (meter) = the sum of Hermes's per-turn counts; 389 reasoning tokens recorded; cost 0 |
+| Re-verification on the newest Hermes | scratch Hermes v0.23.3 (`caafe53`) | `tests/integration` 5 passed; 4 real turns; meter exact (4 671 in, 265 out); audit verifies |
+| Per-call overhead of `llm_request` middleware (200 calls) | v0.23.2 / v0.23.3 | Median 33.0 / 29.6 ms with router, meter and resources active; 1.9 / 3.7 ms with them inactive |
+| Offload, `claude-code` connector | scratch v0.23.2 | 4 of 5 runs succeeded (11-13 s, result returned); the first failed with `PermissionError` after the child exited 0 (#126) |
+
+Not checked (Q-SY-H2-1): the `jevk5`, `n8n` and `codex` connectors. The usage comparison is against the token
+counts Hermes takes from the OpenRouter response, not an independent provider bill.
+
+### Findings
+
+| # | Finding | Disposition |
+|---|---|---|
+| H2-1 | With Hermes Desktop, the desktop gateway hosts the profile right after install, so `switchyard api serve` (guide step 0) fails and, with the API off by default, no `[daemon]` command works; module and API settings apply only when the gateway loads the plugin again | Guide note added (section 2); code path #123 |
+| H2-2 | About 21 ms of the per-call overhead is one audit append for the router's internal `resources.resolve` call (cProfile; 17 ms of it re-opening the audit file on Windows) | #124 (and #65) |
+| H2-3 | Every process start audits `module.verified` for all 12 modules (276 of the first 303 records) | #125 |
+| H2-4 | Offload `claude-code` failed once after a successful child exit; the error is reduced to its class name | #126 |
+| H2-5 | `hermes plugins install` also installs the package (editable) into Hermes's shared runtime, so every profile lists `switchyard` (not enabled) and `switchyard.exe` exists there; uninstall has two places | Guide note added (section 1) |
+| H2-6 | `hermes plugins enable switchyard` asks whether the plugin may replace built-in tools and blocks a non-interactive run; Switchyard replaces none | Guide: `--no-allow-tool-override` |
+| H2-7 | `module list` from the CLI shows `verified` for modules that are active in the hosting process (status is per process) | Guide note added (section 2) |
+| H2-8 | `resources` `import_preview {providers}` takes one comma-separated string; `offload` `run {payload}` takes a JSON string; both READMEs implied other types | READMEs corrected |
+| H2-9 | Hermes 0.23 warns `unknown manifest field(s) ignored: provides_middleware` on every load, while its plugin catalog still reads the field | No change; recorded |
+
+Method notes:
+- Hermes allows one gateway per machine, so the scratch runtimes could not start their own. The checks drove Hermes's agent loop (`AIAgent`) from a script instead, with plugins loaded by `discover_plugins`.
+- Agent shells started by Hermes Desktop inherit `PYTHONPATH` pointing at the desktop runtime; it was removed for every scratch run.
+- Keys were read from the profile's `.env` into the child environment only.

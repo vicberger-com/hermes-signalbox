@@ -24,6 +24,12 @@ plugins directory, so the Switchyard tab (section 5) needs `hermes plugins insta
 plugin, the `switchyard` command and the model tools, without the tab; the wheel carries the dashboard files
 under `switchyard/_plugin/` for when Hermes supports that.
 
+`hermes plugins install` also installs the package into Hermes's shared runtime environment, so every profile
+lists `switchyard` (enabled only where you enabled it), and that environment has a matching `switchyard`
+command. To remove the plugin completely, uninstall it with `hermes plugins` and remove the
+`hermes-switchyard` package from that environment. If `hermes plugins enable switchyard` asks whether the
+plugin may replace built-in tools, answer no (`--no-allow-tool-override`): Switchyard replaces none.
+
 ## 2. First run
 
 **Which data directory.** Switchyard keeps its state, grants, audit log and `config.toml` in one data directory.
@@ -55,6 +61,15 @@ switchyard config show            # data directory in use, why, and core setting
 ```
 
 In a Hermes session the same operations are under `/switchyard`, for example `/switchyard module list`.
+
+**With Hermes Desktop.** The desktop's gateway serves every profile and loads the plugin as soon as it is
+enabled, so the gateway is the hosting process and `switchyard api serve` reports that another process hosts
+modules. Grants and modes still work from the command line (they need no daemon): grant what a module needs and
+set `module mode <id> --mode auto`, and the module starts the next time the gateway loads the plugin (restart
+Hermes). `[daemon]` commands need the loopback API of the hosting process: set `[api] enabled = true` in
+`<data_dir>/config.toml` and restart Hermes (#123 tracks a smoother path). Module status is kept per process,
+so `module list` from the command line shows `verified` for a module the gateway is running; the audit log
+(`module.activated`) and `module health` show the hosting process's view.
 Exit codes: 0 success, 1 error or a failed result, 2 usage error, 3 capability denied.
 
 ## 3. Grant capabilities and activate a module
