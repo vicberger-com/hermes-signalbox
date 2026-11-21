@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from switchyard.capabilities import AuditSink
-from switchyard.errors import SwitchyardError, UsageError
+from switchyard.errors import NotAvailable, SwitchyardError, UsageError
+from switchyard.hostlock import FileLock
 
 # Hermes has no strict skill-name rule; accept any printable name without commas (preset lists are
 # comma-separated), surrounding spaces or control characters.
@@ -27,6 +28,10 @@ _NAME = re.compile(r"[^\x00-\x1f\x7f,\s](?:[^\x00-\x1f\x7f,]{0,126}[^\x00-\x1f\x
 _BACKUP_ID = re.compile(r"[0-9]{20}-[a-f0-9]{8}\Z")
 MAX_NAMES = 2000
 KEEP_BACKUPS = 200
+# H1 C-17: every Switchyard process (daemon, CLI, Hermes-hosted) takes this lock in the backup directory
+# around the read-modify-write, so two of them cannot interleave. Hermes's own writes do not take it, so the
+# rollback first checks that the key still holds what this write produced.
+WRITE_LOCK_NAME = ".write.lock"
 
 
 # Writable keys. ``skills.disabled`` takes effect on the next turn. ``plugins.disabled`` is deliberately
@@ -116,54 +121,82 @@ class ConfigWriter:
         """Write ``key``; returns ``{"backup", "key", "stored", "refused"}``. ``refused`` lists names Hermes
         declined to store (for example essential skills); anything else unexpected rolls back."""
         self._check_key(key)
-        with self._lock:
-            old = self.get(key)
-            new = self._validate_new(value, old)
-            refused_upfront: set[str] = set()
-            if key == "skills.disabled":  # Hermes ignores essential skills here; don't pretend otherwise
-                refused_upfront = set(new) & self.essential()
-                new = sorted(set(new) - refused_upfront)
-            now = datetime.now(UTC)
-            self._seq = (self._seq + 1) % 1_000_000  # orders backups made within the same second
-            backup = f"{now.strftime('%Y%m%d%H%M%S')}{self._seq:06d}-{_random.token_hex(4)}"
-            record = {
-                "id": backup,
-                "key": key,
-                "old": old,
-                "new": new,
-                "module": module_id,
-                "actor": actor,
-                "at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "note": note[:200],
-            }
-            self._write_backup(record)
-            detail = {"key": key, "backup": backup, "names": str(len(new)), "by": actor[:64]}
-            self._audit.append(actor=module_id, action="hermes.config.write", module=module_id, detail=detail)
-            try:
-                self._port.set(key, new)
-                stored = self.get(key)
-                unexpected = set(stored) - set(new)
-                if unexpected:
-                    raise SwitchyardError(f"Hermes stored {len(unexpected)} unexpected name(s) for {key}")
-            except Exception as exc:
-                try:
-                    self._port.set(key, old)
-                    restored = "yes"
-                except Exception:  # the rollback itself failed: say so; the backup file has the old value
-                    restored = "no"
-                self._audit.append(
-                    actor=module_id,
-                    action="hermes.config.rollback",
-                    module=module_id,
-                    detail={"key": key, "backup": backup, "error": type(exc).__name__, "restored": restored},
-                )
-                raise SwitchyardError(
-                    f"writing Hermes config {key} failed ({type(exc).__name__}); "
-                    f"previous value {'restored' if restored == 'yes' else 'NOT restored'}, "
-                    f"backup {backup}"
-                ) from None
+        self._dir.mkdir(parents=True, exist_ok=True)
+        try:
+            file_lock = FileLock(self._dir / WRITE_LOCK_NAME)
+            with self._lock, file_lock:
+                return self._set_locked(module_id, key, value, actor=actor, note=note)
+        except TimeoutError:
+            raise NotAvailable("another Switchyard process is writing Hermes config; try again") from None
+
+    def _set_locked(self, module_id: str, key: str, value: Any, *, actor: str, note: str) -> dict[str, Any]:
+        old = self.get(key)
+        new = self._validate_new(value, old)
+        refused_upfront: set[str] = set()
+        if key == "skills.disabled":  # Hermes ignores essential skills here; don't pretend otherwise
+            refused_upfront = set(new) & self.essential()
+            new = sorted(set(new) - refused_upfront)
+        now = datetime.now(UTC)
+        self._seq = (self._seq + 1) % 1_000_000  # orders backups made within the same second
+        backup = f"{now.strftime('%Y%m%d%H%M%S')}{self._seq:06d}-{_random.token_hex(4)}"
+        record = {
+            "id": backup,
+            "key": key,
+            "old": old,
+            "new": new,
+            "module": module_id,
+            "actor": actor,
+            "at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "note": note[:200],
+        }
+        self._write_backup(record)
+        detail = {"key": key, "backup": backup, "names": str(len(new)), "by": actor[:64]}
+        self._audit.append(actor=module_id, action="hermes.config.write", module=module_id, detail=detail)
+        stored: list[str] | None = None
+        try:
+            self._port.set(key, new)
+            stored = self.get(key)
+            unexpected = set(stored) - set(new)
+            if unexpected:
+                raise SwitchyardError(f"Hermes stored {len(unexpected)} unexpected name(s) for {key}")
+        except Exception as exc:
+            restored = self._roll_back(key, old, new, stored)
+            self._audit.append(
+                actor=module_id,
+                action="hermes.config.rollback",
+                module=module_id,
+                detail={"key": key, "backup": backup, "error": type(exc).__name__, "restored": restored},
+            )
+            outcome = {
+                "yes": "previous value restored",
+                "unchanged": "previous value unchanged",
+                "skipped": "previous value NOT restored: changed by another writer since",
+            }.get(restored, "previous value NOT restored")
+            raise SwitchyardError(
+                f"writing Hermes config {key} failed ({type(exc).__name__}); {outcome}, backup {backup}"
+            ) from None
+        stored = stored or []  # set on the success path
         refused = sorted((set(new) - set(stored)) | refused_upfront)
         return {"backup": backup, "key": key, "stored": stored, "refused": refused}
+
+    def _roll_back(self, key: str, old: list[str], new: list[str], stored: list[str] | None) -> str:
+        """Restore ``old`` unless someone else changed the key since this write (H1 C-17). Returns ``"yes"``,
+        ``"unchanged"`` (nothing to undo), ``"skipped"`` (changed by another writer) or ``"no"``."""
+        try:
+            current = sorted(self.get(key))
+        except Exception:
+            current = None
+        if current is not None and current == sorted(old):
+            return "unchanged"
+        # Only a write that landed and was read back can be overtaken: if the key no longer holds what was
+        # read back, someone else wrote it since. A write that failed part-way left our own debris: restore.
+        if stored is not None and current is not None and current not in (sorted(stored), sorted(new)):
+            return "skipped"
+        try:
+            self._port.set(key, old)
+        except Exception:  # the rollback itself failed: say so; the backup file has the old value
+            return "no"
+        return "yes"
 
     @staticmethod
     def _validate_new(value: Any, old: list[str]) -> list[str]:
