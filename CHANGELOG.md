@@ -116,6 +116,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   can no longer set environment variables that choose what a child program runs (`PATH`, `GIT_*`,
   `NODE_OPTIONS`, `*_COMMAND` and similar). `programs = []` now means no program instead of any program, and
   a `programs` list may not name a shell or interpreter. A skipped process-tree kill is logged.
+- Discovery hardening (1.1 acceptance security review). A `requires_core` longer than 128 characters is a
+  manifest error, so a hostile manifest can no longer stop Switchyard from starting; the verified-manifest
+  record uses the digest of the bytes that were loaded instead of reading the file a second time. Audit
+  detail that is not valid text is refused cleanly, and a subprocess module's table columns must be
+  `[name, type]` pairs.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

@@ -182,6 +182,11 @@ class AuditLog:
             if not isinstance(key, str) or not isinstance(value, str):
                 raise AuditError("audit detail keys and values must be strings")
             clean = self._redact(value)
+            try:  # a lone surrogate cannot be written (1.1 acceptance S1-10)
+                key.encode("utf-8")
+                clean.encode("utf-8")
+            except UnicodeEncodeError:
+                raise AuditError(f"audit detail {key[:40]!r} is not valid text") from None
             if len(key) > MAX_NAME_CHARS or len(clean) > MAX_DETAIL_CHARS:
                 raise AuditError(f"audit detail {key[:40]!r} is too long")
             out[key] = clean
