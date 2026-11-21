@@ -107,11 +107,16 @@ class ActivationModule:
         self.ctx = None
 
     def health(self) -> tuple[bool, str]:
+        """Read-only (H1 C-16): a dashboard poll never ends a preset or writes Hermes config. An expired
+        preset ends at the next turn (``pre_llm_call``) or the next ``apply``/``restore``."""
         if self.ctx is None:
             return False, "stopped"
-        self._expire()
         active = self._active()
-        return True, f"preset {active['preset']}" if active else "no preset active"
+        if not active:
+            return True, "no preset active"
+        if active["until"] and self.clock() >= active["until"]:
+            return True, f"preset {active['preset']} (expired; ends at the next turn)"
+        return True, f"preset {active['preset']}"
 
     # helpers ------------------------------------------------------------------------------------------
 

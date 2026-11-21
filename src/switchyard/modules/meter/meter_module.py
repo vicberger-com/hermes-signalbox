@@ -14,6 +14,7 @@ Settings, ``[modules.meter]``::
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import sys
@@ -53,7 +54,10 @@ def default_models_dev_cache() -> Path:
 
 
 def _count(value: Any) -> tuple[int, bool]:
-    """A reported token count: a non-negative int up to MAX_FIELD. Anything else is 0 and flagged."""
+    """A reported token count: a non-negative number up to MAX_FIELD, floats rounded (H1 C-10). Anything else
+    is 0 and flagged."""
+    if isinstance(value, float) and math.isfinite(value):
+        value = round(value)
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= MAX_FIELD:
         return 0, value is not None
     return value, False
@@ -245,7 +249,8 @@ class MeterModule:
         if self.ctx is None:
             return
         served = kw.get("response_model") or (kw.get("response") or {}).get("model")
-        sent = (kw.get("request") or {}).get("body", {}).get("model")
+        # H1 C-5: the bridge adds the model the request actually went out with (after routing)
+        sent = kw.get("sent_model") or (kw.get("request") or {}).get("body", {}).get("model")
         key = self._model_key(kw.get("provider"), sent or served or kw.get("model"))
         if key is None:
             return
@@ -273,7 +278,7 @@ class MeterModule:
     def on_error(self, kw: dict[str, Any]) -> None:
         if self.ctx is None:
             return
-        sent = (kw.get("request") or {}).get("body", {}).get("model")
+        sent = kw.get("sent_model") or (kw.get("request") or {}).get("body", {}).get("model")
         key = self._model_key(kw.get("provider"), sent or kw.get("model"))
         if key is not None:
             self._record(*key, {"errors": 1})

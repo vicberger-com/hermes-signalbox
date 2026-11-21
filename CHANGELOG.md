@@ -12,6 +12,14 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   never charge or record. Cool-downs are never shortened by a later error. Every request shape is sized.
 
 ### Changed
+- Hot path (H1 WP8). Bridge calls have a per-module circuit breaker: three timeouts in a row pause that module's
+  hooks, gates and middleware for 60 s (audited `module.hooks_paused`), and at most 4 calls per module run at once;
+  observers run side by side against one shared deadline (C-2). The core's own scan of tool output has a 0.5 s
+  budget per step; past it the output is kept unchanged and `core.transform_skipped` is audited (C-3). Observers
+  of `post_api_request` and `api_request_error` get `sent_model`, the model the request actually went out with,
+  and the meter charges that model (C-5). Adapter errors are audited once as `core.adapter_error` and the gate
+  still runs when observers fail (C-9). Float token counts are rounded, not dropped (C-10). The activation
+  module's health check no longer ends an expired preset; that happens at the next turn (C-16).
 - Failure paths (H1 WP7). A failed directory swap during `module update` puts the previous version back and
   audits `module.rolled_back`; any error while restarting the new version counts as a failed restart (B-1).
   `module update`, `preview` and `check_updates` run git without the core lock; only the swap takes it, and one

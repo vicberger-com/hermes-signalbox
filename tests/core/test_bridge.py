@@ -363,3 +363,87 @@ def test_h1_middleware_fallback_and_claim(tmp_path: Path) -> None:
     bridge.add_middleware("f", "llm_request", lambda r, c: {**r, "model": "fast"}, fallback=fallback)
     assert bridge.dispatch_llm_request(req, {})["model"] == "fast"  # on time: no fallback
     bridge.close()
+
+
+# H1 WP8: hot path ------------------------------------------------------------------------------------------
+
+
+class _Sink:
+    def __init__(self) -> None:
+        self.records: list[dict[str, Any]] = []
+
+    def append(self, **kw: Any) -> None:
+        self.records.append(kw)
+
+    def actions(self) -> list[str]:
+        return [r["action"] for r in self.records]
+
+
+def test_h1_c2_hung_observer_is_paused_and_bounded() -> None:
+    import threading
+    import time
+
+    from switchyard.bridge import MAX_INFLIGHT, HermesBridge
+
+    sink = _Sink()
+    bridge = HermesBridge(sink, timeout=0.2)  # type: ignore[arg-type]
+    release = threading.Event()
+    bridge.add_hook("hung", "post_api_request", lambda kw: release.wait(10))
+    took = []
+    for _ in range(8):
+        start = time.monotonic()
+        bridge.dispatch_hook("post_api_request", {})
+        took.append(time.monotonic() - start)
+    assert sink.actions().count("module.hook_timeout") == 3
+    assert sink.actions().count("module.hooks_paused") == 1
+    assert max(took[3:]) < 0.01, took
+    assert bridge.inflight("hung") <= MAX_INFLIGHT
+    release.set()
+    bridge.close()
+
+
+def test_h1_c2_observers_share_one_deadline() -> None:
+    import threading
+    import time
+
+    from switchyard.bridge import HermesBridge
+
+    bridge = HermesBridge(_Sink(), timeout=0.3)  # type: ignore[arg-type]
+    release = threading.Event()
+    for mid in ("a", "b", "c"):
+        bridge.add_hook(mid, "post_api_request", lambda kw: release.wait(10))
+    start = time.monotonic()
+    bridge.dispatch_hook("post_api_request", {})
+    assert time.monotonic() - start < 0.6  # one timeout for all three, not three in a row
+    release.set()
+    bridge.close()
+
+
+def test_h1_c3_hostile_output_fails_open_within_the_budget() -> None:
+    import time
+
+    from switchyard.bridge import HermesBridge
+
+    sink = _Sink()
+    bridge = HermesBridge(sink, timeout=2.0)  # type: ignore[arg-type]
+    bridge.add_transform("trimmer", "tool_result", lambda lines, meta: [(0, 1)])
+    hostile = "\n".join(["1/" * 1999] * 1000)  # about 4 MB of lines that are slow to scan
+    start = time.monotonic()
+    assert bridge.dispatch_transform("tool_result", hostile, {}) is None
+    assert time.monotonic() - start < 1.5
+    assert "core.transform_skipped" in sink.actions()
+    bridge.close()
+
+
+def test_h1_c5_hooks_carry_the_model_actually_sent() -> None:
+    from switchyard.bridge import HermesBridge
+
+    bridge = HermesBridge(_Sink(), timeout=1.0)  # type: ignore[arg-type]
+    seen: list[dict[str, Any]] = []
+    bridge.add_middleware("router", "llm_request", lambda req, ctx: {**req, "model": "routed/x"})
+    bridge.add_hook("meter", "post_api_request", seen.append)
+    bridge.dispatch_llm_request({"model": "configured/y"}, {"api_request_id": "r1"})
+    bridge.dispatch_hook("post_api_request", {"api_request_id": "r1", "model": "configured/y"})
+    bridge.dispatch_hook("post_api_request", {"api_request_id": "r1"})  # each id is used once
+    assert seen[0]["sent_model"] == "routed/x" and "sent_model" not in seen[1]
+    bridge.close()
