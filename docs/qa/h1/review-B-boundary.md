@@ -17,7 +17,7 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-3 | Medium | confirmed-by-probe | process | process.py:126-131 | Deadline not enforced while writing stdin; raw BrokenPipeError escapes; no audit record |
 | B-4 | Low | confirmed-by-probe | logs | logs.py:59, 64-71 | Long event names make log lines invalid JSON |
 | B-5 | Low | - | - | - | withheld until fixed (#98) |
-| B-6 | Low | - | - | - | withheld until fixed (#99) |
+| B-6 | Low | confirmed-by-probe (acceptance); device behaviour suspected | fs.read | fsread.py:38-49, 68-70 | Device-name screen misses superscript aliases (COM¹, LPT³) and trailing-colon names |
 | B-7 | Low | - | - | - | withheld until fixed (#100) |
 | B-8 | Low | confirmed-by-reading | API client | api.py:301-334; cli.py:119-128 | Stale api.port/api.token trusted; the CLI sends the bearer token to whatever answers |
 | B-9 | Low | confirmed-by-reading | CLI/API | api.py:319-322; cli.py:119-128 | Transport error after the request was sent, then offline re-run of the operation (possible double execution) |
@@ -100,9 +100,15 @@ Overall: the loopback API and the frame layer are sound. The Host, Origin, token
 
 Withheld until #98 is closed.
 
-### B-6 (Low)
-
-Withheld until #99 is closed.
+### B-6 (Low), fs.read device-name screen incomplete
+- **Location:** `fsread.py:38-49` (`_RESERVED`), `fsread.py:68-70` (`part.split(".")[0].rstrip(" ").upper() in _RESERVED`).
+- **Evidence:** probe p5 (real superscript characters):
+  `ACCEPT 'COM¹'`, `ACCEPT 'COM²'`, `ACCEPT 'LPT³'`, `ACCEPT 'LPT¹.txt'`
+  Probe p3: `ACCEPT 'C:\\x\\NUL:'`, `ACCEPT 'C:\\x\\CON:'`, `ACCEPT 'C:\\x\\file.txt:hidden'`. `COM1` and `NUL.txt` are refused.
+- **Impact:** Windows documents the superscript forms as legacy device aliases. If they resolve to devices, a reader could block on a device or read one. I did not open a device to confirm, because a `stat` on the alias returned FileNotFound in both cases and that test is not conclusive. Alternate data streams are accepted by design (the grant is the decision); they are listed for completeness only.
+- **Fix:** normalise each component (strip trailing `.`/space, drop everything after the first `:`) and refuse any component that is a reserved name or has a superscript digit. Add the superscript set. Optionally refuse `:` in path components.
+- **Suggested test:** a parametrised test over the names above, asserting refusal.
+- Fixed in 1.1 (#99): each component is reduced to the name Windows matches (before any `:` and the first `.`, trailing spaces and dots dropped, superscript digits as digits) before the device-name check. Alternate data streams stay allowed.
 
 ### B-7 (Low)
 
@@ -214,7 +220,7 @@ Withheld until #113 is closed.
 
 - Real `git` against a remote (fetch, ls-remote, the 300 s behaviour). B-2 uses a stub fetcher.
 - An item for withheld finding B-22.
-- An item for withheld finding B-6.
+- Windows device I/O for the superscript and colon names (B-6). I did not open a device.
 - An item for withheld finding B-17.
 - The full pytest suite. I did not run it, to keep the repo free of cache and coverage writes.
 - Concurrency under a live daemon: two processes on one data dir, and the CLI-to-daemon fallback (B-9) under real load.
@@ -234,7 +240,7 @@ Withheld until #113 is closed.
 | p2_api.py | API request checks, B-20; one withheld finding |
 | p3_misc.py | B-4, RPC framing and deadline; one withheld finding |
 | p4_update.py | B-1 swap scenarios |
-| p5_fsnames.py | withheld (B-6) |
+| p5_fsnames.py | B-6 device names |
 | p6_net.py | net redirects and allow-list |
 | p7_lock.py | B-2 lock |
 | p8_t2.py | T2 environment and deadline |
