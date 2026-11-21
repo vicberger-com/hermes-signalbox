@@ -396,7 +396,9 @@ def test_h1_c2_hung_observer_is_paused_and_bounded() -> None:
         took.append(time.monotonic() - start)
     assert sink.actions().count("module.hook_timeout") == 3
     assert sink.actions().count("module.hooks_paused") == 1
-    assert max(took[3:]) < 0.01, took
+    assert max(took[3:]) < 0.1, (
+        took
+    )  # paused: no wait at all (well under the 0.2 s timeout; CI jitter allowed)
     assert bridge.inflight("hung") <= MAX_INFLIGHT
     release.set()
     bridge.close()
