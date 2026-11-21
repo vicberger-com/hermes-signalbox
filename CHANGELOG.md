@@ -53,6 +53,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   `module rollback` refuses if those files changed since, and runs the health check afterwards. **Changed
   result:** `module rollback` now returns `{id, version, ok, detail}` and exits 1 when the restored version is
   unhealthy.
+- Control API limits and the token file (H1 B-7 #100, B-17 #108). The API handles at most 16 connections at once
+  and closes further ones immediately, and a request must arrive whole within 10 seconds, so a client sending a
+  byte at a time no longer holds a thread. The token file is now restricted while empty and only then written.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

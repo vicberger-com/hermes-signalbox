@@ -9,21 +9,13 @@
     "tests/modules/test_secrets.py::test_wincred_is_locked_off_windows"
   ],
   "linux": [
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_plain_arguments_still_reach_a_batch_file",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_9_a_skipped_tree_kill_is_logged",
     "tests/core/test_1_1_api_server.py::test_h1_b17_windows_acl_is_applied_to_an_empty_file",
-    "tests/core/test_1_1_spawn_programs.py::test_h1_b10_windows_names_ignore_case_and_extension",
     "tests/core/test_api.py::test_token_file_acl_is_user_only_on_windows",
     "tests/core/test_h1_core_trust.py::test_h1_a3_junction_package_does_not_run",
     "tests/modules/test_secrets.py::test_wincred_round_trip_on_windows"
   ],
   "darwin": [
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_plain_arguments_still_reach_a_batch_file",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_9_a_skipped_tree_kill_is_logged",
     "tests/core/test_1_1_api_server.py::test_h1_b17_windows_acl_is_applied_to_an_empty_file",
-    "tests/core/test_1_1_spawn_programs.py::test_h1_b10_windows_names_ignore_case_and_extension",
     "tests/core/test_api.py::test_token_file_acl_is_user_only_on_windows",
     "tests/core/test_h1_core_trust.py::test_h1_a3_junction_package_does_not_run",
     "tests/modules/test_secrets.py::test_wincred_round_trip_on_windows"
