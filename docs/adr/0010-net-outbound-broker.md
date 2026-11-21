@@ -15,6 +15,11 @@ Status: accepted, 2026-11-20. Phase: M11. Q&A: [12-m11-prework.md](../qa/12-m11-
 5. Audit `net.request` with host, method and status or error class; never paths, headers or bodies.
 6. Module headers with CR/LF are dropped, and so is a module-set `Host` header: the request goes to the host
    the allow-list checked (1.1).
+7. The host is resolved once. A link-local answer (169.254.0.0/16, fe80::/10, including IPv4-mapped forms) is
+   refused and audited `refused_address`; the connection goes to the checked addresses, in resolver order, so a
+   second DNS answer cannot move it (rebinding). TLS server name and certificate checks still use the host
+   name. Loopback and private addresses stay allowed, because connectors call local services (1.1, operator
+   decision Q-SY-1.1-2).
 
 ## Consequences
 
