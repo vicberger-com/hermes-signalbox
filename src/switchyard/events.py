@@ -32,6 +32,7 @@ from switchyard.errors import SwitchyardError
 
 MAX_DATA_BYTES = 64 * 1024
 MAX_DEPTH = 8
+MAX_SUBSCRIPTIONS = 64  # per module: each one costs a call per matching event (H1 B-18)
 _TYPE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+\Z")
 _PREFIX = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*\Z")
 
@@ -132,6 +133,8 @@ class EventBus:
     def subscribe(self, owner: str, type_: str, handler: Handler) -> None:
         _check_pattern(type_)
         with self._lock:
+            if sum(1 for s in self._subs if s[0] == owner) >= MAX_SUBSCRIPTIONS:
+                raise SwitchyardError(f"{owner!r} already has {MAX_SUBSCRIPTIONS} event subscriptions")
             self._subs.append((owner, type_, handler))
 
     def unsubscribe_all(self, owner: str) -> None:

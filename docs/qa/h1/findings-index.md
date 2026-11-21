@@ -54,10 +54,10 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | B-12 | Low | updates.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #137 (backlog #104) |
 | B-13 | Low | updates.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #137 (backlog #105) |
 | B-14 | Low | host_t2.py, rpc.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
-| B-15 | Low | host_t2.py, host_t2_child.py | Backlog 1.1 | - | private until fixed | backlog #106 |
-| B-16 | Low | host_t2.py, rpc.py | Backlog 1.1 | - | private until fixed | backlog #107 |
+| B-15 | Low | host_t2.py, host_t2_child.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #139 (backlog #106) |
+| B-16 | Low | host_t2.py, rpc.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #139 (backlog #107) |
 | B-17 | Low | api.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #138 (backlog #108) |
-| B-18 | Low | events.py, host_t2.py | Backlog 1.1 | - | private until fixed | backlog #109 |
+| B-18 | Low | events.py, host_t2.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #139 (backlog #109) |
 | B-19 | Low | schedule.py | Backlog 1.1 | - | private until fixed | backlog #110 |
 | B-20 | Info | api.py | H1 should | WP2 | see [review B](review-B-boundary.md) | fixed in #79 |
 | B-21 | Info | scheduler.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |

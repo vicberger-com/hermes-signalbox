@@ -26,10 +26,10 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-12 | Low | confirmed-by-reading | updates | updates.py:280-312, 342-347 | No version monotonicity: an older commit from the pinned URL installs without any flag |
 | B-13 | Low | confirmed-by-reading | rollback | updates.py:480-505 | Manual rollback reactivates without a health check and without an integrity or identity check |
 | B-14 | Low | confirmed-by-reading | RPC | rpc.py:162-167; host_t2.py:126-148 | Send time is outside the call deadline; a call can run about 2x the documented limit |
-| B-15 | Low | - | - | - | withheld until fixed (#106) |
-| B-16 | Low | - | - | - | withheld until fixed (#107) |
+| B-15 | Low | confirmed-by-reading | RPC/T2 | host_t2_child.py:29-33; host_t2.py:112-119 | Child requests are served only during a parent call; child-side calls have no timeout |
+| B-16 | Low | confirmed-by-reading | RPC | rpc.py:62; host_t2.py:98 | `write_frame` ignores the return value of a raw-pipe write (short-write risk; suspected) |
 | B-17 | Low | confirmed-by-reading | API | api.py:57-67 | Token written before the Windows ACL is restricted (window in a shared data dir) |
-| B-18 | Low | - | - | - | withheld until fixed (#109) |
+| B-18 | Low | confirmed-by-reading | events | events.py:132-135; host_t2.py:236-251 | No subscription cap per module; each event fans out to synchronous RPC on the publisher's thread |
 | B-19 | Low | - | - | - | withheld until fixed (#110) |
 | B-20 | Info | confirmed-by-probe | API | api.py:162-165 | PUT/PATCH/DELETE/OPTIONS reply 501 without the Host or Origin check |
 | B-21 | Info | confirmed-by-reading | scheduler | scheduler.py:140-146 | NaN and inf accepted for `every` and `min_interval_s`; such a trigger never fires |
@@ -164,13 +164,19 @@ Withheld until #103 is closed.
 - **Fix:** compute the deadline before the send and pass the remaining time to the writer.
 - **Suggested test:** a child that stops reading and a call with `timeout=1`, asserting completion within about 1.2 s.
 
-### B-15 (Low)
+### B-15 (Low), child requests served only during a parent call
+- **Location:** `host_t2_child.py:29-33` (`parent.request(method, params)` with no timeout); `host_t2.py:112-119` (reader queues frames and kills the child at 64 frames).
+- **What is wrong:** requests from the child while the parent is idle are queued and answered only at the next call. A background thread in a module blocks with no timeout. More than 64 unsolicited frames kill the child.
+- **Impact:** functional. Module background threads (logging, emit) stall silently. Documented? Not in m0-core.md.
+- **Fix:** have the parent serve inbound requests on a dedicated reader, or document the limit and give the child a call timeout.
+- **Suggested test:** a child that starts a thread calling `ctx.log` and assert the log arrives while the parent is idle.
+- Fixed in 1.1 (#106) by the second option: child calls time out after 30 s, and the limit is documented in m0-core (T2 subprocess host). A dedicated parent reader was not added.
 
-Withheld until #106 is closed.
-
-### B-16 (Low)
-
-Withheld until #107 is closed.
+### B-16 (Low), frame writer ignores short writes (suspected)
+- **Location:** `rpc.py:62` (`stream.write(...)` result not checked); `host_t2.py:98` (`bufsize=0`, so the stream is a raw `FileIO`).
+- **Impact:** if a raw write is partial, the peer sees a corrupt frame. On blocking pipes this normally does not happen, and I did not test it. Suspected only.
+- **Fix:** loop until all bytes are written, or wrap the stream in a `BufferedWriter`.
+- Fixed in 1.1 (#107): the writer loops until the whole frame is written; a test with a 3-byte-per-write stream confirmed the corrupt frame before the fix.
 
 ### B-17 (Low), token written before the Windows ACL is applied
 - **Location:** `api.py:57-67` (`os.write` at line 61, `_restrict_windows_acl` at line 67).
@@ -178,9 +184,11 @@ Withheld until #107 is closed.
 - **Fix:** create the file with the ACL applied first (for example, create an empty file, restrict it, then write).
 - Fixed in 1.1 (#108): the file is created empty, restricted, and only then written.
 
-### B-18 (Low)
-
-Withheld until #109 is closed.
+### B-18 (Low), no subscription cap; fan-out on the publisher's thread
+- **Location:** `events.py:132-135` (`subscribe` appends with no limit); `host_t2.py:236-251` (each T2 subscription is a synchronous `_call` per event).
+- **Impact:** a module can subscribe many times, and each event then costs one RPC round trip per subscription. The delivery runs on whichever thread published, including the scheduler tick. Bounded by the 10 s deadline, so Low.
+- **Fix:** cap subscriptions per module (for example 64), and consider asynchronous delivery for T2 subscribers.
+- Fixed in 1.1 (#109): at most 64 subscriptions per module. Delivery to T2 subscribers stays synchronous.
 
 ### B-19 (Low)
 
@@ -236,7 +244,7 @@ Withheld until #113 is closed.
 - The full pytest suite. I did not run it, to keep the repo free of cache and coverage writes.
 - Concurrency under a live daemon: two processes on one data dir, and the CLI-to-daemon fallback (B-9) under real load.
 - Hermes adapter (`hermes/`), dashboard panel and inbox modules: outside this scope.
-- An item for withheld finding B-15.
+- Slowloris beyond 40 sockets, and a flood of child frames (the 64-frame kill, B-15).
 
 ## Issues encountered
 

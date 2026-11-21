@@ -56,6 +56,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Control API limits and the token file (H1 B-7 #100, B-17 #108). The API handles at most 16 connections at once
   and closes further ones immediately, and a request must arrive whole within 10 seconds, so a client sending a
   byte at a time no longer holds a thread. The token file is now restricted while empty and only then written.
+- Subprocess (T2) module channel (H1 B-15 #106, B-16 #107, B-18 #109). A module thread that calls `ctx` while the
+  parent is idle now gets an error after 30 seconds instead of waiting for ever (the limit is documented in
+  m0-core). Frames are written whole even when a pipe accepts part of a write. A module may hold at most 64
+  event subscriptions.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

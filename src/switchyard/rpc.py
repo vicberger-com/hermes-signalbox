@@ -58,8 +58,13 @@ def write_frame(stream: IO[bytes], message: Message) -> None:
         raise ProtocolError(f"message is not JSON-serialisable: {exc}") from None
     if len(body) > MAX_FRAME_BYTES:
         raise ProtocolError(f"frame too large ({len(body)} bytes, limit {MAX_FRAME_BYTES})")
+    view = memoryview(len(body).to_bytes(_HEADER, "big") + body)
     try:
-        stream.write(len(body).to_bytes(_HEADER, "big") + body)
+        while view:  # a raw pipe (bufsize=0) may accept part of a write (H1 B-16)
+            written = stream.write(view)
+            if not written:
+                raise ProtocolError("stream accepted no bytes; frame not sent")
+            view = view[written:]
         stream.flush()
     except (OSError, ValueError) as exc:
         raise ProtocolError(f"stream closed: {exc}") from None

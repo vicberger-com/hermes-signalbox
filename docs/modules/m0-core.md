@@ -77,7 +77,7 @@ are not audited; grants, revokes, refused grants and denials are.
 Built per module at activation from `ContextServices(policy, logs, panels, bus, brokers)`. Members always present:
 `module_id`, `log(stream, event, **fields)` (declared `log_streams` only), `register_panel(panel_id, render)`
 (declared `panels` only, needs `ui.panel`), `emit(type, data)` (type must be `<module_id>.<name>`, so a module
-cannot spoof core events), `subscribe(type, handler)`, `state` (namespaced store, added with the state store),
+cannot spoof core events), `subscribe(type, handler)` (at most 64 per module), `state` (namespaced store, added with the state store),
 `health_report(ok, detail)`. `close()` removes panels and subscriptions and makes every member raise. Capability-gated members raise `CapabilityDenied` when ungranted: `secrets`
 (`secrets.read`), `net` (`net.outbound`, host allow-list), `schedule` (`schedule`), `spawn` (`process.spawn`).
 The context never exposes the core, other modules or the policy engine.
@@ -145,7 +145,10 @@ violation or child exit kills the child and fails the module closed (`T2Timeout`
 replayed on the module's real `ModuleContext`; state operations are limited to `table`, `create_table`, `execute`,
 `kv_get`, `kv_set`; capability brokers are policy-checked and then refused in M0 (objects cannot cross the boundary).
 Errors cross with the exception class only; core errors (`CapabilityDenied`, `StateError`) also carry their message and
-are rebuilt as the same class in the child.
+are rebuilt as the same class in the child. The parent answers the child's requests while it waits on one of its own
+calls (activate, an action, an event, a panel): a module thread that calls `ctx` while the parent is idle waits
+for the next call, at most 30 s, then gets an error. Do background work in a scheduled job or an event handler
+instead. Frames are written whole even when a pipe accepts part of a write.
 
 ### Secrets broker (interface only in M0)
 
