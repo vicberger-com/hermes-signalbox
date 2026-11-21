@@ -37,7 +37,7 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 | A-17 | Low | confirmed-by-probe | secrets.py:89-90, 99-101 | `MemoryBackend`'s test-only guard is `"pytest" in sys.modules`; a stub module satisfies it. |
 | A-18 | Low | confirmed-by-probe | secrets.py:209-216, 225 | Non-`KeyError` backend exceptions propagate unwrapped; a token in the backend's message reaches the caller. |
 | A-19 | Low | confirmed-by-probe | manifest.py:148-150; capabilities.py:79-91, 107 | `validate_file` (and `tools/validate_manifest.py`) accept `contributes.policies` rules that discovery rejects. |
-| A-20 | Low | - | - | withheld until fixed (#91) |
+| A-20 | Low | confirmed-by-reading | manifest.py:187, 245 | `requires_core` is stored and never compared with the running core version. |
 | A-21 | Low | confirmed-by-reading | contract.py:184; capabilities.py:162-164 | The contract's "grants gone" check is vacuous: `granted()` returns empty for any unregistered module, whatever the store holds. |
 | A-22 | Low | confirmed-by-reading | context.py:424-436; lifecycle.py:326-331 | `ModuleContext.close()` is not exception-safe: a raise early on skips secret-backend and bridge cleanup. |
 | A-23 | — | — | — | Withdrawn during review: not a finding (see the note under Details). |
@@ -185,7 +185,11 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 - Fix: call `parse_policies`-equivalent grammar checks from `cross_field`, and have the validator use them.
 - Test: `policies = ["allow:fs.read"]` → `validate_file` returns an error.
 
-**A-20 · Low**: withheld until #91 is closed.
+**A-20 · Low · confirmed-by-reading · manifest.py:187, 245**
+- Wrong: `requires_core` is stored on `Manifest` and never compared with the running version. grep finds no other use.
+- Impact: a module that says it needs core `>=99` loads anyway. Compatibility is not enforced.
+- Fix: check it against `switchyard.__version__` (or document the field as informational and drop it from the schema).
+- Fixed in 1.1 (#91), per Q-SY-1.1-3 (a): `requires_core` is parsed at load (unreadable specs are manifest errors) and compared with the core at discovery, reload and update staging. A mismatch refuses the module. The exception, until core 2.0: when the only failing clause is the old template's `<1`, the module loads with an audited `module.requires_core_outdated` and a note in `module show`. The bundled modules and the template now declare `>=1.0,<2`.
 
 **A-21 · Low · confirmed-by-reading · contract.py:184; capabilities.py:118, 162-164**
 - Wrong: the contract's "grants gone" check is `not core.policy.granted(mid)`. After `remove`, the module is unregistered, so `granted()` returns empty whatever the store holds.

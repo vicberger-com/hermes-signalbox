@@ -31,6 +31,7 @@ def make_manifest(tmp_path: Path) -> ManifestFactory:
         log_streams: list[str] | None = None,
         policies: list[str] | None = None,
         programs: list[str] | None = None,
+        requires_core: str = ">=1.0,<2",
     ) -> Manifest:
         d = tmp_path / f"{module_id}-{next(counter)}"
         d.mkdir()
@@ -54,7 +55,7 @@ version = "0.1.0"
 license = "Apache-2.0"
 license_class = "open"
 summary = "test module"
-requires_core = ">=0.1,<1"
+requires_core = "{requires_core}"
 isolation = "in-process"
 entry = "mod:Mod"
 [capabilities]
@@ -118,6 +119,7 @@ def write_module(
     isolation: str = "in-process",
     entry: str = "mod:Mod",
     extra_files: dict[str, str] | None = None,
+    requires_core: str = ">=1.0,<2",
 ) -> Path:
     d = root / module_id
     d.mkdir(parents=True)
@@ -138,7 +140,7 @@ version = "0.1.0"
 license = "Apache-2.0"
 license_class = "open"
 summary = "test"
-requires_core = ">=0.1,<1"
+requires_core = "{requires_core}"
 isolation = "{isolation}"
 entry = "{entry}"
 [capabilities]

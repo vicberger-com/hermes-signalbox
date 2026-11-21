@@ -126,7 +126,10 @@ coarse for minute-level triggers; choose the Hermes-side driver (plugin thread o
 ### Lifecycle
 
 `ModuleManager`: `discover(roots)` (load + verify manifests; reject invalid, duplicate, or untrusted in-process
-modules), `activate(id)`, `deactivate(id, reason)`, `health(id)`, `remove(id, keep_data=False)`,
+modules, and modules whose `requires_core` excludes this core: since 1.1, H1 A-20. `requires_core` is comparisons
+such as `>=1.0,<2`. Until core 2.0 a module whose only mismatch is the pre-1.0 template's `<1` still loads,
+with an audited `module.requires_core_outdated` and a `requires_core_note` in `module show`; an update whose
+staged manifest excludes this core is refused), `activate(id)`, `deactivate(id, reason)`, `health(id)`, `remove(id, keep_data=False)`,
 `set_mode(id, manual|auto|disabled)`, `start_auto()`, `touch(id)`, `tick()` (idle stop), `modules()`, `info(id)`.
 States: `verified`, `active`, `stopped`, `failed`. `activate(id)` refuses (`CapabilityDenied`, audited as
 `policy.denied`) while a requested, non-optional capability is not granted, before importing any module code

@@ -93,6 +93,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   a list nothing changes (any program), and `switchyard module show` now says `programs: any`. The bundled
   modules list theirs (secrets: `bw`, `secret-tool`, `security`; scanner: its six scanners; offload: `claude`,
   `codex`), and an update that adds a program shows as a widening change.
+- `requires_core` in `module.toml` is now enforced (H1 A-20 #91, decision Q-SY-1.1-3 (a)). A module whose range
+  excludes the running core is refused at discovery, and an update to such a version is refused. Transition
+  until core 2.0: a module still on the pre-1.0 template's `">=0.1,<1"` loads with an audited
+  `module.requires_core_outdated` warning and a note in `module show`; change it to `">=1.0,<2"`. The bundled
+  modules and the module template now say `">=1.0,<2"`. An unreadable `requires_core` is a manifest error.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

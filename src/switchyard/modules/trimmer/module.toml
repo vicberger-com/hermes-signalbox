@@ -8,7 +8,7 @@ version = "0.9.0"
 license = "Apache-2.0"
 license_class = "open"
 summary = "Shortens long terminal and tool output before it reaches the model: repeated lines, noisy middles; errors, exit codes and paths are always kept."
-requires_core = ">=0.1,<1"
+requires_core = ">=1.0,<2"
 isolation = "in-process"
 entry = "trimmer_module:TrimmerModule"
 
