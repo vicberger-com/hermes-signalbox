@@ -67,6 +67,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   (H1 B-22, part 2 of #111). Loopback and private addresses stay allowed for local services.
 - `config.toml` and `module.toml` are size-checked while being read: at most the limit plus one byte is read, so
   an oversize file is refused without loading it whole (H1 A-16 #89).
+- Scheduler (H1 B-5 #98, B-19 #110). A cron job no longer runs again when the wall clock steps back (NTP
+  correction, DST fall-back): minutes already passed are skipped for steps of up to 3 hours, and a larger step
+  counts as a clock correction. A removed module's job worker thread is released.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

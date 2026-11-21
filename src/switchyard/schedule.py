@@ -32,6 +32,14 @@ class ScheduleBroker:
         self._pools: dict[str, concurrent.futures.ThreadPoolExecutor] = {}
         self._inflight: dict[str, concurrent.futures.Future[Any]] = {}
         self._lock = threading.Lock()
+        scheduler.on_owner_removed(self.release)
+
+    def release(self, module_id: str) -> None:
+        """Drop the module's worker when its jobs are removed (H1 B-19); a later job starts a fresh one."""
+        with self._lock:
+            pool = self._pools.pop(module_id, None)
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
 
     def for_module(self, module_id: str) -> ModuleSchedule:
         return ModuleSchedule(self, module_id)

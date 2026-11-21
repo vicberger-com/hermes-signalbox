@@ -25,7 +25,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from switchyard.capabilities import CORE_ACTOR, AuditSink
@@ -165,6 +165,11 @@ def _validate(t: Trigger) -> None:
             raise SwitchyardError(f"trigger {t.id}: threshold must be a number")
 
 
+# A wall clock that steps back by up to this much (NTP correction, DST fall-back) does not fire a cron trigger
+# again for minutes it already passed; a larger step is a clock correction and starts afresh (H1 B-5).
+CLOCK_STEP_BACK_TOLERANCE = timedelta(hours=3)
+
+
 class Scheduler:
     def __init__(
         self,
@@ -179,6 +184,7 @@ class Scheduler:
         self._mono = monotonic
         self._now = now
         self._states: dict[str, _State] = {}
+        self._owner_listeners: list[Callable[[str], None]] = []
         self._lock = threading.RLock()
 
     # registry -----------------------------------------------------------------------------------------
@@ -214,8 +220,23 @@ class Scheduler:
     def remove_owner(self, owner: str) -> None:
         with self._lock:
             ids = [i for i, s in self._states.items() if s.trigger.owner == owner]
+            listeners = list(self._owner_listeners)
         for trigger_id in ids:
             self.remove(trigger_id)
+        for listener in listeners:  # e.g. the schedule broker drops the module's worker (H1 B-19)
+            listener(owner)
+
+    def on_owner_removed(self, listener: Callable[[str], None]) -> None:
+        with self._lock:
+            self._owner_listeners.append(listener)
+
+    @staticmethod
+    def _cron_due(s: _State, minute: datetime) -> bool:
+        if not s.cron or not s.cron.matches(minute):
+            return False
+        last = s.last_minute
+        # Not again for a minute already passed, nor after a small step back of the clock (H1 B-5).
+        return last is None or not last - CLOCK_STEP_BACK_TOLERANCE <= minute <= last
 
     def ids(self) -> list[str]:
         with self._lock:
@@ -243,7 +264,7 @@ class Scheduler:
                 if s.every is not None and mono >= s.next_due:
                     s.next_due = mono + s.every
                     due.append(trigger_id)
-                elif s.cron is not None and s.last_minute != minute and s.cron.matches(minute):
+                elif s.cron is not None and self._cron_due(s, minute):
                     s.last_minute = minute
                     due.append(trigger_id)
         for trigger_id in due:
