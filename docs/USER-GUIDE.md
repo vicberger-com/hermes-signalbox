@@ -24,11 +24,17 @@ plugins directory, so the Switchyard tab (section 5) needs `hermes plugins insta
 plugin, the `switchyard` command and the model tools, without the tab; the wheel carries the dashboard files
 under `switchyard/_plugin/` for when Hermes supports that.
 
-`hermes plugins install` also installs the package into Hermes's shared runtime environment, so every profile
-lists `switchyard` (enabled only where you enabled it), and that environment has a matching `switchyard`
-command. To remove the plugin completely, uninstall it with `hermes plugins` and remove the
-`hermes-switchyard` package from that environment. If `hermes plugins enable switchyard` asks whether the
-plugin may replace built-in tools, answer no (`--no-allow-tool-override`): Switchyard replaces none.
+Switchyard has no Python dependencies, and its `plugin.yaml` says so (`python_runtime: external`), so
+`hermes plugins install` only places the plugin in the profile's plugins directory; Hermes's own environment is
+not changed. Release 1.0.1 lacked that line: Hermes then installed the package into its shared environment, every
+profile listed `switchyard`, and a Hermes Desktop install warned `install out of sync` on every command. To clear
+that, install a later release over it (`hermes plugins install vicberger-com/hermes-switchyard --force --ref <SHA>`).
+If `hermes plugins enable switchyard` asks whether the plugin may replace built-in tools, answer no
+(`--no-allow-tool-override`): Switchyard replaces none.
+
+With a plugin install, run the command line through Hermes for the profile, `hermes -p <profile> switchyard
+<noun> <verb> ...`; every `switchyard ...` command in this guide works that way. The `switchyard` command itself
+comes with the pip route.
 
 ## 2. First run
 
@@ -62,15 +68,22 @@ switchyard config show            # data directory in use, why, and core setting
 
 In a Hermes session the same operations are under `/switchyard`, for example `/switchyard module list`.
 
-**With Hermes Desktop.** The desktop's gateway serves every profile and loads the plugin as soon as it is
-enabled, so the gateway is the hosting process and `switchyard api serve` reports that another process hosts
-modules. Grants and modes still work from the command line (they need no daemon): grant what a module needs and
-set `module mode <id> --mode auto`, and the module starts the next time the gateway loads the plugin (restart
-Hermes). `[daemon]` commands need the loopback API of the hosting process: set `[api] enabled = true` in
-`<data_dir>/config.toml` and restart Hermes (#123 tracks a smoother path). Module status is kept per process,
-so `module list` from the command line shows `verified` for a module the gateway is running; the audit log
-(`module.activated`) and `module health` show the hosting process's view.
 Exit codes: 0 success, 1 error or a failed result, 2 usage error, 3 capability denied.
+
+**When Hermes hosts the modules** (Hermes Desktop, or any running gateway: it serves every profile and loads the
+plugin as soon as it is enabled). The gateway is then the hosting process, so do not start `switchyard api
+serve` for that profile; it reports that another process hosts modules. What works:
+
+| You want to | Do |
+|---|---|
+| Grant, revoke, set modes, read the audit log, show config | The command line as usual (`hermes -p <profile> switchyard ...`); it works on the data directory |
+| Start or stop a module, check its health, run any module action | `/switchyard <noun> <verb> ...` in a Hermes chat of that profile, for example `/switchyard module activate router` |
+| Use the command line for those too | Set `[api] enabled = true` in `<data_dir>/config.toml` and restart Hermes. The API inside Hermes serves `module activate`, `deactivate`, `health`, `panel` and read-only actions; anything else is refused with a message naming `/switchyard` |
+| Apply a changed `config.toml` | Restart Hermes; settings are read when the plugin loads |
+
+Modules in `auto` mode whose grants are complete start whenever Hermes loads the plugin. Module status is kept
+per process: `module list` from the command line shows `verified` for a module Hermes is running. The audit log
+(`module.activated`) and `/switchyard module health <id>` show the hosting process's view.
 
 ## 3. Grant capabilities and activate a module
 
@@ -187,3 +200,48 @@ hermes plugins remove switchyard                          # or: pip uninstall he
 
 The data directory (audit log, state, logs, `config.toml`) is left in place; delete it yourself if you do not
 need the audit history.
+
+## 10. Running the daemon as a service
+
+Use this only when no Hermes process hosts the data directory: a pip install with a data directory of its own,
+or Hermes not running on that machine. Under Hermes the gateway already is the service (section 2).
+
+Run `switchyard api serve` from a service manager that starts it at logon and restarts it if it stops. The
+daemon needs no administrator rights; run it as your own user, with the same `SWITCHYARD_DATA_DIR` that your
+`switchyard` commands use. After a crash, the next command removes the daemon's stale `api.port` and
+`api.token` and reports that no daemon is running.
+
+These recipes follow each service manager's documented form; they have not yet been run end to end on each
+system.
+
+Windows (Task Scheduler, at logon, restarted on failure; replace the path with `where switchyard`):
+
+```powershell
+$action  = New-ScheduledTaskAction -Execute "C:\Path\To\switchyard.exe" -Argument "api serve"
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$set     = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit 0
+Register-ScheduledTask -TaskName "Switchyard daemon" -Action $action -Trigger $trigger -Settings $set
+```
+
+Linux (systemd user unit `~/.config/systemd/user/switchyard.service`, then
+`systemctl --user enable --now switchyard`):
+
+```ini
+[Unit]
+Description=Switchyard daemon
+
+[Service]
+ExecStart=%h/.local/bin/switchyard api serve
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+macOS (launchd agent `~/Library/LaunchAgents/com.vicberger.switchyard.plist` with `ProgramArguments` set to the
+`switchyard` path, `api`, `serve`, and `RunAtLoad` and `KeepAlive` set to true; load it with
+`launchctl load ~/Library/LaunchAgents/com.vicberger.switchyard.plist`).
+
+`systemctl --user stop` and `launchctl unload` send a stop signal, and the daemon shuts down cleanly and removes
+its `api.port` and `api.token`. Ending the task in Task Scheduler terminates the process instead; the next
+`switchyard` command then removes the stale files.

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from switchyard import __version__
-from switchyard.api import ApiClient, ApiUnavailable, ControlServer, clear_stale_files
+from switchyard.api import ApiClient, ApiRestricted, ApiUnavailable, ControlServer, clear_stale_files
 from switchyard.core import Core
 from switchyard.errors import CapabilityDenied, SwitchyardError
 from switchyard.ops import OPERATIONS, Operation, UsageError
@@ -152,6 +152,11 @@ def _run(operation: Operation, params: dict[str, Any], data_dir: Path | None) ->
         if clear_stale_files(resolved):  # nobody hosts this directory: no daemon to talk to (H1 D-9)
             raise ApiUnavailable(f"no running daemon for {resolved}")
         return ApiClient.from_data_dir(resolved).request(operation.noun, operation.verb, params)
+    except ApiRestricted:
+        # 1.1 S-4: Hermes hosts this directory with the restricted API. Commands that need no daemon run on
+        # the data directory, as they do when no daemon runs; the others keep the refusal, naming the routes.
+        if not operation.offline:
+            raise
     except ApiUnavailable:
         if not operation.offline:
             name = f"{operation.noun} {operation.verb}"

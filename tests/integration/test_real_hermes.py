@@ -102,3 +102,11 @@ def test_dashboard_api_imports_against_hermes(monkeypatch: pytest.MonkeyPatch) -
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert module.router.routes
+
+
+def test_hermes_installs_nothing_for_the_plugin() -> None:
+    """1.1 S-1: Hermes's own reader sees no packages to put into its shared environment (a sealed desktop
+    install reports 'install out of sync' when a plugin's package lands there)."""
+    declarations = pytest.importorskip("pm.plugin_declarations")
+    declaration = declarations.read_python_declaration(Path(__file__).resolve().parents[2])
+    assert declaration.external and not declaration.installs_packages
