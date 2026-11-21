@@ -88,6 +88,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   something a module did not declare now exits **3** like a denied capability (was 1); over the control API
   these answer 400, 403 `policy_refused` and 503 `not_available` (were 409). The model sees the new class
   names in tool errors (for example `UsageError` instead of `SwitchyardError`).
+- A module can now list the programs `process.spawn` may run (`capabilities.programs` in `module.toml`; H1
+  B-10 #103). With a list, any other program, or a path instead of a bare name, is refused and audited. Without
+  a list nothing changes (any program), and `switchyard module show` now says `programs: any`. The bundled
+  modules list theirs (secrets: `bw`, `secret-tool`, `security`; scanner: its six scanners; offload: `claude`,
+  `codex`), and an update that adds a program shows as a widening change.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

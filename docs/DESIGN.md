@@ -108,6 +108,8 @@ restricted account.
    registered with Hermes redaction (`register_redaction_patterns`).
 3. Egress allow-list. Requests made through the core (`ctx.net`) go only to hosts declared in
    `capabilities.net_hosts`. This binds in-process modules that use the broker; it is not an OS firewall.
+   `process.spawn` runs only the bare program names in `capabilities.programs` when the manifest lists any
+   (1.1, H1 B-10); without a list it may run any program, and `module show` says `programs: any`.
 4. Paid-resource gate. `llm.paid` is a separate capability with budget limits. The supervisor can never hold it.
 5. Tamper-evident audit. Every grant, activation, routing decision above a threshold, secret use (name only),
    update and policy change is written to the hash-chained log. `switchyard audit verify` checks the chain.

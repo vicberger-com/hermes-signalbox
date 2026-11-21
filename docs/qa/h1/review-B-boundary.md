@@ -21,7 +21,7 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-7 | Low | confirmed-by-probe | API | api.py:98-101, 244-260 | One thread per connection, no cap; 40 stalled sockets gave 42 threads |
 | B-8 | Low | confirmed-by-reading | API client | api.py:301-334; cli.py:119-128 | Stale api.port/api.token trusted; the CLI sends the bearer token to whatever answers |
 | B-9 | Low | confirmed-by-reading | CLI/API | api.py:319-322; cli.py:119-128 | Transport error after the request was sent, then offline re-run of the operation (possible double execution) |
-| B-10 | Low | - | - | - | withheld until fixed (#103) |
+| B-10 | Low | confirmed-by-reading | process | process.py:83-141 | `process.spawn` is a blanket grant: no program allow-list; env and cwd fully module-chosen |
 | B-11 | Low | confirmed-by-reading | updates | updates.py:57, 294-299 | Refusal gate for unreviewed files misses compiled extensions (.pyd, .so) and is case-sensitive |
 | B-12 | Low | confirmed-by-reading | updates | updates.py:280-312, 342-347 | No version monotonicity: an older commit from the pinned URL installs without any flag |
 | B-13 | Low | confirmed-by-reading | rollback | updates.py:480-505 | Manual rollback reactivates without a health check and without an integrity or identity check |
@@ -138,9 +138,12 @@ Overall: the loopback API and the frame layer are sound. The Host, Origin, token
 - **Suggested test:** a fake server that accepts and closes after the body; assert no local re-run.
 - Fixed in 1.1 (#102): only a failure to connect falls back to a local run; a failure after the request was sent is `ApiOutcomeUnknown` and nothing runs again.
 
-### B-10 (Low)
-
-Withheld until #103 is closed.
+### B-10 (Low), `process.spawn` is a blanket grant
+- **Location:** `process.py:83-141`; no program rule in `capabilities.py` or `manifest.py` (grep found none). The program name is audited (`process.py:144-145`) but not checked. `env` and `cwd` are module-chosen (`process.py:101-116`).
+- **Impact:** a granted module can run any program on PATH or any absolute executable, under any `cwd`. The grant is the decision, as with fs.read, but nothing in the docs says `process.spawn` is unconstrained. The programs in docs/MODULES.md are the intended use only.
+- **Fix:** let the manifest declare `programs = [...]` and match on basename and resolved path; or document the blanket grant in the grant prompt.
+- **Suggested test:** a manifest with `programs = ["bw"]`, asserting that `run(["cmd.exe"])` is denied and audited.
+- **Fixed in 1.1 (#103):** a manifest may list `capabilities.programs` (bare names; requires `process.spawn`). With a list, `PolicyEngine.require_program` refuses an unlisted program or a path in `argv[0]`, and the denial is audited (`policy.denied` with the program name). Without a list the grant stays blanket, and `module show` reports `programs: any`. All three bundled spawning modules list theirs. An update that adds a program is a widening change in the preview.
 
 ### B-11 (Low), refusal gate for unreviewed files is incomplete
 - **Location:** `updates.py:57` (`_UNREVIEWABLE = (".pyc", ".pyo", ".pth")`), `updates.py:294` (`p.suffix in _UNREVIEWABLE`).
