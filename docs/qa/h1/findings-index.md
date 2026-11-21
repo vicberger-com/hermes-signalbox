@@ -81,7 +81,7 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | C-14 | Low | adapter / router / meter | Backlog 1.1 | - | private until fixed | backlog #114 |
 | C-15 | Low | secrets | H1 should | WP6 | see [review C](review-C-modules.md) | fixed in #83 |
 | C-16 | Low | activation | H1 should | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
-| C-17 | Low | config | Backlog 1.1 | - | private until fixed | backlog #115 |
+| C-17 | Low | config | Backlog 1.1 | 1.1 | see [review C](review-C-modules.md) | fixed in #150 (backlog #115) |
 | C-18 | Info | dashboard | Backlog 1.1 | 1.1 | see [review C](review-C-modules.md) | fixed in #146 (backlog #116) |
 | D-1 | High | USER-GUIDE.md, README.md | H1 must | WP2 | Guide's first module activation fails: `router` also needs `ui.panel`, which the guide never grants | fixed in #79 |
 | D-2 | High | process.py, updates.py | H1 must | WP4 | On Windows the core picks Hermes Desktop's packaged git (WindowsApps), which this process cannot run; git-based update features are disabled here | fixed in #81 |

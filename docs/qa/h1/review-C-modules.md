@@ -29,7 +29,7 @@ Hermes API facts were checked against the installed v0.23.2 source (`hermes_cli/
 | C-14 | Low | - | - | withheld until fixed (#114) |
 | C-15 | Low | suspected (not checked live) | secrets | `bw get` output is returned without stripping; a trailing newline would reach the caller. |
 | C-16 | Low | confirmed-by-reading | activation | Read paths write Hermes config: `health()` and `on_turn` can expire and undo a preset. |
-| C-17 | Low | - | - | withheld until fixed (#115) |
+| C-17 | Low | confirmed-by-reading | config | Read-modify-write of `config.yaml` has no cross-process lock; a concurrent edit can be lost. |
 | C-18 | Info | not checked | dashboard | Dashboard POST routes can deactivate the router (hard stop). This is by ADR-0009. Hermes CSRF or header enforcement on these routes was not traced. |
 
 Counts: Critical 0, High 1, Medium 7, Low 9, Info 1 (18 findings).
@@ -181,9 +181,13 @@ Withheld until #114 is closed.
 - **What is wrong:** A dashboard health poll can end an active preset and write `config.yaml`. This is a side effect on a read path.
 - **Fix:** Move expiry to the scheduler tick and keep `health()` read-only.
 
-### C-17 (Low)
+### C-17 (Low): config read-modify-write has no cross-process lock
 
-Withheld until #115 is closed.
+- **Where:** `src/switchyard/hermes/config_port.py:20-33` (`load_config` then `save_config(merge_existing=True)`). `src/switchyard/hermesconfig.py:115-124` and `:143-151` (`stored` and `unexpected` are compared after the write).
+- **What is wrong:** The lock is in-process only, so a concurrent edit of `config.yaml` between the read and write can be lost. The read-back check can then roll back the wrong thing.
+- **Impact:** Suspected, not reproduced. Hermes's own `save_config` preserves `${VAR}` refs and strips defaults (I checked), so the YAML-damage concern is mitigated.
+- **Fix:** A file lock around the read-modify-write, or re-read inside the lock before writing.
+- **Fixed in 1.1 (#115):** `ConfigWriter.set` holds `FileLock(<backups>/.write.lock)` around the read-modify-write, shared by every Switchyard process. The rollback re-reads the key and does not restore when a completed write has since been changed by someone else (audited `restored: skipped`). A part-way failure still rolls back. Hermes's own writers do not take the lock; that limit is documented in ADR-0005.
 
 ### C-18 (Info): dashboard can deactivate the router
 
