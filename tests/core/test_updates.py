@@ -494,6 +494,33 @@ def test_h1_b2_git_work_does_not_hold_the_core_lock(env: Any) -> None:
     assert waited < 0.5, waited
 
 
+def test_h1_cr1_module_changed_during_fetch_is_not_swapped(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    import dataclasses
+
+    core, fetcher, _ = env
+    manager = core.updates._manager
+    real_manifest = manager.manifest
+    fetched = {"done": False}
+    real_fetch = fetcher.fetch
+
+    def fetch(url: str, ref: str, dest: Path) -> None:
+        real_fetch(url, ref, dest)
+        fetched["done"] = True  # the operator replaced the module while git ran (no core lock held)
+
+    def manifest(module_id: str) -> Any:
+        m = real_manifest(module_id)
+        return dataclasses.replace(m, version="9.9.9") if fetched["done"] else m
+
+    monkeypatch.setattr(fetcher, "fetch", fetch)
+    monkeypatch.setattr(manager, "manifest", manifest)
+    with pytest.raises(UpdateError, match="changed while"):
+        core.run("module", "update", {"id": "ext", "ref": NEW}, actor="t")
+    monkeypatch.setattr(manager, "manifest", real_manifest)
+    assert _version(core) == "0.1.0"
+    actions = [r["action"] for r in core.run("audit", "tail", {"n": 10}, actor="t")]
+    assert "module.update_rejected" in actions and "module.updated" not in actions
+
+
 @pytest.mark.parametrize("name", ["evil.pyd", "evil.so", "libx.dylib", "x.dll", "run.pyw", "X.PYC", "E.PTH"])
 def test_h1_b11_binary_and_case_variant_files_refused(env: Any, name: str) -> None:
     core, fetcher, _ = env

@@ -90,26 +90,39 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 
 ## 5. Acceptance tests (written before code)
 
-- [ ] `tests/acceptance/test_h1_acceptance.py` exists with one test per must ID, each named `test_h1_<id>_...`
+- [x] `tests/acceptance/test_h1_acceptance.py` exists with one test per must ID, each named `test_h1_<id>_...`
       (for example `test_h1_c1_...`), driven through a public surface where one exists.
-- [ ] Each must ID is fixed with a regression test that failed before the fix, or has a disposition in section 6.
-- [ ] The guide walkthrough job runs every command in `docs/USER-GUIDE.md` sections 2, 3, 6, 7 and 8 against a
+- [x] Each must ID is fixed with a regression test that failed before the fix, or has a disposition in section 6.
+- [x] The guide walkthrough job runs every command in `docs/USER-GUIDE.md` sections 2, 3, 6, 7 and 8 against a
       temporary data directory and fails on a non-zero exit or a `status: failed` result.
-- [ ] The wheel built in CI contains the files listed in an expected manifest, installs into a clean
+- [x] The wheel built in CI contains the files listed in an expected manifest, installs into a clean
       environment, and `switchyard version` prints the version in `pyproject.toml`.
-- [ ] `pytest -rs` skip sets equal the per-OS allow-list on Linux, Windows and macOS.
-- [ ] All gates in `docs/BUILD-PLAN.md` pass on Python 3.11, 3.12, 3.13 and 3.14.
+- [x] `pytest -rs` skip sets equal the per-OS allow-list on Linux, Windows and macOS.
+- [x] All gates in `docs/BUILD-PLAN.md` pass on Python 3.11, 3.12, 3.13 and 3.14.
 - [ ] A release cannot be published from a tag that is not on `main` or whose verify job failed (checked by
       reading the workflow and at the `v1.0.1` tag).
-- [ ] `docs/DESIGN.md`, `docs/USER-GUIDE.md`, `docs/REFERENCE.md`, `docs/modules/m0-core.md` and the module
+- [x] `docs/DESIGN.md`, `docs/USER-GUIDE.md`, `docs/REFERENCE.md`, `docs/modules/m0-core.md` and the module
       READMEs match the code after every package (link check passes).
-- [ ] The fix-diff security review has run and each of its findings is fixed or dispositioned.
-- [ ] Every "Backlog 1.1" ID has an issue number recorded in the index.
+- [x] The fix-diff security review has run and each of its findings is fixed or dispositioned.
+- [x] Every "Backlog 1.1" ID has an issue number recorded in the index.
+
+Close notes (2026-11-20):
+- Must-ID coverage: the regression test for each ID, written before its fix, lives in the test file of the
+  component it drives and is named `test_h1_<id>_...`. `tests/acceptance/test_h1_acceptance.py` checks that this
+  mapping is complete against the index, and covers D-3, D-4 and D-6 (workflow files) directly.
+- Gates and skip sets: the CI `test` matrix (Linux, Windows, macOS x Python 3.11 to 3.14, with
+  `SWITCHYARD_CHECK_SKIPS=1`) was green on every H1 pull request, last on #88.
+- Links: `tests/test_doc_links.py` checks every relative link in the root, `docs/` and module READMEs.
+- Security review: three read-only reviewers (one per area: core trust; bridge and modules; updates, process,
+  API and workflows) reported nothing. The maintainer then re-read the riskiest changes (unlocked update path,
+  sent-model metadata, workflow expressions, audit locking) and found CR-1, fixed in the close PR.
+- The release item is ticked when `v1.0.1` is published through the `verify` job.
 
 ## 6. Dispositions (fill in as each package merges)
 
 | ID | Disposition (Fixed / Fixed (adapted) / Not reproduced / By design / Accepted, documented) | Pull request | One-line reasoning |
 |---|---|---|---|
+| CR-1 | Fixed | close PR | Phase-close review: an update re-checks under the core lock that the installed module is still the one it staged and compared against (git runs unlocked since B-2); regression `test_h1_cr1_module_changed_during_fetch_is_not_swapped` |
 | D-13 | Accepted, documented | WP0 | Single-maintainer project; both gate checks are required on every pull request |
 | D-21 | No action | - | Stale metadata in one local environment only; refreshed 2026-11-20 |
 | C-1 | Fixed | #78 | ADR-0013: bridge fallback and claim, router fallback from remembered candidates, 1 s store budget |
@@ -177,7 +190,7 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 | D-17 | Fixed | #87 | Dashboard manifest 1.0.0; test that all version fields agree |
 | D-18 | Fixed | #87 | Moved to `docs/qa/2026-11-20-docs-gap-audit-r1.md` with a historical note |
 | D-19 | Fixed | #87 | "Generated" wording dropped; missing flags, directory, events and states added; test checks every operation |
-| D-4 | Fixed | WP11 | `tests/integration/test_real_hermes.py` + CI job `hermes-integration` (Hermes v0.23.2 at `ae2a81c`, `uv sync --frozen`, Python 3.14); required by `ci-required`. The acceptance file keeps its name (M0 scope); the 1.0 integration coverage is the new file |
+| D-4 | Fixed | #88 | `tests/integration/test_real_hermes.py` + CI job `hermes-integration` (Hermes v0.23.2 at `ae2a81c`, `uv sync --frozen`, Python 3.14); required by `ci-required`. The acceptance file keeps its name (M0 scope); the 1.0 integration coverage is the new file |
 | D-25 | Fixed | #80 | `hatchling>=1.27,<2` in `[build-system]` |
 | D-2 | Fixed | #81 | `find_runnable` tries each `PATH` candidate with `--version`; `[tools] git` override; `config show` names it; git tests run on this workstation |
 | D-15 | Fixed | #81 | Test forces an absolute working-directory hit on every OS; shared `_outside_cwd` check also guards `program_candidates` |
