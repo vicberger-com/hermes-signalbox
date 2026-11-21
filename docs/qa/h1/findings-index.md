@@ -33,7 +33,7 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | A-22 | Low | context.py, lifecycle.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-23 | - | - | No action: withdrawn by the reviewer | - | withdrawn | no action |
 | A-24 | Low | secrets.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #133 (backlog #92) |
-| A-25 | Low | state.py | Backlog 1.1 | - | private until fixed | backlog #93 |
+| A-25 | Low | state.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #151 (backlog #93) |
 | A-26 | Info | capabilities.py, m0-core.md | H1 should | WP10 | see [review A](review-A-core.md) | fixed in #87 |
 | A-27 | Info | context.py | Backlog 1.1 | - | private until fixed | backlog #94 |
 | A-28 | Info | m0-core.md, state.py | H1 should | WP10 | see [review A](review-A-core.md) | fixed in #87 |
