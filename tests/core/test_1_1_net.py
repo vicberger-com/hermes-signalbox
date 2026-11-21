@@ -49,7 +49,9 @@ def test_h1_b22_module_host_header_is_dropped(name: str, monkeypatch: pytest.Mon
         return _Resp()
 
     monkeypatch.setattr(net._OPENER, "open", fake_open)
-    monkeypatch.setattr(net, "_resolve", lambda host, port: ["127.0.0.1"])  # no DNS for the made-up name
+    monkeypatch.setattr(
+        net, "_resolve", lambda host, port, timeout=10.0: ["127.0.0.1"]
+    )  # no DNS for the made-up name
     broker = net.NetBroker(_AllowAll(), _Audit())  # type: ignore[arg-type]
     broker.request("demo", "GET", "http://allowed.example/x", headers={name: "internal.example", "X-A": "1"})
     req = sent[0]

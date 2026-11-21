@@ -121,6 +121,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   record uses the digest of the bytes that were loaded instead of reading the file a second time. Audit
   detail that is not valid text is refused cleanly, and a subprocess module's table columns must be
   `[name, type]` pairs.
+- Network refusals cover every form of a cloud metadata address (1.1 acceptance security review): AWS IMDS
+  over IPv6, Azure WireServer, Alibaba Cloud, and 169.254.169.254 carried inside an IPv6 address (6to4, NAT64,
+  SIIT, IPv4-compatible). Name resolution now has a deadline, so a stalled resolver cannot hold a request past
+  its timeout.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

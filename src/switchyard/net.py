@@ -6,8 +6,10 @@ match). No redirects are followed (a redirect could leave the allow-list), proxi
 ignored, the response body is capped, and each request is audited with host, method and status only: URLs
 paths, headers and bodies can carry secrets and are never recorded.
 
-The host name is resolved once. A link-local answer (169.254.0.0/16, fe80::/10: cloud metadata endpoints) is
-refused, and the connection goes to the address that was checked, so a second DNS answer cannot move it
+The host name is resolved once, with a deadline. A cloud metadata answer is refused: link-local
+(169.254.0.0/16, fe80::/10), AWS IMDS over IPv6 (fd00:ec2::/32), Azure WireServer, Alibaba Cloud, and any of
+these carried inside an IPv6 address (mapped, 6to4, NAT64, SIIT, IPv4-compatible). The connection goes to the
+address that was checked, so a second DNS answer cannot move it
 (rebinding). Loopback and private addresses stay allowed: connectors call local services on purpose (1.1, H1
 B-22, operator decision Q-SY-1.1-2).
 """
@@ -19,6 +21,7 @@ import http.client
 import ipaddress
 import json as jsonlib
 import socket
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -53,22 +56,68 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _refused_address(address: str) -> str | None:
-    """Why ``address`` may not be contacted, or ``None``."""
-    try:
-        ip = ipaddress.ip_address(address.split("%", 1)[0])
-    except ValueError:
-        return "not an IP address"
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
-    if ip.is_link_local:
-        return "link-local address (cloud metadata range)"
+# Cloud metadata services (1.1 acceptance S2-1): link-local (AWS, GCP, Azure IMDS), AWS IMDS over IPv6, Azure
+# WireServer and Alibaba Cloud. Loopback and private ranges stay allowed (Q-SY-1.1-2).
+_METADATA_NETS = tuple(
+    ipaddress.ip_network(n)
+    for n in ("169.254.0.0/16", "fe80::/10", "fd00:ec2::/32", "168.63.129.16/32", "100.100.100.200/32")
+)
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+_SIIT = ipaddress.ip_network("::ffff:0:0:0/96")
+
+
+def _embedded_ipv4(ip: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 address an IPv6 address carries (mapped, 6to4, NAT64, SIIT, IPv4-compatible), if any."""
+    if ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    if ip.sixtofour is not None:
+        return ip.sixtofour
+    if ip in _NAT64 or ip in _SIIT:
+        return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+    if int(ip) >> 32 == 0 and int(ip) >= 1 << 24:  # IPv4-compatible ::a.b.c.d (not :: or ::1)
+        return ipaddress.IPv4Address(int(ip))
     return None
 
 
-def _resolve(host: str, port: int) -> list[str]:
-    """Resolve ``host`` once and return the addresses to try, in order; refuse if any answer is link-local."""
-    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+def _refused_address(address: str) -> str | None:
+    """Why ``address`` may not be contacted, or ``None``."""
+    try:
+        ip: ipaddress.IPv4Address | ipaddress.IPv6Address = ipaddress.ip_address(address.split("%", 1)[0])
+    except ValueError:
+        return "not an IP address"
+    candidates = [ip]
+    if isinstance(ip, ipaddress.IPv6Address) and (inner := _embedded_ipv4(ip)) is not None:
+        candidates.append(inner)
+    if any(c in n for c in candidates for n in _METADATA_NETS if c.version == n.version):
+        return "link-local or cloud metadata address"
+    return None
+
+
+def _getaddrinfo(host: str, port: int, timeout: float) -> list[Any]:
+    """``socket.getaddrinfo`` with a deadline (1.1 acceptance S2-8): the OS resolver has none of its own."""
+    result: list[Any] = []
+    failure: list[BaseException] = []
+
+    def work() -> None:
+        try:
+            result.extend(socket.getaddrinfo(host, port, type=socket.SOCK_STREAM))
+        except BaseException as exc:
+            failure.append(exc)
+
+    worker = threading.Thread(target=work, name="switchyard-resolve", daemon=True)
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        raise TimeoutError("name resolution timed out")
+    if failure:
+        raise failure[0]
+    return result
+
+
+def _resolve(host: str, port: int, timeout: float = 10.0) -> list[str]:
+    """Resolve ``host`` once and return the addresses to try, in order; refuse if any answer is a cloud
+    metadata address."""
+    infos = _getaddrinfo(host, port, timeout)
     addresses = [str(info[4][0]) for info in infos]
     if not addresses:
         raise OSError("no address")
@@ -181,7 +230,11 @@ class NetBroker:
             all_headers.setdefault("Content-Type", "application/json")
         req = urllib.request.Request(url, data=data, method=method, headers=all_headers)  # noqa: S310 - scheme checked
         try:
-            req.pinned_addresses = _resolve(parts.hostname, port or (443 if parts.scheme == "https" else 80))  # type: ignore[attr-defined]
+            req.pinned_addresses = _resolve(  # type: ignore[attr-defined]
+                parts.hostname,
+                port or (443 if parts.scheme == "https" else 80),
+                min(max(timeout, 0.5), MAX_TIMEOUT_S),
+            )
         except _AddressRefused as exc:
             self._record(module_id, host, method, "refused_address")
             raise SwitchyardError(f"request to {host} refused: it resolves to a {exc}") from None
