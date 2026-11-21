@@ -78,7 +78,7 @@ def _declared(m: Manifest) -> dict[str, Any]:
         "capabilities": sorted(m.requested),
         "net_hosts": sorted(m.net_hosts),
         "secrets": sorted(m.secrets),
-        "programs": sorted(m.programs),
+        "programs": "any" if m.programs is None else sorted(m.programs),
         "isolation": m.isolation,
         "entry": f"{m.entry_module}:{m.entry_class}",
         "contributes": {k: sorted(v) for k, v in m.contributes.items() if v},

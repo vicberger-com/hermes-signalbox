@@ -111,6 +111,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   the other facades return their classes instead of `object`, so mypy checks module code against them.
 - Internal clean-up (H1 A-30 #96), no behaviour change: the Hermes registration and allow-list checks each
   live in one helper, and module discovery moved from `lifecycle.py` to `discovery.py`.
+- Safer program starts (1.1 acceptance security review). An argument containing `& | < > ^ % ! " ( )` or a line
+  break is refused for a batch file (`.cmd`, `.bat`), which `cmd.exe` would otherwise run as commands. A module
+  can no longer set environment variables that choose what a child program runs (`PATH`, `GIT_*`,
+  `NODE_OPTIONS`, `*_COMMAND` and similar). `programs = []` now means no program instead of any program, and
+  a `programs` list may not name a shell or interpreter. A skipped process-tree kill is logged.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

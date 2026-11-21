@@ -89,7 +89,7 @@ class _Registration:
     denied: frozenset[str]
     net_hosts: frozenset[str]
     secrets: frozenset[str]
-    programs: frozenset[str] = frozenset()  # empty: any program (H1 B-10)
+    programs: frozenset[str] | None = None  # None: no list, any program (H1 B-10); empty: none (S1-4)
 
 
 def parse_policies(manifest: Manifest) -> frozenset[str]:
@@ -135,7 +135,9 @@ class PolicyEngine:
             denied=parse_policies(manifest),
             net_hosts=frozenset(h.lower() for h in manifest.net_hosts),
             secrets=frozenset(manifest.secrets),
-            programs=frozenset(program_key(p) for p in manifest.programs),
+            programs=None
+            if manifest.programs is None
+            else frozenset(program_key(p) for p in manifest.programs),
         )
         with self._lock:
             self._modules[manifest.id] = reg
@@ -252,8 +254,16 @@ class PolicyEngine:
         program = os.path.basename(argv0.replace("\\", "/"))
         missing = f"module {module_id!r} is not registered"
         reg = self._registration(module_id, "process.spawn", missing, program=program)
-        if not reg.programs:
+        if reg.programs is None:
             return
+        if (
+            not argv0.isascii()
+        ):  # 1.1 acceptance S1-5: case folding maps some non-ASCII letters onto ASCII ones
+            raise self._deny(
+                module_id,
+                {"capability": "process.spawn", "program": program},
+                f"module {module_id!r} must name a listed program in ASCII",
+            )
         if program != argv0:
             raise self._deny(
                 module_id,

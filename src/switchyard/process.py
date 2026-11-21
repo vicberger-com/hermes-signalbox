@@ -10,6 +10,7 @@ values.
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import shutil
 import signal
@@ -24,6 +25,23 @@ from typing import Any
 
 from switchyard.capabilities import AuditSink, PolicyEngine
 from switchyard.errors import SwitchyardError
+
+_log = logging.getLogger("switchyard.process")
+# 1.1 acceptance S1-1: cmd.exe parses these in a batch file's arguments; Python's quoting does not escape them
+_BATCH_UNSAFE = frozenset('&|<>^%!"()\r\n')
+# 1.1 acceptance S1-2: variables that make a program run other code or load other files. The caller may not
+# set them; the child gets PATH and the rest from BASE_ENV (the host's own values) only.
+_ENV_EXACT = frozenset({"PATH", "PATHEXT", "COMSPEC", "SYSTEMROOT", "WINDIR", "BASH_ENV", "ENV", "PERL5OPT",
+                        "PERL5LIB", "RUBYOPT", "RUBYLIB", "NODE_OPTIONS", "NODE_PATH", "SSH_ASKPASS", "SHELL",
+                        "PROMPT_COMMAND", "IFS"})  # fmt: skip
+_ENV_PREFIXES = ("GIT_", "LD_", "DYLD_", "PYTHON", "NPM_CONFIG_", "JAVA_TOOL_", "_JAVA_")
+_ENV_SUFFIXES = ("_COMMAND", "_ASKPASS", "_SHELL", "_EDITOR", "_PAGER")
+
+
+def _env_refused(key: str) -> bool:
+    up = key.upper()
+    return up in _ENV_EXACT or up.startswith(_ENV_PREFIXES) or up.endswith(_ENV_SUFFIXES)
+
 
 BASE_ENV = (
     "PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "HOME", "USERPROFILE", "APPDATA",
@@ -50,6 +68,10 @@ def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
             if killer is not None:
                 argv = [killer, "/T", "/F", "/PID", str(proc.pid)]
                 subprocess.run(argv, capture_output=True, timeout=10, check=False)  # noqa: S603 # nosec B603
+            else:  # 1.1 acceptance S1-9: say so; only the direct child is killed below
+                _log.warning(
+                    "taskkill not found under %%SYSTEMROOT%%; child processes of pid %d may survive", proc.pid
+                )
         else:
             os.killpg(proc.pid, signal.SIGKILL)
     except (OSError, subprocess.SubprocessError):
@@ -176,6 +198,16 @@ class ProcessBroker:
         exe = find_program(argv[0])
         if exe is None:
             raise SwitchyardError(f"program {program!r} not found")
+        if exe.lower().endswith((".cmd", ".bat")) and any(set(a) & _BATCH_UNSAFE for a in argv[1:]):
+            raise SwitchyardError(  # 1.1 acceptance S1-1: cmd.exe would run what follows the metacharacter
+                f"an argument for {program!r} contains a character a batch file cannot receive safely "
+                '(& | < > ^ % ! " ( ) or a line break)'
+            )
+        refused = sorted(k for k in (env or {}) if _env_refused(k))
+        if refused:  # 1.1 acceptance S1-2: these choose what actually runs
+            raise SwitchyardError(
+                f"environment variable(s) {', '.join(refused)} may not be set for a child process"
+            )
         child_env = {k: v for k in BASE_ENV if (v := os.environ.get(k)) is not None}
         child_env.update(env or {})
         child_env["NO_COLOR"] = "1"
