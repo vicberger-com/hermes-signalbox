@@ -95,6 +95,12 @@ authorizer callback, not SQL parsing: while a module statement is prepared, any 
 (core tables, other modules, `sqlite_master`) and any PRAGMA, ATTACH, DDL or transaction control is denied.
 Names match `^[a-z][a-z0-9_]{0,31}$`; module ids and table names may not contain `__`, so one module cannot
 forge another's prefix (also a manifest rule). Grants persist through `SqliteGrantStore`.
+Storage bounds (1.1, H1 A-25): one value, column or kv, is at most 4 MiB (SQLite's length limit is lowered
+while a module statement runs, so `zeroblob()` and the like cannot exceed it); a module has at most 64 tables
+and a 256 MiB quota over its tables and kv rows (`ModuleState.usage_bytes()`: `dbstat` pages when SQLite has
+them, else summed value lengths). Usage is measured on `create_table` and whenever the database file has
+grown by 1 MiB since the module's last check; over the quota, inserts, updates and `kv_set` raise
+`StateError` until the module deletes data, and deletes always work. The quota is per process.
 
 ### Audit log
 
