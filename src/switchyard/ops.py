@@ -14,10 +14,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import switchyard
 from switchyard.capabilities import CAPABILITIES
 from switchyard.errors import CapabilityDenied, SwitchyardError
 from switchyard.errors import UsageError as UsageError  # re-exported: older imports use switchyard.ops
 from switchyard.hostinfo import profile
+from switchyard.manifest import core_compatibility
 
 if TYPE_CHECKING:
     from switchyard.core import Core
@@ -155,6 +157,9 @@ def _module_show(core: Core, p: dict[str, Any], actor: str) -> Any:
         "secrets": list(manifest.secrets),
         # H1 B-10: what process.spawn may run; "any" is the blanket grant the prompt must show.
         "programs": (list(manifest.programs) or "any") if "process.spawn" in manifest.requested else [],
+        # H1 A-20: the 1.0 transition note ("outdated") for a module still on the old template's "<1"
+        "requires_core": manifest.requires_core,
+        "requires_core_note": core_compatibility(manifest.requires_core, switchyard.__version__)[1],
         "panels": core.panels.panels(p["id"]),
     }
 

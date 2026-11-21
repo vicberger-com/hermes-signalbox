@@ -31,6 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import switchyard
 from switchyard.capabilities import CORE_ACTOR, AuditSink, PolicyEngine
 from switchyard.context import (
     ContextServices,
@@ -43,7 +44,7 @@ from switchyard.context import (
 from switchyard.errors import CapabilityDenied, ManifestError, NotAvailable, SwitchyardError, UsageError
 from switchyard.events import EventBus
 from switchyard.host_t2 import T2Module
-from switchyard.manifest import MANIFEST_NAME, Manifest, load_manifest, loaded_inside
+from switchyard.manifest import MANIFEST_NAME, Manifest, core_compatibility, load_manifest, loaded_inside
 from switchyard.scheduler import Scheduler
 from switchyard.state import StateStore
 
@@ -228,6 +229,10 @@ class ModuleManager:
                 directory, "module is outside the trusted roots; it must declare isolation = 'subprocess'"
             )
             return None
+        verdict, why = core_compatibility(manifest.requires_core, switchyard.__version__)  # H1 A-20
+        if verdict == "incompatible":
+            self._reject(directory, why)
+            return None
         with self._lock:
             existing = self._entries.get(manifest.id)
             if existing is not None and existing.manifest.directory.resolve() != directory.resolve():
@@ -249,6 +254,13 @@ class ModuleManager:
         fingerprint = self._verification_fingerprint(manifest.id, directory)
         if fingerprint is not None:
             self._record("module.verified", manifest.id, CORE_ACTOR)
+            if verdict == "outdated":  # the 1.0 transition (Q-SY-1.1-3): loads, and says so once per change
+                self._record(
+                    "module.requires_core_outdated",
+                    manifest.id,
+                    CORE_ACTOR,
+                    requires_core=manifest.requires_core,
+                )
             self._store_fingerprint(manifest.id, fingerprint)  # only after the record is written
         else:
             self._bus.publish("core", "module.verified", {"module": manifest.id})
@@ -281,6 +293,9 @@ class ModuleManager:
             manifest = load_manifest(directory)
             if manifest.id != module_id:
                 raise SwitchyardError(f"manifest in {directory} now declares id {manifest.id!r}")
+            verdict, why = core_compatibility(manifest.requires_core, switchyard.__version__)
+            if verdict == "incompatible":
+                raise SwitchyardError(why)
             if manifest.isolation == "in-process" and not self._is_trusted(directory):
                 raise SwitchyardError(
                     "module is outside the trusted roots; it must use isolation = 'subprocess'"

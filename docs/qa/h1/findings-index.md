@@ -28,7 +28,7 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | A-17 | Low | secrets.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #133 (backlog #90) |
 | A-18 | Low | secrets.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-19 | Low | capabilities.py, manifest.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
-| A-20 | Low | manifest.py | Backlog 1.1 | - | private until fixed | backlog #91 |
+| A-20 | Low | manifest.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #149 (backlog #91) |
 | A-21 | Low | capabilities.py, contract.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-22 | Low | context.py, lifecycle.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-23 | - | - | No action: withdrawn by the reviewer | - | withdrawn | no action |
