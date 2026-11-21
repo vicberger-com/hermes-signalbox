@@ -68,8 +68,7 @@ switchyard config show            # data directory in use, why, and core setting
 
 In a Hermes session the same operations are under `/switchyard`, for example `/switchyard module list`.
 
-Exit codes: 0 success, 1 error or a failed result, 2 usage error (unknown name or invalid value), 3 refused by
-policy (capability not granted, or not declared by the module).
+Exit codes: 0 success, 1 error or a failed result, 2 usage error, 3 capability denied.
 
 **When Hermes hosts the modules** (Hermes Desktop, or any running gateway: it serves every profile and loads the
 plugin as soon as it is enabled). The gateway is then the hosting process, so do not start `switchyard api
@@ -178,14 +177,8 @@ install behind it is used). To choose one, set `[tools] git = "<absolute path>"`
 `switchyard config show` prints the git in use.
 
 An update that adds capabilities, hosts, secrets or contributions, or weakens isolation, is refused unless you
-pass `--accept-wider`. An update to an older version (by the manifest's version number; a pre-release counts as
-older than its release) is refused unless you pass `--allow-downgrade`; `module preview` shows `downgrade: true`.
-A failed health check rolls the update back.
-
-`module rollback` restores the version that the last update replaced. It refuses when that version's files were
-changed after it was set aside, and it runs the health check afterwards: an unhealthy result is printed and the
-command exits 1, so check the module before relying on it. The `updates` module checks on a schedule and alerts;
-it never installs.
+pass `--accept-wider`. A failed health check rolls the update back. The `updates` module checks on a schedule
+and alerts; it never installs.
 
 ## 8. Audit log
 
@@ -218,28 +211,17 @@ daemon needs no administrator rights; run it as your own user, with the same `SW
 `switchyard` commands use. After a crash, the next command removes the daemon's stale `api.port` and
 `api.token` and reports that no daemon is running.
 
-The Windows recipe was run end to end on Windows 11 (1.1): start, commands through the daemon, a hard kill,
-restart, and stop. The systemd and launchd recipes follow each service manager's documented form and have not
-yet been run end to end.
+These recipes follow each service manager's documented form; they have not yet been run end to end on each
+system.
 
-Windows (Task Scheduler, as your user, no administrator rights). Replace the program path with the output of
-`where switchyard` and the data directory with yours; passing `--data-dir` keeps the task independent of
-environment variables:
+Windows (Task Scheduler, at logon, restarted on failure; replace the path with `where switchyard`):
 
 ```powershell
-$exe     = "C:\Path\To\switchyard.exe"
-$action  = New-ScheduledTaskAction -Execute $exe -Argument '--data-dir "C:\Path\To\data" api serve'
-$logon   = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$watch   = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
-$set     = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit 0
-Register-ScheduledTask -TaskName "Switchyard daemon" -Action $action -Trigger @($logon, $watch) -Settings $set
+$action  = New-ScheduledTaskAction -Execute "C:\Path\To\switchyard.exe" -Argument "api serve"
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$set     = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit 0
+Register-ScheduledTask -TaskName "Switchyard daemon" -Action $action -Trigger $trigger -Settings $set
 ```
-
-Task Scheduler's "restart on failure" setting only retries a task that fails to start; it does not restart a
-daemon that stops later. The repeating trigger does: every 5 minutes it starts the task again, and
-`IgnoreNew` makes that a no-op while the daemon runs. Task Scheduler does not keep the program's output; if the
-task's "Last Run Result" is not 0x41301 (running), run the same command in a terminal to see the error.
-Remove the task with `Unregister-ScheduledTask -TaskName "Switchyard daemon"`.
 
 Linux (systemd user unit `~/.config/systemd/user/switchyard.service`, then
 `systemctl --user enable --now switchyard`):

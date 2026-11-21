@@ -5,79 +5,49 @@ Server: ``ThreadingHTTPServer`` bound to ``127.0.0.1`` only. Every request is ch
 1. ``Host`` must be ``127.0.0.1:<port>`` or ``localhost:<port>`` (defeats DNS rebinding);
 2. any ``Origin`` header is refused (the CLI is the only client; browsers send one cross-origin), and no
    CORS header is ever sent;
-3. ``GET /v1/health`` is answered without a token; everything else is ``POST /v1/<noun>/<verb>``. A health
-   request with a ``X-Switchyard-Challenge`` header (32-128 hex characters) gets ``proof``, the HMAC-SHA256 of
-   the challenge keyed with the token: the client checks it before it sends the token (H1 B-8);
+3. ``GET /v1/health`` is answered without a token; everything else is ``POST /v1/<noun>/<verb>``;
 4. ``Authorization: Bearer <token>`` compared with ``hmac.compare_digest``; the token is random per start and
    written to ``<data_dir>/api.token`` with user-only permissions;
 5. ``Content-Type: application/json``, no ``Transfer-Encoding``, ``Content-Length`` <= ``MAX_BODY_BYTES``
    (checked before reading), body a JSON object.
 
 Responses use fixed headers only; ``safe_header`` rejects CR/LF (CPython's ``send_header`` does not). The
-``Server`` header does not reveal the Python version. Request lines are never logged. At most
-``MAX_CONNECTIONS`` handler threads run at once (further connections are closed), and each request must arrive
-whole within ``REQUEST_READ_DEADLINE_S`` (H1 B-7). The token file is restricted before the token is written
-into it (H1 B-17).
+``Server`` header does not reveal the Python version. Request lines are never logged. A socket timeout stops
+slow clients holding threads.
 
 Client: reads ``api.port`` and ``api.token``, talks to ``127.0.0.1`` only, and reads at most
-``MAX_RESPONSE_BYTES`` (an unbounded read trusts ``Content-Length``; CVE-2025-13836 class). It sends the token
-only after the listener proved it holds it (``ApiUntrusted`` otherwise). A failure before the operation was
-sent is ``ApiUnavailable`` (the CLI may run it locally); a failure after it is ``ApiOutcomeUnknown`` (the
-daemon may have applied it; nothing runs again, H1 B-9).
+``MAX_RESPONSE_BYTES`` (an unbounded read trusts ``Content-Length``; CVE-2025-13836 class).
 """
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import http.client
-import io
 import json
 import os
 import re
 import secrets
-import socket
 import sys
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from switchyard.errors import CapabilityDenied, NotAvailable, PolicyRefused, SwitchyardError, UsageError
+from switchyard.errors import CapabilityDenied, SwitchyardError
+from switchyard.ops import UsageError
 
 MAX_BODY_BYTES = 64 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024
 SOCKET_TIMEOUT_S = 10.0
 CLIENT_TIMEOUT_S = 60.0
 CONNECT_TIMEOUT_S = 0.5  # loopback: a refused or dead port must not cost seconds (H1 D-9)
-MAX_CONNECTIONS = 16  # handler threads at once; further connections are closed at once (H1 B-7)
-REQUEST_READ_DEADLINE_S = 10.0  # the whole request (head and body) must arrive within this (H1 B-7)
 LOOPBACK = "127.0.0.1"
 _ROUTE = re.compile(r"/v1/([a-z]+)/([a-z_]+)\Z")
-CHALLENGE_HEADER = "X-Switchyard-Challenge"
-_CHALLENGE = re.compile(r"[0-9a-f]{32,128}\Z")
-_PROOF_CONTEXT = "switchyard-api-v1:"
-_STATUS_ERRORS: dict[int, type[SwitchyardError]] = {400: UsageError, 403: CapabilityDenied, 503: NotAvailable}
+_STATUS_ERRORS: dict[int, type[SwitchyardError]] = {400: UsageError, 403: CapabilityDenied}
 
 
-class ApiUnavailable(NotAvailable):
+class ApiUnavailable(SwitchyardError):
     """No running daemon could be reached."""
-
-
-class ApiUntrusted(SwitchyardError):
-    """The listener on the daemon's port could not prove it holds the token (H1 B-8); the token was not
-    sent."""
-
-
-class ApiOutcomeUnknown(SwitchyardError):
-    """The request was sent but no answer came back: the daemon may have applied it (H1 B-9)."""
-
-
-def token_proof(token: str, challenge: str) -> str:
-    return hmac.new(
-        token.encode("utf-8"), (_PROOF_CONTEXT + challenge).encode("ascii"), hashlib.sha256
-    ).hexdigest()
 
 
 class ApiRestricted(CapabilityDenied):
@@ -91,20 +61,16 @@ def safe_header(key: str, value: str) -> tuple[str, str]:
 
 
 def _write_private(path: Path, text: str) -> None:
-    """Write ``text`` to a file only this user can read. The file is restricted while still empty, and only
-    then written (H1 B-17); a leftover file is truncated first."""
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
     fd = os.open(path, flags, 0o600)
-    os.close(fd)
-    if os.name == "posix":
-        os.chmod(path, 0o600)
-    else:
-        _restrict_windows_acl(path)  # deletes the file and raises if it cannot
-    fd = os.open(path, os.O_WRONLY | os.O_TRUNC | getattr(os, "O_BINARY", 0))
     try:
         os.write(fd, text.encode("utf-8"))
     finally:
         os.close(fd)
+    if os.name == "posix":
+        os.chmod(path, 0o600)
+    else:
+        _restrict_windows_acl(path)
 
 
 def _restrict_windows_acl(path: Path) -> None:
@@ -116,9 +82,9 @@ def _restrict_windows_acl(path: Path) -> None:
     import subprocess  # nosec B404
 
     user = getpass.getuser()
-    from switchyard.process import system_program
+    from switchyard.process import find_program
 
-    exe = system_program("icacls")
+    exe = find_program("icacls")
     try:
         if exe is None:
             raise OSError("icacls not found")
@@ -135,36 +101,11 @@ def _restrict_windows_acl(path: Path) -> None:
         raise SwitchyardError(f"could not restrict access to {path.name}: {type(exc).__name__}") from None
 
 
-class _DeadlineReader(io.RawIOBase):
-    """Socket reads that share one deadline for the whole request (H1 B-7): ``SOCKET_TIMEOUT_S`` alone is per
-    read, so a client sending a byte at a time could hold a handler thread for ever."""
-
-    def __init__(self, sock: socket.socket, deadline: float) -> None:
-        self._sock = sock
-        self._deadline = deadline
-        self.read_timeout = SOCKET_TIMEOUT_S  # per read; lowered while discarding an unwanted body
-
-    def readable(self) -> bool:
-        return True
-
-    def readinto(self, buffer: Any) -> int:
-        remaining = self._deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("request not received within the deadline")
-        self._sock.settimeout(min(remaining, self.read_timeout))
-        return self._sock.recv_into(buffer)
-
-
 class _Handler(BaseHTTPRequestHandler):
     server_version = "switchyard"
     sys_version = ""
     timeout = SOCKET_TIMEOUT_S
     control: ControlServer  # set on the subclass created per server
-
-    def setup(self) -> None:
-        super().setup()
-        deadline = time.monotonic() + REQUEST_READ_DEADLINE_S
-        self.rfile = io.BufferedReader(_DeadlineReader(self.connection, deadline))
 
     def log_message(self, format: str, *args: Any) -> None:  # request lines can carry data; never log them
         pass
@@ -203,11 +144,7 @@ class _Handler(BaseHTTPRequestHandler):
             if 0 < length <= MAX_BODY_BYTES:
                 self.rfile.read(length)
         else:  # unknown length (usually no Content-Length at all): discard what arrives, briefly, bounded
-            raw = getattr(self.rfile, "raw", None)
-            if isinstance(raw, _DeadlineReader):
-                raw.read_timeout = 0.5
-            else:
-                self.connection.settimeout(0.5)
+            self.connection.settimeout(0.5)
             remaining = MAX_BODY_BYTES
             try:
                 while remaining > 0:
@@ -238,13 +175,7 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._origin_ok():
             return
         if self.path == "/v1/health":
-            challenge = self.headers.get(CHALLENGE_HEADER)
-            if challenge is None:
-                self._reply(200, {"ok": True})
-            elif _CHALLENGE.match(challenge):
-                self._reply(200, {"ok": True, "proof": self.control.proof(challenge)})
-            else:
-                self._fail(400, "bad_request", "challenge must be 32-128 lowercase hex characters")
+            self._reply(200, {"ok": True})
         else:
             self._fail(404, "not_found")
 
@@ -307,10 +238,6 @@ class _Handler(BaseHTTPRequestHandler):
             self._fail(400, "usage", redact(str(exc)))
         except CapabilityDenied as exc:
             self._fail(403, "capability_denied", redact(str(exc)))
-        except PolicyRefused as exc:
-            self._fail(403, "policy_refused", redact(str(exc)))
-        except NotAvailable as exc:
-            self._fail(503, "not_available", redact(str(exc)))
         except SwitchyardError as exc:
             self._fail(409, type(exc).__name__, redact(str(exc)))
         except Exception as exc:  # never echo unexpected messages: they may carry data
@@ -334,26 +261,6 @@ DASHBOARD_ACTIONS = frozenset({("inbox", "list"), ("inbox", "ack"), ("inbox", "a
 class _Server(ThreadingHTTPServer):
     allow_reuse_address = False  # Windows SO_REUSEADDR would let a second socket bind a held port (M9 review)
 
-    def __init__(self, address: tuple[str, int], handler: type[BaseHTTPRequestHandler]) -> None:
-        self._slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
-        super().__init__(address, handler)
-
-    def process_request(self, request: Any, client_address: Any) -> None:
-        if not self._slots.acquire(blocking=False):  # full: close at once instead of starting a thread (B-7)
-            self.shutdown_request(request)
-            return
-        try:
-            super().process_request(request, client_address)
-        except BaseException:
-            self._slots.release()
-            raise
-
-    def process_request_thread(self, request: Any, client_address: Any) -> None:
-        try:
-            super().process_request_thread(request, client_address)
-        finally:
-            self._slots.release()
-
     def handle_error(self, request: Any, client_address: Any) -> None:
         """No tracebacks (H1 B-24): a dropped connection is normal; anything else is one line, class only."""
         exc = sys.exc_info()[1]
@@ -367,7 +274,7 @@ class ControlServer:
         if host != LOOPBACK:
             raise SwitchyardError("the control API binds to loopback (127.0.0.1) only")
         if profile not in ("full", "dashboard"):
-            raise UsageError("profile must be 'full' or 'dashboard'")
+            raise SwitchyardError("profile must be 'full' or 'dashboard'")
         self.core = core
         self.host = host
         self.profile = profile
@@ -389,9 +296,6 @@ class ControlServer:
         if (noun, verb) == ("module", "action"):
             return "api" if (params.get("id"), params.get("action")) in DASHBOARD_ACTIONS else "hermes"
         return "api"
-
-    def proof(self, challenge: str) -> str:
-        return token_proof(self.token, challenge)
 
     def _files(self) -> tuple[Path, Path]:
         return self.core.data_dir / "api.port", self.core.data_dir / "api.token"
@@ -448,60 +352,22 @@ class ApiClient:
             raise ApiUnavailable(f"no running daemon for {data_dir}") from exc
         return cls(port, token)
 
-    def _connect(self) -> http.client.HTTPConnection:
+    def request(self, noun: str, verb: str, params: dict[str, Any]) -> Any:
+        body = json.dumps(params).encode("utf-8")
         conn = http.client.HTTPConnection(LOOPBACK, self.port, timeout=CONNECT_TIMEOUT_S)
         try:
             conn.connect()
-        except OSError as exc:  # nothing was sent: safe to fall back
-            conn.close()
-            raise ApiUnavailable(
-                f"daemon on port {self.port} is not reachable: {type(exc).__name__}"
-            ) from None
-        if conn.sock is not None:
-            conn.sock.settimeout(CLIENT_TIMEOUT_S)
-        return conn
-
-    def _verify_daemon(self) -> None:
-        """Ask the listener to prove it holds the token before the token is sent (H1 B-8)."""
-        challenge = secrets.token_hex(32)
-        conn = self._connect()
-        try:
-            headers = {"Host": f"{LOOPBACK}:{self.port}", CHALLENGE_HEADER: challenge}
-            conn.request("GET", "/v1/health", headers=headers)
-            resp = conn.getresponse()
-            raw = resp.read(4096 + 1)
-        except OSError as exc:  # only the challenge was sent; the operation was not
-            raise ApiUnavailable(
-                f"daemon on port {self.port} is not reachable: {type(exc).__name__}"
-            ) from None
-        finally:
-            conn.close()
-        try:
-            proof = json.loads(raw).get("proof") if len(raw) <= 4096 else None
-        except (ValueError, AttributeError):
-            proof = None
-        if not isinstance(proof, str) or not hmac.compare_digest(proof, token_proof(self._token, challenge)):
-            raise ApiUntrusted(
-                f"the listener on port {self.port} is not this data directory's Switchyard daemon; "
-                "token not sent (restart the daemon with 'switchyard api serve')"
-            )
-
-    def request(self, noun: str, verb: str, params: dict[str, Any]) -> Any:
-        body = json.dumps(params).encode("utf-8")
-        self._verify_daemon()
-        conn = self._connect()
-        try:
+            if conn.sock is not None:
+                conn.sock.settimeout(CLIENT_TIMEOUT_S)
             conn.request("POST", f"/v1/{noun}/{verb}", body=body, headers={
                 "Host": f"{LOOPBACK}:{self.port}", "Authorization": f"Bearer {self._token}",
                 "Content-Type": "application/json",
             })  # fmt: skip
             resp = conn.getresponse()
             raw = resp.read(MAX_RESPONSE_BYTES + 1)
-        except (OSError, http.client.HTTPException) as exc:
-            # Sent (at least in part), no answer: the daemon may have applied it. Never re-run (H1 B-9).
-            raise ApiOutcomeUnknown(
-                f"'{noun} {verb}' was sent to the daemon but no answer came back "
-                f"({type(exc).__name__}); it may have been applied: check before retrying"
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            raise ApiUnavailable(
+                f"daemon on port {self.port} is not reachable: {type(exc).__name__}"
             ) from None
         finally:
             conn.close()
@@ -516,6 +382,4 @@ class ApiClient:
         message = str(payload.get("message", "")) if isinstance(payload, dict) else ""
         if resp.status == 403 and isinstance(payload, dict) and payload.get("error") == NOT_SERVED:
             raise ApiRestricted(message)
-        if resp.status == 403 and isinstance(payload, dict) and payload.get("error") == "policy_refused":
-            raise PolicyRefused(message or "refused by policy")
         raise _STATUS_ERRORS.get(resp.status, SwitchyardError)(message or f"API error HTTP {resp.status}")
