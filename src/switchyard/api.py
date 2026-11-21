@@ -82,9 +82,9 @@ def _restrict_windows_acl(path: Path) -> None:
     import subprocess  # nosec B404
 
     user = getpass.getuser()
-    from switchyard.process import find_program
+    from switchyard.process import system_program
 
-    exe = find_program("icacls")
+    exe = system_program("icacls")
     try:
         if exe is None:
             raise OSError("icacls not found")

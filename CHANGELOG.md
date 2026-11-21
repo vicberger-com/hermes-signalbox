@@ -28,6 +28,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   `PermissionError`; in live checks this happened on every run once the cleanup was traced. Removal is now
   retried for up to 1.5 s; if it still fails, the run succeeds and the offload log records
   `workdir_cleanup_failed` with the error class. Empty leftovers older than 10 minutes are removed on the next run.
+- `switchyard api serve` runs from Task Scheduler (1.1 S-7). Task Scheduler starts programs in
+  `C:\Windows\System32`, where the safe program lookup refuses every hit, so the daemon could not restrict its
+  token file and exited with a traceback. Windows system tools (`icacls`, `taskkill`) now come from
+  `%SystemRoot%\System32` directly; the same fault had also skipped the process-tree kill on timeout for
+  daemons started this way. A start failure prints one `error:` line and exits 1.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,
@@ -36,6 +41,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   `docs/qa/15-h1-prework.md`. The user guide covers Hermes Desktop, where the gateway hosts the modules,
   the shared-runtime install, and `--no-allow-tool-override`. The resources and offload READMEs state that
   `providers` and `payload` are strings. Follow-ups: #123-#126.
+- USER-GUIDE section 10: the Windows Task Scheduler recipe was run end to end. It now uses a repeating trigger
+  with `IgnoreNew` (Task Scheduler's restart setting does not restart a daemon that stops), and passes
+  `--data-dir`.
+
 
 ## [1.0.1] - 2026-11-20
 
