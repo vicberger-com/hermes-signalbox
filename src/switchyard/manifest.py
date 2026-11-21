@@ -19,6 +19,7 @@ file must exist inside the module directory after resolving symlinks.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -89,6 +90,7 @@ SHELLS_AND_INTERPRETERS = frozenset(
 
 MANIFEST_NAME = "module.toml"
 MAX_MANIFEST_BYTES = 64 * 1024
+MAX_REQUIRES_CORE_CHARS = 128  # a requires_core spec is short; longer ones are refused (1.1 acceptance S1-3)
 CONTRIBUTION_KINDS: tuple[str, ...] = (
     "hooks", "tools", "commands", "panels", "policies", "triggers", "log_streams", "secret_backends",
 )  # fmt: skip
@@ -202,7 +204,9 @@ def cross_field(doc: Mapping[str, Any]) -> list[str]:
                 "listing it would let the module run any code"
             )
     spec = module.get("requires_core")
-    if isinstance(spec, str):  # H1 A-20: enforced at discovery, so it must be readable
+    if isinstance(spec, str) and len(spec) > MAX_REQUIRES_CORE_CHARS:  # 1.1 acceptance S1-3
+        errors.append(f"$.module.requires_core: longer than {MAX_REQUIRES_CORE_CHARS} characters")
+    elif isinstance(spec, str):  # H1 A-20: enforced at discovery, so it must be readable
         try:
             parse_requires_core(spec)
         except ValueError as exc:
@@ -235,6 +239,11 @@ def validate_document(doc: Mapping[str, Any]) -> list[str]:
 
 
 def _read(path: Path) -> dict[str, Any]:
+    return _read_raw(path)[0]
+
+
+def _read_raw(path: Path) -> tuple[dict[str, Any], bytes]:
+    """The parsed manifest and the exact bytes it was parsed from (one bounded read; 1.1 acceptance S1-6)."""
     from switchyard.paths import read_limited
 
     try:
@@ -244,7 +253,7 @@ def _read(path: Path) -> dict[str, Any]:
     if raw is None:
         raise ManifestError(path, [f"manifest too large (limit {MAX_MANIFEST_BYTES} bytes)"])
     try:
-        return tomllib.loads(raw.decode("utf-8"))
+        return tomllib.loads(raw.decode("utf-8")), raw
     except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise ManifestError(path, [f"cannot read manifest: {exc}"]) from exc
 
@@ -341,6 +350,8 @@ class Manifest:
     update_channel: str = "main"  # branch whose head scheduled checks compare with (ADR-0011)
     # Programs process.spawn may run (bare names). None: no list, any program (H1 B-10); empty: none (S1-4).
     programs: tuple[str, ...] | None = None
+    # SHA-256 of the manifest bytes this object was loaded from (1.1 acceptance S1-6).
+    digest: str = ""
 
 
 def _entry_file(directory: Path, entry_module: str) -> Path:
@@ -384,7 +395,7 @@ def loaded_inside(module: Any, directory: Path) -> bool:
 def load_manifest(path: Path) -> Manifest:
     """Load ``path`` (a ``module.toml`` or its directory). ``ManifestError`` lists every problem."""
     path = path / MANIFEST_NAME if path.is_dir() else path
-    doc = _read(path)
+    doc, raw = _read_raw(path)
     errors = validate_document(doc)
     if errors:
         raise ManifestError(path, errors)
@@ -418,6 +429,7 @@ def load_manifest(path: Path) -> Manifest:
         net_hosts=tuple(caps.get("net_hosts", ())),
         secrets=tuple(caps.get("secrets", ())),
         programs=tuple(caps["programs"]) if "programs" in caps else None,
+        digest=hashlib.sha256(raw).hexdigest(),
         contributes=MappingProxyType({k: tuple(contributes.get(k, ())) for k in CONTRIBUTION_KINDS}),
         activation=life["activation"],
         idle_stop_seconds=life.get("idle_stop_seconds", 0),

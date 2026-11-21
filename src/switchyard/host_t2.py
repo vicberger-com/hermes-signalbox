@@ -283,7 +283,11 @@ class T2Module:
         store = ctx.state
         if op == "create_table":
             name, columns, primary_key = args
-            store.create_table(name, [(str(c[0]), str(c[1])) for c in columns], primary_key=primary_key)
+            if not isinstance(columns, list) or not all(
+                isinstance(c, list) and len(c) == 2 and all(isinstance(x, str) for x in c) for c in columns
+            ):  # 1.1 acceptance S1-8: [name, type] pairs only
+                raise SwitchyardError("each column must be a [name, type] pair of strings")
+            store.create_table(name, [(c[0], c[1]) for c in columns], primary_key=primary_key)
             return None
         if op == "execute":
             sql, sql_params = args
