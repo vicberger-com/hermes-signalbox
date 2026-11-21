@@ -118,6 +118,8 @@ class AuditLog:
         self._clock = clock
         self._max_bytes = max_bytes
         self._lock = threading.Lock()
+        # (file name, size) right after our last write (1.1 #124)
+        self._written: tuple[str, int] | None = None
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         try:
             self._seq, self._prev, self._file_no = self._recover()
@@ -197,9 +199,23 @@ class AuditLog:
     def _append_locked(self, actor: str, action: str, module: str, clean: dict[str, str]) -> AuditRecord:
         with self._lock, self._file_lock():
             # Another process may have appended since our last write: recover the head under the shared
-            # lock, so two writers never fork the chain (R1 review).
-            self._seq, self._prev, self._file_no = self._recover_repairing()
+            # lock, so two writers never fork the chain (R1 review). 1.1 #124: when the newest file is still
+            # the one we wrote last, at the size we left it, nobody else has written, and the tail re-read
+            # is skipped.
+            if not self._unchanged_since_our_write():
+                self._seq, self._prev, self._file_no = self._recover_repairing()
             return self._emit(actor, action, module, clean)
+
+    def _unchanged_since_our_write(self) -> bool:
+        if self._written is None:
+            return False
+        files = _files(self._dir)
+        if not files or files[-1].name != self._written[0]:
+            return False
+        try:
+            return files[-1].stat().st_size == self._written[1]
+        except OSError:
+            return False
 
     def _recover_repairing(self) -> tuple[int, str, int]:
         """``_recover``; a torn last record is quarantined and the repair recorded (the caller holds both
@@ -252,6 +268,7 @@ class AuditLog:
                         raise AuditError("cannot write audit record: no progress")
                     view = view[written:]
                 os.fsync(fd)
+                self._written = (path.name, os.fstat(fd).st_size)
             finally:
                 os.close(fd)
         except OSError as exc:

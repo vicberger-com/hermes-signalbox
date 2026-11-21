@@ -282,7 +282,9 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
 - `ModuleContext.register_action(name, handler, *, params, read_only)`: `name` declared in `contributes.commands`,
   `params` values `bool | int | str`. Run with operation `module action {id, action, args}` (hosting process only).
   Arguments are validated against `params`; results must be JSON and are redacted; handler exceptions become
-  `"action <name> failed: <ExceptionClass>"`. Audited as `module.action` (action name only). The Hermes model tool
+  `"action <name> failed: <ExceptionClass>"`. Audited as `module.action` (action name only). A read-only call
+  from one module to another (`ctx.call`, actor `module:<caller>`) is audited once per caller, target and action
+  per 60 s, with `calls` = the number of calls since the previous record (1.1, #124). The Hermes model tool
   (`switchyard_modules` action `run`, actor `hermes`) may run `read_only` actions only; `/switchyard` uses actor
   `hermes-user`. CLI: `--args '<json object>'`; slash command: extra `key=value` words go into `args`.
 - `ModuleContext.provide_secret_backend(backend)`: in-process modules only, `secrets.read` granted, `backend.name`
