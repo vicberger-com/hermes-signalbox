@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import enum
-import hashlib
 import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -160,7 +159,7 @@ class ModuleDirectory:
             self._persist(entry)
         # 1.1 #125: every process that opens the data directory runs discovery. The audit gets a record when
         # the verified manifest is new or changed; an unchanged one is only announced on the in-process bus.
-        fingerprint = self._verification_fingerprint(manifest.id, directory)
+        fingerprint = self._verification_fingerprint(manifest.id, directory, manifest.digest)
         if fingerprint is not None:
             self._record("module.verified", manifest.id, CORE_ACTOR)
             if verdict == "outdated":  # the 1.0 transition (Q-SY-1.1-3): loads, and says so once per change
@@ -168,17 +167,17 @@ class ModuleDirectory:
                     "module.requires_core_outdated",
                     manifest.id,
                     CORE_ACTOR,
-                    requires_core=manifest.requires_core,
+                    requires_core=manifest.requires_core[:200],  # schema caps it at 128; clip anyway (S1-3)
                 )
             self._store_fingerprint(manifest.id, fingerprint)  # only after the record is written
         else:
             self._bus.publish("core", "module.verified", {"module": manifest.id})
         return manifest.id
 
-    def _verification_fingerprint(self, module_id: str, directory: Path) -> str | None:
+    def _verification_fingerprint(self, module_id: str, directory: Path, digest: str) -> str | None:
         """(directory, manifest digest) when it differs from the last audited verification, else None.
-        Without a store every verification is new."""
-        digest = hashlib.sha256((directory / MANIFEST_NAME).read_bytes()).hexdigest()
+        Without a store every verification is new. ``digest`` is of the bytes that were loaded and registered,
+        not a second read of the file (1.1 acceptance S1-6)."""
         fingerprint = f"{directory.resolve()}|{digest}"
         if self._store is None:
             return fingerprint
