@@ -4,6 +4,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Fixed
+- Release workflow: the annotated-tag check fetches the pushed tag object first. `actions/checkout` rewrites a
+  pushed tag as a lightweight ref, so the check refused every tag; v1.0.1's release run stopped there and
+  published nothing.
+
 ## [1.0.1] - 2026-11-20
 
 Maintenance release from phase H1: fixes for the 2026-11-20 evaluation of v1.0.0 (every High and Medium
