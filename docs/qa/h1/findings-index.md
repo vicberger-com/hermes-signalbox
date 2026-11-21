@@ -37,7 +37,7 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | A-26 | Info | capabilities.py, m0-core.md | H1 should | WP10 | see [review A](review-A-core.md) | fixed in #87 |
 | A-27 | Info | context.py | Backlog 1.1 | - | private until fixed | backlog #94 |
 | A-28 | Info | m0-core.md, state.py | H1 should | WP10 | see [review A](review-A-core.md) | fixed in #87 |
-| A-29 | Info | audit.py, context.py | Backlog 1.1 | - | private until fixed | backlog #95 |
+| A-29 | Info | audit.py, context.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #153 (backlog #95) |
 | A-30 | Info | capabilities.py, context.py, lifecycle.py | Backlog 1.1 | - | private until fixed | backlog #96 |
 | A-31 | Info | errors.py, secrets.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #147 (backlog #97) |
 | B-1 | Medium | updates.py | H1 must | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |

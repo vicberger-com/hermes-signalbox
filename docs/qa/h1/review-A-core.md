@@ -46,7 +46,7 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 | A-26 | Info | confirmed-by-reading | capabilities.py:170; m0-core.md §4 | `policy.denied` is listed as an event in the docs; it is only audited, never published to the bus. |
 | A-27 | Info | - | - | withheld until fixed (#94) |
 | A-28 | Info | confirmed-by-reading | state.py:229; m0-core.md §6 | Docs say CTEs are refused by the authorizer. Code allows `SQLITE_RECURSIVE`. Cost is still bounded by the work budget (P06b: 0.08 s) and the row cap. Docs need fixing. |
-| A-29 | Info | - | - | withheld until fixed (#95) |
+| A-29 | Info | confirmed-by-reading | context.py:99-100, 217, 381-412, 387; audit.py:127 | Typing: public `ctx.state`, `ctx.secrets`, `ctx.notify`, `ctx.hermes_config` return `object`; `ContextServices.audit`/`bridge` are `Any`; a `# type: ignore` covers a regex match. Module authors get no static types. |
 | A-30 | Info | - | - | withheld until fixed (#96) |
 | A-31 | Info | confirmed-by-reading | errors.py:8-38; secrets.py:47-52 | Error taxonomy: `SwitchyardError` is the catch-all for usage, state and policy-like errors; callers cannot separate them without string matching. |
 
@@ -224,7 +224,10 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 - Docs: "CTEs were already refused by the authorizer". Code: `if action in (SQLITE_SELECT, SQLITE_RECURSIVE): return OK`.
 - Evidence (P17): `WITH RECURSIVE c(n) AS (…) SELECT n FROM c` → `[(1,), …, (5,)]`. CPU-bound CTE (P06b): `module query exceeded its work budget 0.08 s`. Some CTE forms are denied (`count(*)` over a CTE → `access denied to table 'c'`), which is inconsistent. Safety holds through the budget and the row cap, but the doc is wrong.
 
-**A-29 · Info**: withheld until #95 is closed.
+**A-29 · Info · confirmed-by-reading · context.py:99-100, 217, 381-412; audit.py:127**
+- The public module-facing types are `object` (`ctx.state`, `ctx.secrets`, `ctx.notify`, `ctx.hermes_config`), and `ContextServices.audit`/`bridge` are `Any`. A `# type: ignore[union-attr]` covers a regex match that cannot fail (`_FILE_RE` is checked on the same name first). mypy cannot check module code against these APIs.
+- Fix: return `ModuleSecrets`, `ModuleState`, etc., with Protocols for the optional ports.
+- Fixed in 1.1 (#95): the facade properties (`state`, `notify`, `secrets`, `net`, `schedule`, `fs`, `core`, `hermes_config`, `spawn`) return their facade classes; `ContextServices.audit` is an `AuditSink` and `bridge` a new `BridgePort` Protocol. The audit reader checks the match explicitly. mypy now checks module code against these APIs, which also removed two `type: ignore` comments in `host_t2.py`.
 
 **A-30 · Info**: withheld until #96 is closed.
 
