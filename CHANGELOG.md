@@ -4,6 +4,12 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Documentation
+- Phase H2 results (first real install and real turns; re-verified on Hermes v0.23.3) in
+  `docs/qa/15-h1-prework.md`. The user guide covers Hermes Desktop, where the gateway hosts the modules,
+  the shared-runtime install, and `--no-allow-tool-override`. The resources and offload READMEs state that
+  `providers` and `payload` are strings. Follow-ups: #123-#126.
+
 ## [1.0.1] - 2026-11-20
 
 Maintenance release from phase H1: fixes for the 2026-11-20 evaluation of v1.0.0 (every High and Medium
