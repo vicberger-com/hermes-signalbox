@@ -72,6 +72,9 @@ def test_h1_every_finding_is_dispositioned_and_backlog_has_an_issue() -> None:
 def test_h1_d3_release_publishes_only_a_verified_annotated_tag_on_main() -> None:
     jobs = _workflow(RELEASE)["jobs"]
     verify = _script(jobs["verify"])
+    # actions/checkout rewrites a pushed tag as a lightweight ref, so the real tag object is fetched first
+    fetch = 'git fetch --force --no-tags origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"'
+    assert verify.index(fetch) < verify.index("cat-file -t")
     assert 'merge-base --is-ancestor "$GITHUB_SHA" origin/main' in verify
     assert 'cat-file -t "refs/tags/$GITHUB_REF_NAME")" = "tag"' in verify
     assert '[ "v$version" = "$GITHUB_REF_NAME" ]' in verify
