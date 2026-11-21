@@ -26,7 +26,8 @@ data directory and are marked `[daemon]` in `switchyard <noun> --help`. `module 
 `data_dir_source` (why that directory was chosen) and nested settings as `section.key: value`.
 
 CLI exit codes: 0 success; 1 operation error, or a result that reports failure (`status: failed`, `ok: false`);
-2 usage error, including an unknown capability name; 3 capability denied.
+2 usage error (an unknown name or an invalid value, including an unknown capability name); 3 refused by policy
+(a capability not granted, or something the module's manifest does not declare).
 
 | Command | Parameters | What it does | Model | Dashboard |
 |---|---|---|---|---|

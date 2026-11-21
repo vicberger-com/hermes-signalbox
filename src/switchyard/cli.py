@@ -25,7 +25,7 @@ from typing import Any
 from switchyard import __version__
 from switchyard.api import ApiClient, ApiRestricted, ApiUnavailable, ControlServer, clear_stale_files
 from switchyard.core import Core
-from switchyard.errors import CapabilityDenied, SwitchyardError
+from switchyard.errors import PolicyRefused, SwitchyardError
 from switchyard.ops import OPERATIONS, Operation, UsageError
 
 TICK_SECONDS = 1.0
@@ -189,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
     except UsageError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    except CapabilityDenied as exc:
+    except PolicyRefused as exc:  # CapabilityDenied, or something the manifest did not declare (H1 A-31)
         print(f"denied: {exc}", file=sys.stderr)
         return 3
     except SwitchyardError as exc:

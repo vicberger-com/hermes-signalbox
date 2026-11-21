@@ -40,7 +40,7 @@ from switchyard.context import (
     PanelRegistry,
     SecretBackendPort,
 )
-from switchyard.errors import CapabilityDenied, ManifestError, SwitchyardError
+from switchyard.errors import CapabilityDenied, ManifestError, NotAvailable, SwitchyardError, UsageError
 from switchyard.events import EventBus
 from switchyard.host_t2 import T2Module
 from switchyard.manifest import MANIFEST_NAME, Manifest, load_manifest, loaded_inside
@@ -143,7 +143,7 @@ class ModuleManager:
     def _entry(self, module_id: str) -> _Entry:
         entry = self._entries.get(module_id)
         if entry is None:
-            raise SwitchyardError(f"unknown module {module_id!r}")
+            raise UsageError(f"unknown module {module_id!r}")
         return entry
 
     def ids(self) -> list[str]:
@@ -328,7 +328,7 @@ class ModuleManager:
         with self._lock:
             e = self._entry(module_id)
             if e.mode == "disabled":
-                raise SwitchyardError(f"module {module_id!r} is disabled")
+                raise NotAvailable(f"module {module_id!r} is disabled")
             if e.status is ModuleStatus.ACTIVE:
                 e.last_used = self._clock()
                 return
@@ -447,7 +447,7 @@ class ModuleManager:
 
     def set_mode(self, module_id: str, mode: str, *, actor: str) -> None:
         if mode not in MODES:
-            raise SwitchyardError(f"invalid mode {mode!r}; expected one of {sorted(MODES)}")
+            raise UsageError(f"invalid mode {mode!r}; expected one of {sorted(MODES)}")
         with self._lock:
             e = self._entry(module_id)
             if mode == "disabled" and e.status is ModuleStatus.ACTIVE:

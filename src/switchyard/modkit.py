@@ -7,14 +7,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from switchyard.errors import SwitchyardError
+from switchyard.errors import UsageError
 
 
 def int_setting(module_id: str, cfg: dict[str, Any], key: str, default: int, low: int, high: int) -> int:
     """``cfg[key]`` (or ``default``) as an int in ``[low, high]``; anything else is a configuration error."""
     value = cfg.get(key, default)
     if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
-        raise SwitchyardError(f"[modules.{module_id}] {key} must be an integer from {low} to {high}")
+        raise UsageError(f"[modules.{module_id}] {key} must be an integer from {low} to {high}")
     return value
 
 

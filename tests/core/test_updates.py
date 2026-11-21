@@ -13,7 +13,7 @@ import pytest
 from sy_testing import GOOD, write_module
 
 from switchyard.core import Core
-from switchyard.errors import UpdateError
+from switchyard.errors import ChannelNotFound, UpdateError
 from switchyard.updates import GitFetcher, git_usable
 
 URL = "https://example.invalid/vendor/ext.git"
@@ -32,7 +32,7 @@ class FakeFetcher:
 
     def latest(self, url: str, channel: str) -> str:
         if (url, channel) not in self.heads:
-            raise UpdateError(f"channel {channel!r} not found")
+            raise ChannelNotFound(f"channel {channel!r} not found")
         return self.heads[(url, channel)]
 
     def fetch(self, url: str, ref: str, dest: Path) -> None:

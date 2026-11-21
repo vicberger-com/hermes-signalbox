@@ -48,7 +48,7 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 | A-28 | Info | confirmed-by-reading | state.py:229; m0-core.md §6 | Docs say CTEs are refused by the authorizer. Code allows `SQLITE_RECURSIVE`. Cost is still bounded by the work budget (P06b: 0.08 s) and the row cap. Docs need fixing. |
 | A-29 | Info | - | - | withheld until fixed (#95) |
 | A-30 | Info | - | - | withheld until fixed (#96) |
-| A-31 | Info | - | - | withheld until fixed (#97) |
+| A-31 | Info | confirmed-by-reading | errors.py:8-38; secrets.py:47-52 | Error taxonomy: `SwitchyardError` is the catch-all for usage, state and policy-like errors; callers cannot separate them without string matching. |
 
 ### Details
 
@@ -222,7 +222,9 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 
 **A-30 · Info**: withheld until #96 is closed.
 
-**A-31 · Info**: withheld until #97 is closed.
+**A-31 · Info · confirmed-by-reading · errors.py; secrets.py:47-52**
+- `SwitchyardError` is the base for usage errors, unknown names, state errors, and "not declared" errors alike. Callers that need to tell "bad input" from "policy refusal" must match strings. A small subclass set (`UsageError`, `PolicyRefused`, `NotAvailable`) would fix this.
+- Fixed in 1.1 (#97): `errors.py` adds `UsageError`, `PolicyRefused` (now the base of `CapabilityDenied`) and `NotAvailable` (the base of `SecretUnavailable`, `ApiUnavailable` and the new `ChannelNotFound`). Core raise sites use them; the CLI exits 3 for any policy refusal; the API answers 403 `policy_refused` and 503 `not_available`, and the client raises the same classes. `ops.UsageError` is the same class. `updates.py` no longer matches "not found" in message text.
 
 ## Against the prework and the accepted limits
 

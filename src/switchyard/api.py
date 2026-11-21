@@ -44,8 +44,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from switchyard.errors import CapabilityDenied, SwitchyardError
-from switchyard.ops import UsageError
+from switchyard.errors import CapabilityDenied, NotAvailable, PolicyRefused, SwitchyardError, UsageError
 
 MAX_BODY_BYTES = 64 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -59,10 +58,10 @@ _ROUTE = re.compile(r"/v1/([a-z]+)/([a-z_]+)\Z")
 CHALLENGE_HEADER = "X-Switchyard-Challenge"
 _CHALLENGE = re.compile(r"[0-9a-f]{32,128}\Z")
 _PROOF_CONTEXT = "switchyard-api-v1:"
-_STATUS_ERRORS: dict[int, type[SwitchyardError]] = {400: UsageError, 403: CapabilityDenied}
+_STATUS_ERRORS: dict[int, type[SwitchyardError]] = {400: UsageError, 403: CapabilityDenied, 503: NotAvailable}
 
 
-class ApiUnavailable(SwitchyardError):
+class ApiUnavailable(NotAvailable):
     """No running daemon could be reached."""
 
 
@@ -308,6 +307,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._fail(400, "usage", redact(str(exc)))
         except CapabilityDenied as exc:
             self._fail(403, "capability_denied", redact(str(exc)))
+        except PolicyRefused as exc:
+            self._fail(403, "policy_refused", redact(str(exc)))
+        except NotAvailable as exc:
+            self._fail(503, "not_available", redact(str(exc)))
         except SwitchyardError as exc:
             self._fail(409, type(exc).__name__, redact(str(exc)))
         except Exception as exc:  # never echo unexpected messages: they may carry data
@@ -364,7 +367,7 @@ class ControlServer:
         if host != LOOPBACK:
             raise SwitchyardError("the control API binds to loopback (127.0.0.1) only")
         if profile not in ("full", "dashboard"):
-            raise SwitchyardError("profile must be 'full' or 'dashboard'")
+            raise UsageError("profile must be 'full' or 'dashboard'")
         self.core = core
         self.host = host
         self.profile = profile
@@ -513,4 +516,6 @@ class ApiClient:
         message = str(payload.get("message", "")) if isinstance(payload, dict) else ""
         if resp.status == 403 and isinstance(payload, dict) and payload.get("error") == NOT_SERVED:
             raise ApiRestricted(message)
+        if resp.status == 403 and isinstance(payload, dict) and payload.get("error") == "policy_refused":
+            raise PolicyRefused(message or "refused by policy")
         raise _STATUS_ERRORS.get(resp.status, SwitchyardError)(message or f"API error HTTP {resp.status}")

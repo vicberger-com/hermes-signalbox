@@ -82,6 +82,12 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   checked and found already refuses such requests (H1 C-18 #116).
 - `dashboard/plugin_api.py` is now checked by mypy and bandit and tested under real FastAPI in the
   hermes-integration job; `dashboard/README.md` records that `dist/` is hand-written source (H1 D-22 #117).
+- Errors now say what kind of failure happened (H1 A-31 #97). New classes `UsageError` (bad input),
+  `PolicyRefused` (not granted, or not declared; `CapabilityDenied` is one) and `NotAvailable` (a service,
+  backend or module is not there). Behaviour changes: an unknown name or invalid value now exits **2** (was 1);
+  something a module did not declare now exits **3** like a denied capability (was 1); over the control API
+  these answer 400, 403 `policy_refused` and 503 `not_available` (were 409). The model sees the new class
+  names in tool errors (for example `UsageError` instead of `SwitchyardError`).
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

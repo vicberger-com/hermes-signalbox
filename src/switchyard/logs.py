@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from switchyard.errors import SwitchyardError
+from switchyard.errors import UsageError
 
 MAX_LINE_BYTES = 16 * 1024
 MAX_HEADER_CHARS = 256  # module, stream and event are cut to this before serialising (H1 B-4)
@@ -67,7 +67,7 @@ class JsonlLogSink:
 
     def write(self, module_id: str, stream: str, event: str, fields: Mapping[str, Any]) -> None:
         if not isinstance(stream, str) or not _STREAM.match(stream) or ".." in stream:
-            raise SwitchyardError(f"invalid log stream name {stream!r}")
+            raise UsageError(f"invalid log stream name {stream!r}")
         record: dict[str, Any] = {
             "ts": self._clock(), "module": str(module_id)[:MAX_HEADER_CHARS], "stream": stream,
             "event": str(event)[:MAX_HEADER_CHARS],
