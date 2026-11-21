@@ -19,7 +19,6 @@ file must exist inside the module directory after resolving symlinks.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -34,63 +33,8 @@ from typing import Any
 
 from switchyard.errors import ManifestError
 
-# Programs a manifest may not list in capabilities.programs (1.1 acceptance S1-7), compared by program_key.
-SHELLS_AND_INTERPRETERS = frozenset(
-    {
-        "cmd",
-        "command",
-        "powershell",
-        "powershell_ise",
-        "pwsh",
-        "sh",
-        "bash",
-        "zsh",
-        "dash",
-        "ksh",
-        "fish",
-        "csh",
-        "tcsh",
-        "busybox",
-        "wsl",
-        "python",
-        "python3",
-        "pythonw",
-        "py",
-        "pyw",
-        "node",
-        "nodejs",
-        "deno",
-        "bun",
-        "perl",
-        "ruby",
-        "php",
-        "lua",
-        "tclsh",
-        "java",
-        "javaw",
-        "osascript",
-        "env",
-        "xargs",
-        "sudo",
-        "doas",
-        "runas",
-        "su",
-        "cscript",
-        "wscript",
-        "mshta",
-        "rundll32",
-        "regsvr32",
-        "msiexec",
-        "wmic",
-        "conhost",
-        "start",
-        "forfiles",
-    }
-)
-
 MANIFEST_NAME = "module.toml"
 MAX_MANIFEST_BYTES = 64 * 1024
-MAX_REQUIRES_CORE_CHARS = 128  # a requires_core spec is short; longer ones are refused (1.1 acceptance S1-3)
 CONTRIBUTION_KINDS: tuple[str, ...] = (
     "hooks", "tools", "commands", "panels", "policies", "triggers", "log_streams", "secret_backends",
 )  # fmt: skip
@@ -189,28 +133,6 @@ def cross_field(doc: Mapping[str, Any]) -> list[str]:
             )  # a backend provider needs the grant, not a name list (ADR-0002)
         if (cap in requested) != listed:
             errors.append(f"$.capabilities: {cap!r} must be requested exactly when {field!r} is non-empty")
-    programs = caps.get("programs")
-    if programs and "process.spawn" not in requested:  # H1 B-10
-        errors.append("$.capabilities: 'programs' needs 'process.spawn' in 'request'")
-    if isinstance(programs, list):  # 1.1 acceptance S1-7: listing one of these lets the module run any code
-        from switchyard.capabilities import program_key
-
-        voiding = sorted(
-            {p for p in programs if isinstance(p, str) and program_key(p) in SHELLS_AND_INTERPRETERS}
-        )
-        if voiding:
-            errors.append(
-                f"$.capabilities.programs: {', '.join(map(repr, voiding))} is a shell or interpreter; "
-                "listing it would let the module run any code"
-            )
-    spec = module.get("requires_core")
-    if isinstance(spec, str) and len(spec) > MAX_REQUIRES_CORE_CHARS:  # 1.1 acceptance S1-3
-        errors.append(f"$.module.requires_core: longer than {MAX_REQUIRES_CORE_CHARS} characters")
-    elif isinstance(spec, str):  # H1 A-20: enforced at discovery, so it must be readable
-        try:
-            parse_requires_core(spec)
-        except ValueError as exc:
-            errors.append(f"$.module.requires_core: {exc}")
     if module.get("license_class") == "proprietary-connector" and module.get("isolation") != "subprocess":
         errors.append("$.module: a proprietary-connector must use isolation = 'subprocess'")
     if update.get("source") == "git" and not (update.get("url") and update.get("ref")):
@@ -239,11 +161,6 @@ def validate_document(doc: Mapping[str, Any]) -> list[str]:
 
 
 def _read(path: Path) -> dict[str, Any]:
-    return _read_raw(path)[0]
-
-
-def _read_raw(path: Path) -> tuple[dict[str, Any], bytes]:
-    """The parsed manifest and the exact bytes it was parsed from (one bounded read; 1.1 acceptance S1-6)."""
     from switchyard.paths import read_limited
 
     try:
@@ -253,7 +170,7 @@ def _read_raw(path: Path) -> tuple[dict[str, Any], bytes]:
     if raw is None:
         raise ManifestError(path, [f"manifest too large (limit {MAX_MANIFEST_BYTES} bytes)"])
     try:
-        return tomllib.loads(raw.decode("utf-8")), raw
+        return tomllib.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise ManifestError(path, [f"cannot read manifest: {exc}"]) from exc
 
@@ -265,59 +182,6 @@ def validate_file(path: Path) -> list[str]:
     except ManifestError as exc:
         return [f"{path}: {e}" for e in exc.errors]
     return validate_document(doc)
-
-
-# requires_core (H1 A-20, Q-SY-1.1-3 (a)) ----------------------------------------------------------------
-# A comma-separated list of comparisons with the core version: ``>=1.0,<2``. Versions are 1 to 3 numbers;
-# missing parts count as 0. A pre-release core (``1.1.0-rc.1``) compares as its release.
-_REQ_CLAUSE = re.compile(r"\s*(>=|<=|==|!=|>|<)\s*(\d+(?:\.\d+){0,2})\s*\Z")
-_TRANSITION_UNTIL = (2, 0, 0)  # the 1.0 transition for the old template's "<1" ends at core 2.0
-
-
-def _version_tuple(text: str) -> tuple[int, int, int]:
-    parts = [int(p) for p in text.split(".")] + [0, 0]
-    return (parts[0], parts[1], parts[2])
-
-
-def parse_requires_core(spec: str) -> list[tuple[str, tuple[int, int, int]]]:
-    """``[(operator, (major, minor, patch)), ...]``; ``ValueError`` when ``spec`` is not of that form."""
-    clauses = []
-    for part in spec.split(","):
-        m = _REQ_CLAUSE.match(part)
-        if m is None:
-            raise ValueError(f"cannot read {part.strip()!r}: use comparisons like '>=1.0,<2'")
-        clauses.append((m.group(1), _version_tuple(m.group(2))))
-    return clauses
-
-
-def _holds(op: str, have: tuple[int, int, int], bound: tuple[int, int, int]) -> bool:
-    return {
-        ">=": have >= bound, "<=": have <= bound, "==": have == bound,
-        "!=": have != bound, ">": have > bound, "<": have < bound,
-    }[op]  # fmt: skip
-
-
-def core_compatibility(spec: str, core_version: str) -> tuple[str, str]:
-    """``("ok", "")``, ``("outdated", note)`` or ``("incompatible", reason)`` for this core.
-
-    ``outdated`` is the 1.0 transition: the only failing clause is the old module template's ``<1`` upper
-    bound and the core is older than 2.0. Such a module still loads, with a warning. Anything else that
-    fails is ``incompatible`` and the module is refused.
-    """
-    have = _version_tuple(core_version.split("-", 1)[0].split("+", 1)[0])
-    try:
-        clauses = parse_requires_core(spec)
-    except ValueError as exc:
-        return "incompatible", f"requires_core {spec!r}: {exc}"
-    failing = [(op, bound) for op, bound in clauses if not _holds(op, have, bound)]
-    if not failing:
-        return "ok", ""
-    if have < _TRANSITION_UNTIL and all(op == "<" and bound == (1, 0, 0) for op, bound in failing):
-        return "outdated", (
-            f"requires_core {spec!r} is outdated (the pre-1.0 module template); it loads until core 2.0. "
-            "Change it to '>=1.0,<2'."
-        )
-    return "incompatible", f"module requires core {spec}; this core is {core_version}"
 
 
 @dataclass(frozen=True)
@@ -348,10 +212,6 @@ class Manifest:
     update_ref: str | None
     optional: frozenset[str] = frozenset()  # requested, but not needed to start (auto activation)
     update_channel: str = "main"  # branch whose head scheduled checks compare with (ADR-0011)
-    # Programs process.spawn may run (bare names). None: no list, any program (H1 B-10); empty: none (S1-4).
-    programs: tuple[str, ...] | None = None
-    # SHA-256 of the manifest bytes this object was loaded from (1.1 acceptance S1-6).
-    digest: str = ""
 
 
 def _entry_file(directory: Path, entry_module: str) -> Path:
@@ -395,7 +255,7 @@ def loaded_inside(module: Any, directory: Path) -> bool:
 def load_manifest(path: Path) -> Manifest:
     """Load ``path`` (a ``module.toml`` or its directory). ``ManifestError`` lists every problem."""
     path = path / MANIFEST_NAME if path.is_dir() else path
-    doc, raw = _read_raw(path)
+    doc = _read(path)
     errors = validate_document(doc)
     if errors:
         raise ManifestError(path, errors)
@@ -428,8 +288,6 @@ def load_manifest(path: Path) -> Manifest:
         optional=frozenset(caps.get("optional", ())),
         net_hosts=tuple(caps.get("net_hosts", ())),
         secrets=tuple(caps.get("secrets", ())),
-        programs=tuple(caps["programs"]) if "programs" in caps else None,
-        digest=hashlib.sha256(raw).hexdigest(),
         contributes=MappingProxyType({k: tuple(contributes.get(k, ())) for k in CONTRIBUTION_KINDS}),
         activation=life["activation"],
         idle_stop_seconds=life.get("idle_stop_seconds", 0),

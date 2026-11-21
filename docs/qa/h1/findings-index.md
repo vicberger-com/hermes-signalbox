@@ -24,7 +24,7 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | A-13 | Low | audit.py | H1 should | WP9 | see [review A](review-A-core.md) | fixed in #86 |
 | A-14 | Low | audit.py | H1 should | WP9 | see [review A](review-A-core.md) | fixed in #86 |
 | A-15 | Low | capabilities.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
-| A-16 | Low | config.py, manifest.py | Backlog 1.1 | - | private until fixed | backlog #89 |
+| A-16 | Low | config.py, manifest.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #142 (backlog #89) |
 | A-17 | Low | secrets.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #133 (backlog #90) |
 | A-18 | Low | secrets.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-19 | Low | capabilities.py, manifest.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
