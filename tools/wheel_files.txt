@@ -23,6 +23,7 @@ switchyard/core.py
 switchyard/errors.py
 switchyard/events.py
 switchyard/fsread.py
+switchyard/gitfetch.py
 switchyard/hermes/__init__.py
 switchyard/hermes/config_port.py
 switchyard/hermes/delegation.py
@@ -84,6 +85,7 @@ switchyard/process.py
 switchyard/py.typed
 switchyard/reports.py
 switchyard/rpc.py
+switchyard/sbom.py
 switchyard/schedule.py
 switchyard/scheduler.py
 switchyard/schemas/module.schema.json

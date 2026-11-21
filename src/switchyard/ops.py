@@ -8,6 +8,7 @@ data directory when no daemon is running (they do not need a live module instanc
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -249,6 +250,28 @@ def _module_action(core: Core, p: dict[str, Any], actor: str) -> Any:
                       read_only_only=actor == MODEL_ACTOR)  # fmt: skip
 
 
+def _check_arguments(action: Any, args: Mapping[str, Any]) -> None:
+    """A missing argument is found by binding to the handler's signature, not by reading a ``TypeError``
+    message: a ``TypeError`` raised inside the handler is the handler failing (H1 B-25)."""
+    try:
+        inspect.signature(action.handler).bind(**args)
+    except TypeError:
+        raise UsageError(f"missing argument for action {action.name!r}") from None
+    except ValueError:  # no signature available (some builtins): let the call decide
+        pass
+
+
+def call_action_handler(action: Any, args: Mapping[str, Any]) -> Any:
+    """Run ``action.handler(**args)``; failures keep only the exception class (messages may carry data)."""
+    _check_arguments(action, args)
+    try:
+        return action.handler(**args)
+    except SwitchyardError:
+        raise
+    except Exception as exc:
+        raise SwitchyardError(f"action {action.name!r} failed: {type(exc).__name__}") from None
+
+
 def run_action(
     core: Core,
     module_id: str,
@@ -279,19 +302,11 @@ def run_action(
         if not isinstance(value, kind) or (kind is int and isinstance(value, bool)):
             raise UsageError(f"argument {name!r} must be {kind.__name__}")
         args[name] = value
+    _check_arguments(action, args)
     if audit:
         detail = {"action": action.name, **(audit_detail or {})}
         core.audit.append(actor=actor, action="module.action", module=p["id"], detail=detail)
-    try:
-        result = action.handler(**args)
-    except TypeError as exc:
-        if "missing" in str(exc) and "argument" in str(exc):
-            raise UsageError(f"missing argument for action {action.name!r}") from None
-        raise SwitchyardError(f"action {action.name!r} failed: TypeError") from None
-    except SwitchyardError:
-        raise
-    except Exception as exc:
-        raise SwitchyardError(f"action {action.name!r} failed: {type(exc).__name__}") from None
+    result = call_action_handler(action, args)
     try:
         json.dumps(result)
     except (TypeError, ValueError):

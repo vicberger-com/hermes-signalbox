@@ -72,6 +72,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   counts as a clock correction. A removed module's job worker thread is released.
 - `ctx.audit` keeps long field names apart (a name over 64 characters keeps a short digest of the whole name)
   and marks cut values with `[truncated]` (H1 A-27 #94).
+- Coding-practice findings (H1 B-25 #113). A `TypeError` raised inside a module action is now reported as the
+  action failing, not as a missing argument (missing arguments are found from the handler's signature). A
+  subprocess module that does not shut down cleanly is reported on one stderr line instead of silently.
+  `updates.py` is split: git fetching moves to `gitfetch.py` and the SBOM helpers to `sbom.py` (the old names
+  still import from `switchyard.updates`).
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

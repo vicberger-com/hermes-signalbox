@@ -127,14 +127,18 @@ def normalise_health(result: Any) -> list[Any]:
 class ChildHost:
     """Dispatcher for requests from the parent."""
 
-    def __init__(self, parent: ParentPort) -> None:
-        self._parent = parent
+    def __init__(self, parent: ParentPort | None = None) -> None:
+        self._parent: Any = parent
         self._instance: Any = None
         self._module_id = ""
         self.panels: dict[str, Callable[[], Any]] = {}
         self.handlers: dict[int, Callable[[Any], None]] = {}
         self.handler_ids = itertools.count(1)
         self.on_shutdown: Callable[[], None] = lambda: None
+
+    def attach(self, parent: ParentPort) -> None:
+        """Set the channel to the parent; it is built after the host because it dispatches to the host."""
+        self._parent = parent
 
     def _loaded(self) -> Any:
         if self._instance is None:
@@ -202,20 +206,11 @@ class ChildHost:
 def main() -> None:  # pragma: no cover - exercised through real subprocesses in tests/core/test_host_t2.py
     proto_in, proto_out = sys.stdin.buffer, sys.stdout.buffer
     sys.stdout = sys.stderr  # print() in module code must not corrupt the protocol stream
-    holder: dict[str, Channel] = {}
-    host = ChildHost(_Lazy(holder))
+    host = ChildHost()
     channel = Channel(lambda m: write_frame(proto_out, m), lambda _t: read_frame(proto_in), host.handle)
-    holder["channel"] = channel
+    host.attach(channel)
     host.on_shutdown = channel.stop
     channel.serve_forever()
-
-
-class _Lazy:  # pragma: no cover - see main()
-    def __init__(self, holder: dict[str, Channel]) -> None:
-        self._holder = holder
-
-    def request(self, method: str, params: dict[str, Any], timeout: float | None = None) -> Any:
-        return self._holder["channel"].request(method, params, timeout)
 
 
 if __name__ == "__main__":  # pragma: no cover

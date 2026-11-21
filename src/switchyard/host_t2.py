@@ -82,6 +82,7 @@ class T2Module:
         self._write_lock = threading.Lock()
         self._call_lock = threading.RLock()
         self._flooded = False
+        self.shutdown_error: str | None = None  # class name of the last unclean shutdown, if any
 
     # process ------------------------------------------------------------------------------------------
 
@@ -210,8 +211,13 @@ class T2Module:
                     self._call("shutdown", {}, timeout=SHUTDOWN_TIMEOUT_S)
                 if self._proc is not None:
                     self._proc.wait(timeout=SHUTDOWN_TIMEOUT_S)
-            except (SwitchyardError, subprocess.TimeoutExpired):
-                pass
+            except (SwitchyardError, subprocess.TimeoutExpired) as exc:
+                # Not silent (H1 B-25): the child is killed below either way; say why it came to that.
+                self.shutdown_error = type(exc).__name__
+                sys.stderr.write(
+                    f"switchyard: module {self._manifest.id!r} did not shut down cleanly "
+                    f"({self.shutdown_error}); stopped it\n"
+                )
             self.kill()
 
     def health(self) -> tuple[bool, str]:
