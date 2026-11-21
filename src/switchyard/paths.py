@@ -95,3 +95,11 @@ def ensure_data_dir(path: Path) -> Path:
     for name in SUBDIRS:
         _make_private_dir(path / name)
     return path
+
+
+def read_limited(path: Path, limit: int) -> bytes | None:
+    """The file's bytes, or ``None`` when it holds more than ``limit`` bytes. Reads at most ``limit + 1``
+    bytes, so an oversize (or endless, such as a device or FIFO) file is never read whole (H1 A-16)."""
+    with path.open("rb") as fh:
+        raw = fh.read(limit + 1)
+    return None if len(raw) > limit else raw

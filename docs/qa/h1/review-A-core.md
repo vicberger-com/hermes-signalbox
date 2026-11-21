@@ -33,7 +33,7 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 | A-13 | Low | confirmed-by-probe | audit.py:37, 135-143 | A complete last record larger than 64 KiB makes every append fail after restart. |
 | A-14 | Low | confirmed-by-reading | audit.py:227, 215 | `os.write` return value unchecked; chain state advances on a short write. |
 | A-15 | Low | confirmed-by-reading | capabilities.py:184-186, 198-199 | `require_host`/`require_secret` read `self._modules[...]` after the lock is released: `KeyError` if unregistered in between. |
-| A-16 | Low | - | - | withheld until fixed (#89) |
+| A-16 | Low | confirmed-by-reading | manifest.py:155-158; config.py:99-104 | Whole file read into memory before the size check. |
 | A-17 | Low | confirmed-by-probe | secrets.py:89-90, 99-101 | `MemoryBackend`'s test-only guard is `"pytest" in sys.modules`; a stub module satisfies it. |
 | A-18 | Low | confirmed-by-probe | secrets.py:209-216, 225 | Non-`KeyError` backend exceptions propagate unwrapped; a token in the backend's message reaches the caller. |
 | A-19 | Low | confirmed-by-probe | manifest.py:148-150; capabilities.py:79-91, 107 | `validate_file` (and `tools/validate_manifest.py`) accept `contributes.policies` rules that discovery rejects. |
@@ -158,7 +158,11 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 - Fix: do the lookup and the check under one lock hold (RLock makes that simple), or use `.get` and deny.
 - Test: concurrent `unregister` during `require_host` → `CapabilityDenied` only.
 
-**A-16 · Low**: withheld until #89 is closed.
+**A-16 · Low · confirmed-by-reading · manifest.py:155-158; config.py:99-104**
+- Wrong: `path.read_bytes()` loads the whole file before `len(raw) > MAX_*_BYTES`. The limit is applied after the memory is spent.
+- Impact: a large `module.toml` or `config.toml` exhausts memory before rejection. Same-user, low likelihood.
+- Fix: `os.stat` first, or read at most `MAX+1` bytes.
+- Fixed in 1.1 (#89): both files are read through `paths.read_limited`, which reads at most the limit plus one byte.
 
 **A-17 · Low · confirmed-by-probe · secrets.py:89-90, 99-101**
 - Wrong: `_running_under_pytest()` is `"pytest" in sys.modules`.

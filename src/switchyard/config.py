@@ -100,13 +100,15 @@ def parse_config(doc: Mapping[str, Any]) -> CoreConfig:
 
 def load_config(path: Path) -> CoreConfig:
     """Load ``path``; a missing file yields defaults."""
+    from switchyard.paths import read_limited
+
     try:
-        raw = path.read_bytes()
+        raw = read_limited(path, MAX_CONFIG_BYTES)
     except FileNotFoundError:
         return CoreConfig()
     except OSError as exc:
         raise ConfigError(f"{path}: cannot read config: {exc}") from exc
-    if len(raw) > MAX_CONFIG_BYTES:
+    if raw is None:
         raise ConfigError(f"{path}: config file too large (limit {MAX_CONFIG_BYTES} bytes)")
     try:
         doc = tomllib.loads(raw.decode("utf-8"))

@@ -161,11 +161,13 @@ def validate_document(doc: Mapping[str, Any]) -> list[str]:
 
 
 def _read(path: Path) -> dict[str, Any]:
+    from switchyard.paths import read_limited
+
     try:
-        raw = path.read_bytes()
+        raw = read_limited(path, MAX_MANIFEST_BYTES)
     except OSError as exc:
         raise ManifestError(path, [f"cannot read manifest: {exc}"]) from exc
-    if len(raw) > MAX_MANIFEST_BYTES:
+    if raw is None:
         raise ManifestError(path, [f"manifest too large (limit {MAX_MANIFEST_BYTES} bytes)"])
     try:
         return tomllib.loads(raw.decode("utf-8"))
