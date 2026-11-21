@@ -36,7 +36,7 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-22 | Info | confirmed-by-reading | net | net.py:99; updates/net | Allow-list checks the name, not the resolved address; module headers may override Host |
 | B-23 | Info | confirmed-by-reading | logs | logs.py:30-37 | Redaction covers values only, not keys |
 | B-24 | Info | confirmed-by-probe | API | api.py (no handle_error) | Each dropped connection prints a full traceback to stderr |
-| B-25 | Info | - | - | - | withheld until fixed (#113) |
+| B-25 | Info | confirmed-by-reading | ops/quality | ops.py:252-255; host_t2.py:208-209; updates.py (whole file) | Coding practice: message-text matching, silent `except ... pass`, updates.py mixes concerns |
 
 Counts: Critical 0, High 0, Medium 3, Low 16, Info 6.
 
@@ -228,9 +228,56 @@ Withheld until #103 is closed.
 - **Evidence:** probe p2 printed 40 `ConnectionAbortedError` tracebacks to stderr. No request data appeared in them.
 - **Fix:** override `handle_error` to log the class name only.
 
-### B-25 (Info)
+### B-25 (Info), coding practice
+- `ops.py:252-255`: `TypeError` is classified by matching message text (`"missing" in str(exc)`). Fragile across Python versions.
+- `host_t2.py:208-209`: `except (SwitchyardError, subprocess.TimeoutExpired): pass` in `deactivate` discards errors silently.
+- `updates.py` (505 lines): fetch, SBOM, channels, check cache and the swap are in one class. `_restore` duplicates the swap logic. Splitting `GitFetcher` and `sbom` into their own modules would help.
+- `host_t2_child.py:197`, `_Lazy`: a workaround to break a construction cycle. Acceptable, but a constructor argument would be clearer.
 
-Withheld until #113 is closed.
+---
+
+## Done well
+
+- **API request checks.** `api.py:152-160` (Host must be `127.0.0.1:<port>` or `localhost:<port>`; any Origin refused), `api.py:180` (`hmac.compare_digest`), `api.py:194-196` (size checked before read), `api.py:183-185` (JSON content type). Probe p2: DNS-rebinding Host 403, `Origin: null` 403, no token 401, text/plain 415, 70 000 bytes 413, query string 404, good request 200.
+- **Token and headers.** `api.py:257` (`secrets.token_urlsafe(32)`), `api.py:51-54` (`safe_header` rejects CR/LF), `api.py:104-105` (request lines never logged), `api.py:113-121` (`nosniff`, `no-store`).
+- **Frame layer.** `rpc.py:88-89` (size checked before the body is read; probe: `frame too large (2000000 bytes ...) | body consumed: False`), `rpc.py:178-179` (response id must match), `rpc.py:164-172` (one deadline per call; probe stopped at `0.50s`), `rpc.py:56` (`allow_nan=False`; probe rejected NaN).
+- **Child environment and kill-on-timeout.** `host_t2.py:53-56` (environment allow-list; probe: the planted secret was absent from the child env), `host_t2.py:91-100` (fixed argv, no shell), `host_t2.py:107-124` (flood handling), `host_t2.py:139-148` (send deadline). Probe p8: a hanging `activate` raised `T2Timeout after 2.2s` and the child exited.
+- **Network broker.** `net.py:43-45` and `net.py:65` (no redirects, no env proxies), `net.py:94-97` (scheme, credentials and host checks), `policy/capabilities.py:182-194` (exact or bare host). Probe p6: a 302 was returned, not followed (second server 0 hits); `localhost`, `127.0.0.1`, `[::1]`, `0.0.0.0`, decimal IP, `file:` and credentialed URLs were all refused.
+- **fs.read path syntax.** `fsread.py:56-74` (drive letter required; UNC, `\\?\` and drive-relative paths refused, probe-confirmed), `fsread.py:120-125` (`fstat` on the open handle), `fsread.py:130-132` (bounded read), audit records path and byte count, never content.
+- **Update pipeline.** `updates.py:157-159` (ref must be 40 lower-case hex), `updates.py:188-190` (`GIT_CEILING_DIRECTORIES`, `core.hooksPath` to null, `protocol.file.allow=never`), `updates.py:215` (`HEAD == ref`), `updates.py:291-299` (symlinks refused), `updates.py:340-347` (digest-bound update, widening gate). Manifest `version` regex excludes `/` and `\`, so the `previous-<version>` directory name cannot traverse (`manifest`/`module.schema.json`).
+- **Event bus and notifications.** `events.py:166-178` (each handler gets a copy; exceptions audited by class name only), `events.py:33,106` (size caps), `notify.py:46-51` (redact before truncating, as the comment says).
+- **Operation boundary.** `ops.py:31-45` (`MODEL_OPS` allow-list), `core.py:251-253` (enforced in `Core.run`), `api.py:236-241` (dashboard profile limited to named operations).
+- **Tooling.** `mypy --strict` passes on the 17 in-scope modules (Success: no issues found in 17 source files). `ruff check` passes. `bandit -ll` printed no findings, only configuration warnings. No `shell=True`, `eval`, `exec`, `pickle` or bare `except:` in scope (grep).
+
+## Not checked
+
+- Real `git` against a remote (fetch, ls-remote, the 300 s behaviour). B-2 uses a stub fetcher.
+- DNS rebinding for the net broker (no DNS control; B-22 is reading only).
+- Windows device I/O for the superscript and colon names (B-6). I did not open a device.
+- icacls ACL outcome on the token file (B-17 is reading only).
+- The full pytest suite. I did not run it, to keep the repo free of cache and coverage writes.
+- Concurrency under a live daemon: two processes on one data dir, and the CLI-to-daemon fallback (B-9) under real load.
+- Hermes adapter (`hermes/`), dashboard panel and inbox modules: outside this scope.
+- Slowloris beyond 40 sockets, and a flood of child frames (the 64-frame kill, B-15).
+
+## Issues encountered
+
+- `.coverage` (modified 10:21) and `.git/FETCH_HEAD` (10:17) changed during this session. I ran no git and no pytest, and none of my probes write `.coverage`, so another process touched them. I did not investigate. Flagging for the operator.
+- Two probe scripts had a mistake in their first run (a raw-string superscript test and a wrong entry-class name). I fixed and re-ran them; the results above are from the corrected runs.
+
+## Probe index (scratch)
+
+| File | Covers |
+|---|---|
+| p1_process.py | B-3 deadline and stdin |
+| p2_api.py | API request checks, B-7, B-20 |
+| p3_misc.py | B-4, B-5, RPC framing and deadline, fs names |
+| p4_update.py | B-1 swap scenarios |
+| p5_fsnames.py | B-6 device names |
+| p6_net.py | net redirects and allow-list |
+| p7_lock.py | B-2 lock |
+| p8_t2.py | T2 environment and deadline |
+- Fixed in 1.1 (#113): a missing action argument is found by binding to the handler's signature; an unclean T2 shutdown is reported on stderr and kept as `shutdown_error`; `gitfetch.py` and `sbom.py` are split out of `updates.py`; `ChildHost.attach` replaces `_Lazy`. `_restore` still mirrors the swap.
 
 ## Done well
 

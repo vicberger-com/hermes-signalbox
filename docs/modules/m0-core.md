@@ -23,7 +23,9 @@ src/switchyard/
   host_t2.py         Subprocess host: parent side; host_t2_child.py child side; rpc.py framing
   secrets.py         SecretRef, SecretBackend protocol, SecretsBroker, MemoryBackend (tests only)
   hostinfo.py        HostProfile, profile() -> tiny | laptop | workstation | server
-  updates.py         UpdateController (fetch, verify, stage, swap, health, rollback)
+  updates.py         UpdateController (verify, stage, swap, health, rollback)
+  gitfetch.py        GitFetcher: pinned-commit fetch and channel heads with git
+  sbom.py            tree inventory and digest, SBOM delta, patch notes, version order
   api.py             Loopback control API server and bounded client
   cli.py             `switchyard` entry point (argparse)
   core.py            Core: wires all of the above; the only object adapters hold

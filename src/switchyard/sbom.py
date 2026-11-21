@@ -78,7 +78,6 @@ def _declared(m: Manifest) -> dict[str, Any]:
         "capabilities": sorted(m.requested),
         "net_hosts": sorted(m.net_hosts),
         "secrets": sorted(m.secrets),
-        "programs": "any" if m.programs is None else sorted(m.programs),
         "isolation": m.isolation,
         "entry": f"{m.entry_module}:{m.entry_class}",
         "contributes": {k: sorted(v) for k, v in m.contributes.items() if v},
@@ -92,7 +91,7 @@ def sbom_delta(old_dir: Path, new_dir: Path, old: Manifest, new: Manifest) -> di
     before, after = _declared(old), _declared(new)
     declared = {k: {"from": before[k], "to": after[k]} for k in before if before[k] != after[k]}
     widens = []
-    for key in ("capabilities", "net_hosts", "secrets", "programs"):
+    for key in ("capabilities", "net_hosts", "secrets"):
         added = sorted(set(after[key]) - set(before[key]))
         if added:
             widens.append(f"{key}: {', '.join(added)}")

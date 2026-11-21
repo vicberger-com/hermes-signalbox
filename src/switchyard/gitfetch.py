@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Protocol
 
-from switchyard.errors import ChannelNotFound, UpdateError
+from switchyard.errors import UpdateError
 from switchyard.process import find_runnable
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -121,7 +121,7 @@ class GitFetcher:
             sha, _, name = line.partition("\t")
             if name == f"refs/heads/{channel}" and _SHA.match(sha):
                 return sha
-        raise ChannelNotFound(f"channel {channel!r} not found")
+        raise UpdateError(f"channel {channel!r} not found")
 
 
 def _force_remove(
