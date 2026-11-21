@@ -112,8 +112,11 @@ and never propagated. Re-entrant publishing is limited to depth 8 per thread.
 `Trigger(id, owner, kind, spec, callback, min_interval_s)`. Specs: `time` `{"every": s}` or `{"cron": "m h dom mon dow"}`;
 `event` `{"type": pattern}`; `usage`/`capacity` `{"metric": name, "above"|"below": x}` fed by `observe()`
 (edge-triggered). `tick()`, `observe()`, `fire()`; one run at a time per trigger; runs within `min_interval_s` are
-skipped and counted; `trigger.fired`/`trigger.skipped` events; failures audited by class name. The scheduler owns
-no thread. **Open (Hermes adapter PR):** Hermes idle tasks are gated by `min_idle_hours`/`interval_hours`, too
+skipped and counted; `trigger.fired`/`trigger.skipped` events; failures audited by class name. A cron trigger does
+not fire again for a minute it already passed: when the wall clock steps back by up to 3 hours (NTP, DST
+fall-back) the passed minutes are skipped; a larger step counts as a clock correction and starts afresh. The
+scheduler owns no thread; `ctx.schedule` jobs run on one worker per module, released when the module's jobs are
+removed. **Open (Hermes adapter PR):** Hermes idle tasks are gated by `min_idle_hours`/`interval_hours`, too
 coarse for minute-level triggers; choose the Hermes-side driver (plugin thread or Hermes cron) in that PR.
 
 ### Lifecycle
