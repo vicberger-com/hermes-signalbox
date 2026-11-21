@@ -40,6 +40,7 @@ _CONSUMER = re.compile(r"(main|(subagent|function|agent):[A-Za-z0-9._-]{1,64})\Z
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}\Z")
 _PROVIDER = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
 KEEP_DECISIONS = 1000
+PRUNE_SLACK = 100  # H1 C-14: prune once the log is this many rows over KEEP_DECISIONS, in one statement
 _TURNS = 1000
 KNOWN_SECONDS = 600.0  # how long remembered candidates may serve the timeout fallback (ADR-0013)
 HOT_PATH_WAIT = 1.0  # total state-store wait per routed request; shorter than the bridge deadline (2 s)
@@ -67,6 +68,8 @@ def _unregistered(provider: str, model: str) -> Candidate:
 
 
 class RouterModule(StateTables):
+    RESOLVE_TTL_SECONDS = 5.0  # H1 C-14: how long one resources.resolve answer is reused
+
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self.ctx: Any = None
         self.clock = clock
@@ -80,6 +83,8 @@ class RouterModule(StateTables):
         # fallback answers while a slow route still holds ``_lock``.
         self._fast = threading.Lock()
         self._known: dict[tuple[str, str], tuple[float, tuple[Candidate, ...]]] = {}
+        self._decisions: int | None = None  # running row count of the decision log (H1 C-14)
+        self._resolved: dict[str, tuple[float, list[Any]]] = {}  # consumer -> (time, resources.resolve rows)
         self._cool_mem: dict[str, tuple[float, str]] = {}  # resource or scope -> (until, reason)
         self._owed: list[tuple[str, str]] = []  # (day, resource): paid pass-throughs not yet written
         self._unsettled: list[tuple[str, str, str]] = []  # (provider, consumer, model) sent, cost unknown
@@ -143,7 +148,9 @@ class RouterModule(StateTables):
         self.ctx = None
         with self._fast:
             self._known.clear()
+            self._resolved.clear()
             self._halt = False
+        self._decisions = None
 
     def health(self) -> tuple[bool, str]:
         if self.ctx is None:
@@ -179,16 +186,28 @@ class RouterModule(StateTables):
         return self._spent_today() < self._budget()
 
     def _candidates(
-        self, provider: str, consumer: str | None = None, strict: bool = False
+        self, provider: str, consumer: str | None = None, strict: bool = False, fresh: bool = False
     ) -> list[Candidate]:
         key = consumer or self.settings["consumer"]
-        try:
-            resolved = self.ctx.call("resources", "resolve", {"consumer": key})
-        except SwitchyardError:
-            if strict:
-                raise
-            return []  # registry not running: pass requests through unchanged
-        found = candidates_from(resolved.get("resources", []), provider)
+        now = self.clock()
+        with self._fast:
+            cached = self._resolved.get(key)
+        reuse = (
+            not (strict or fresh) and cached is not None and 0 <= now - cached[0] < self.RESOLVE_TTL_SECONDS
+        )
+        if reuse and cached is not None:
+            resources = cached[1]  # H1 C-14: one resolve serves every request for a few seconds
+        else:
+            try:
+                resolved = self.ctx.call("resources", "resolve", {"consumer": key})
+            except SwitchyardError:
+                if strict:
+                    raise
+                return []  # registry not running: pass requests through unchanged
+            resources = list(resolved.get("resources", []))
+            with self._fast:
+                self._resolved[key] = (now, resources)
+        found = candidates_from(resources, provider)  # grants are applied on every call, never cached
         if not self.ctx.has("llm.free"):  # free and self-hosted resources need the llm.free grant
             found = [c for c in found if c.cost_class == "paid"]
         with self._fast:  # remembered for route_timeout (ADR-0013); every resolve replaces it
@@ -212,11 +231,20 @@ class RouterModule(StateTables):
         chosen_id, cost = (chosen.id, chosen.cost_class) if chosen else ("", "")
         row = (key, at, self.settings["consumer"], need.tier, need.tokens, chosen_id, cost, reason)
         self._q(f"INSERT INTO {t} VALUES (?, ?, ?, ?, ?, ?, ?, ?)", row)  # nosec B608
-        count = self._q(f"SELECT count(*) FROM {t}")[0][0]  # nosec B608
-        if count > KEEP_DECISIONS:
-            oldest = self._q(f"SELECT id FROM {t} ORDER BY id LIMIT ?", (count - KEEP_DECISIONS,))  # nosec B608
-            for (old,) in oldest:
-                self._q(f"DELETE FROM {t} WHERE id = ?", (old,))  # nosec B608
+        # H1 C-14: count once, then keep a running estimate; prune in one statement when PRUNE_SLACK over.
+        # Other processes may add rows too, so a prune recounts.
+        if self._decisions is None:
+            self._decisions = int(self._q(f"SELECT count(*) FROM {t}")[0][0])  # nosec B608
+        else:
+            self._decisions += 1
+        if self._decisions > KEEP_DECISIONS + PRUNE_SLACK:
+            count = int(self._q(f"SELECT count(*) FROM {t}")[0][0])  # nosec B608
+            if count > KEEP_DECISIONS:
+                self._q(
+                    f"DELETE FROM {t} WHERE id IN (SELECT id FROM {t} ORDER BY id LIMIT ?)",  # nosec B608
+                    (count - KEEP_DECISIONS,),
+                )
+            self._decisions = min(count, KEEP_DECISIONS)
 
     def _write_spend(self, day: str) -> None:
         spend = self._t("spend")
@@ -495,7 +523,8 @@ class RouterModule(StateTables):
         # configured model. Block only with positive knowledge (M6 review): the registry answers, the model is
         # a known resource, nothing routable is left, and the model itself is ruled out.
         for provider in self.settings["providers"]:
-            candidates = self._candidates(provider)
+            # a block needs current knowledge: a stopped registry must mean no block (H1 C-14 keeps this)
+            candidates = self._candidates(provider, fresh=True)
             if not any(c.model == model for c in candidates):
                 # Unknown model: never blocked. It may be a free local model, and blocking needs positive
                 # knowledge (M6 review; the R1 change that blocked it was reverted in the follow-up review).

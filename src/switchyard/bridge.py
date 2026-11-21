@@ -527,6 +527,11 @@ class HermesBridge:
         with self._lock:
             self._middleware.setdefault(f"transform:{kind}", []).append((module_id, fn))
 
+    def has_transform(self, kind: str) -> bool:
+        """Whether any module registered a transform of ``kind`` (lets callers skip preparing the text)."""
+        with self._lock:
+            return bool(self._middleware.get(f"transform:{kind}"))
+
     def dispatch_transform(self, kind: str, text: object, meta: Mapping[str, Any]) -> str | None:
         """Shorten tool or terminal output (ADR-0008). Each module returns kept line ranges for the current
         text; ``trim.rebuild`` applies them, adds must-keep lines and writes the omission markers. Returns

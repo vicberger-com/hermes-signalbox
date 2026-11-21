@@ -79,6 +79,10 @@ def parse_prices(doc: Any) -> dict[str, dict[str, float]]:
 
 
 class MeterModule(StateTables):
+    # H1 C-14: the hot path reads the quota list from a cache this many seconds old at most. quota_add and
+    # quota_remove refresh it in this process; a quota set from another process is seen within this time.
+    QUOTA_CACHE_SECONDS = 30.0
+
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self.ctx: Any = None
         self.clock = clock
@@ -86,6 +90,7 @@ class MeterModule(StateTables):
         self.prices: dict[str, dict[str, float]] = {}
         self._lock = threading.Lock()
         self._pruned_hour = ""
+        self._quota_cache: tuple[float, list[dict[str, Any]]] | None = None
 
     # lifecycle ----------------------------------------------------------------------------------------
 
@@ -322,8 +327,16 @@ class MeterModule(StateTables):
         value = self._q(sql, tuple(args))[0][0]
         return float(value or 0)
 
+    def _cached_quotas(self) -> list[dict[str, Any]]:
+        now = self.clock()
+        cached = self._quota_cache
+        if cached is None or not 0 <= now - cached[0] < self.QUOTA_CACHE_SECONDS:
+            cached = (now, self._quota_rows())
+            self._quota_cache = cached
+        return cached[1]
+
     def _check_quotas(self, now: datetime) -> None:
-        for quota in self._quota_rows():
+        for quota in self._cached_quotas():  # no quotas (the default): no queries at all (H1 C-14)
             used = self._used(quota, now)
             key, _, end = self._period_bounds(quota["period"], now)
             for percent in quota["thresholds"]:
@@ -514,6 +527,7 @@ class MeterModule(StateTables):
         sql = f"INSERT OR REPLACE INTO {self._t('quotas')} VALUES (?, ?, ?, ?, ?, ?)"  # nosec B608
         with self._lock:  # never interleave with a threshold check (_record)
             self._q(sql, (name, scope, metric, period, value, ",".join(map(str, marks))))
+            self._quota_cache = None
         self.ctx.audit("quota_add", quota=name, scope=scope, metric=metric, period=period, limit=str(value))
         return {
             "quota": name,
@@ -530,6 +544,7 @@ class MeterModule(StateTables):
         with self._lock:
             self._q(f"DELETE FROM {self._t('quotas')} WHERE name = ?", (name,))  # nosec B608
             self._q(f"DELETE FROM {self._t('fired')} WHERE name = ?", (name,))  # nosec B608
+            self._quota_cache = None
         self.ctx.audit("quota_remove", quota=name)
         return {"removed": name}
 

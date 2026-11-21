@@ -13,7 +13,9 @@ Bridge: [ADR-0004](../../../../docs/adr/0004-hermes-bridge.md).
    sends (`messages`, `input`, `system`, `instructions`, `prompt`, `contents`); a request with none of these is
    an unknown shape and is tier T5.
 3. Candidates are `resources.resolve {consumer}` rows of the active provider (`<provider>/<model>` ids), in
-   pool order. Only `auto` resources are chosen automatically; a `manual` resource is used only when pinned.
+   pool order. One resolve answer is reused for up to 5 seconds (1.1, H1 C-14), so a resource change reaches
+   routing within that time; grants are applied on every request. The turn gate (`hard_stop`) always asks
+   the registry fresh, so a stopped registry never blocks a turn. Only `auto` resources are chosen automatically; a `manual` resource is used only when pinned.
 4. A candidate is skipped if it is cooling down, lacks the `tools` or `vision` tag the request needs, or its
    context window is smaller than the estimate plus 1 024 tokens.
 5. **Paid gating.** A `paid` resource (pinned or not) is used only if all three hold: the module has the
@@ -22,7 +24,8 @@ Bridge: [ADR-0004](../../../../docs/adr/0004-hermes-bridge.md).
    Every paid choice is audited as `module.router.paid_decision`.
 6. Free and self-hosted first, then paid; pool order within each class. A pin wins if it is usable.
 7. Only the request's `model` changes (the bridge drops any other change). The decision is stored (time,
-   consumer, tier, token estimate, chosen id, cost class, reason; never prompt text; last 1 000 kept).
+   consumer, tier, token estimate, chosen id, cost class, reason; never prompt text; last 1 000 kept, pruned
+   in one statement once 100 over).
 
 ## When nothing fits
 

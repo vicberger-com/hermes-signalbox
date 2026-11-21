@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -543,3 +544,47 @@ def test_h1_c7_unregistered_persona_model_is_never_free_by_default(core: Core) -
     assert _audits(core, "module.router.paid_passthrough")
     main = request(model="vendor/secret-paid-model")  # the main session: unknown models stay outside the gate
     assert route(core, main) == "vendor/secret-paid-model" and rt(core, "status")["paid_today"] == 1
+
+
+# 1.1 H1 C-14: per-call cost on the hot path ----------------------------------------------------------------
+
+
+def test_h1_c14_resolve_is_cached_briefly(core: Core, clock: Clock, monkeypatch: pytest.MonkeyPatch) -> None:
+    inst = _router(core)
+    calls: list[str] = []
+    cls = type(inst.ctx)
+    real = cls.call
+
+    def counting(self: Any, module: str, action: str, args: Any) -> Any:
+        if self is inst.ctx and (module, action) == ("resources", "resolve"):
+            calls.append(module)
+        return real(self, module, action, args)
+
+    monkeypatch.setattr(cls, "call", counting)
+    for _ in range(5):
+        assert route(core, request()) == "free/small:free"
+    assert len(calls) == 1  # one resolve for five requests (was one or two per request)
+    clock.now += inst.RESOLVE_TTL_SECONDS + 1
+    route(core, request())
+    assert len(calls) == 2  # stale after the TTL: a resource change shows up within seconds
+
+
+def test_h1_c14_decision_log_is_pruned_in_batches(core: Core, monkeypatch: pytest.MonkeyPatch) -> None:
+    inst = _router(core)
+    module = sys.modules[type(inst).__module__]
+    monkeypatch.setattr(module, "KEEP_DECISIONS", 10)
+    statements: list[str] = []
+    real = inst._q
+
+    def counting(sql: str, params: tuple[Any, ...] = ()) -> Any:
+        if "decisions" in sql:
+            statements.append(sql.split()[0])
+        return real(sql, params)
+
+    monkeypatch.setattr(inst, "_q", counting)
+    for _ in range(60):
+        route(core, request())
+    assert statements.count("SELECT") <= 2  # no count(*) per decision
+    assert statements.count("DELETE") <= 2  # pruned in batches, not row by row
+    t = inst._t("decisions")
+    assert real(f"SELECT count(*) FROM {t}")[0][0] <= 10 + module.PRUNE_SLACK  # noqa: S608

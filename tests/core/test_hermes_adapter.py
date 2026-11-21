@@ -342,3 +342,20 @@ def test_h1_c9_adapter_errors_are_audited_once_and_fail_open(
         r for r in core.run("audit", "tail", {"n": 50}, actor="t") if r["action"] == "core.adapter_error"
     ]
     assert len(errors) == 1 and errors[0]["detail"] == {"hook": "pre_llm_call", "error": "RuntimeError"}
+
+
+def test_h1_c14_tool_results_are_not_parsed_without_a_transform(
+    ctx: FakeCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    register(ctx)
+    parsed: list[int] = []
+    real = adapter_mod.json.loads
+
+    def counting(*a: Any, **k: Any) -> Any:  # the adapter swallows exceptions, so count instead of raising
+        parsed.append(1)
+        return real(*a, **k)
+
+    payload = json.dumps({"output": "x" * 5000})
+    monkeypatch.setattr(adapter_mod.json, "loads", counting)
+    assert ctx.hooks["transform_tool_result"](result=payload, tool_name="t") is None
+    assert parsed == []
