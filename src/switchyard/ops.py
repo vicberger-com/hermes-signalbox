@@ -8,21 +8,21 @@ data directory when no daemon is running (they do not need a live module instanc
 
 from __future__ import annotations
 
-import inspect
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-import switchyard
 from switchyard.capabilities import CAPABILITIES
 from switchyard.errors import CapabilityDenied, SwitchyardError
-from switchyard.errors import UsageError as UsageError  # re-exported: older imports use switchyard.ops
 from switchyard.hostinfo import profile
-from switchyard.manifest import core_compatibility
 
 if TYPE_CHECKING:
     from switchyard.core import Core
+
+
+class UsageError(SwitchyardError):
+    """The operation or its parameters are invalid."""
 
 
 # The actor the Hermes adapter uses for model-initiated tool calls. Human paths use other actors.
@@ -155,13 +155,6 @@ def _module_show(core: Core, p: dict[str, Any], actor: str) -> Any:
         "contributes": {k: list(v) for k, v in manifest.contributes.items()},
         "net_hosts": list(manifest.net_hosts),
         "secrets": list(manifest.secrets),
-        # H1 B-10: what process.spawn may run; "any" is the blanket grant the prompt must show.
-        "programs": ("any" if manifest.programs is None else list(manifest.programs))
-        if "process.spawn" in manifest.requested
-        else [],
-        # H1 A-20: the 1.0 transition note ("outdated") for a module still on the old template's "<1"
-        "requires_core": manifest.requires_core,
-        "requires_core_note": core_compatibility(manifest.requires_core, switchyard.__version__)[1],
         "panels": core.panels.panels(p["id"]),
     }
 
@@ -256,28 +249,6 @@ def _module_action(core: Core, p: dict[str, Any], actor: str) -> Any:
                       read_only_only=actor == MODEL_ACTOR)  # fmt: skip
 
 
-def _check_arguments(action: Any, args: Mapping[str, Any]) -> None:
-    """A missing argument is found by binding to the handler's signature, not by reading a ``TypeError``
-    message: a ``TypeError`` raised inside the handler is the handler failing (H1 B-25)."""
-    try:
-        inspect.signature(action.handler).bind(**args)
-    except TypeError:
-        raise UsageError(f"missing argument for action {action.name!r}") from None
-    except ValueError:  # no signature available (some builtins): let the call decide
-        pass
-
-
-def call_action_handler(action: Any, args: Mapping[str, Any]) -> Any:
-    """Run ``action.handler(**args)``; failures keep only the exception class (messages may carry data)."""
-    _check_arguments(action, args)
-    try:
-        return action.handler(**args)
-    except SwitchyardError:
-        raise
-    except Exception as exc:
-        raise SwitchyardError(f"action {action.name!r} failed: {type(exc).__name__}") from None
-
-
 def run_action(
     core: Core,
     module_id: str,
@@ -308,10 +279,19 @@ def run_action(
         if not isinstance(value, kind) or (kind is int and isinstance(value, bool)):
             raise UsageError(f"argument {name!r} must be {kind.__name__}")
         args[name] = value
-    if audit:  # before argument binding, so a refused call is recorded too (as in 1.0; 1.1 acceptance S3-5)
+    if audit:
         detail = {"action": action.name, **(audit_detail or {})}
         core.audit.append(actor=actor, action="module.action", module=p["id"], detail=detail)
-    result = call_action_handler(action, args)  # binds the arguments first (H1 B-25)
+    try:
+        result = action.handler(**args)
+    except TypeError as exc:
+        if "missing" in str(exc) and "argument" in str(exc):
+            raise UsageError(f"missing argument for action {action.name!r}") from None
+        raise SwitchyardError(f"action {action.name!r} failed: TypeError") from None
+    except SwitchyardError:
+        raise
+    except Exception as exc:
+        raise SwitchyardError(f"action {action.name!r} failed: {type(exc).__name__}") from None
     try:
         json.dumps(result)
     except (TypeError, ValueError):
@@ -324,15 +304,12 @@ def run_action(
     locked=False, id=ID, ref=Param(str, help="full 40-character commit SHA"),
     digest=Param(str, required=False, help="tree digest from module preview; refuses different files"),
     accept_wider=Param(bool, required=False, default=False,
-                       help="accept new capabilities, hosts, secrets or weaker isolation"),
-    allow_downgrade=Param(bool, required=False, default=False,
-                          help="install a version older than the installed one"))  # fmt: skip
+                       help="accept new capabilities, hosts, secrets or weaker isolation"))  # fmt: skip
 def _module_update(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
     return core.updates.update(
-        p["id"], p["ref"], actor=actor, digest=p.get("digest"), accept_wider=bool(p.get("accept_wider")),
-        allow_downgrade=bool(p.get("allow_downgrade")),
-    ).to_dict()  # fmt: skip
+        p["id"], p["ref"], actor=actor, digest=p.get("digest"), accept_wider=bool(p.get("accept_wider"))
+    ).to_dict()
 
 
 @op("module", "preview", "Stage a commit without applying it: SBOM delta, patch notes and tree digest.",
@@ -354,7 +331,8 @@ def _module_check_updates(core: Core, p: dict[str, Any], actor: str) -> Any:
                        help="accept a previous version that may do more than the current one"))  # fmt: skip
 def _module_rollback(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
-    return core.updates.rollback(p["id"], actor=actor, accept_wider=bool(p.get("accept_wider")))
+    version = core.updates.rollback(p["id"], actor=actor, accept_wider=bool(p.get("accept_wider")))
+    return {"id": p["id"], "version": version}
 
 
 @op("audit", "verify", "Verify the audit hash chain against the stored head anchor.", offline=True)

@@ -14,6 +14,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   of them. That API also serves the read-only `module health`. A refused command names the routes that work
   (`/switchyard ...` in a Hermes chat, or `switchyard api serve` with Hermes stopped), instead of
   "use the CLI".
+- Routed model calls no longer pay about 20 ms each for audit writes (#124). A read-only call from one module
+  to another (the router asking `resources` for candidates on every request) is now recorded once per minute
+  per caller, target and action, with a `calls` count, instead of one record per call. Operator, chat and model
+  actions are still recorded every time. Appending to the audit log no longer re-reads the log's tail when
+  this process wrote the last record (checked by file name and size; another writer still forces a re-read).
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,
