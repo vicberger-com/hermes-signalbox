@@ -96,7 +96,12 @@ class NetBroker:
         host = parts.hostname.lower() + (f":{port}" if port else "")
         self._policy.require_host(module_id, host)
         data = None
-        all_headers = {k: v for k, v in (headers or {}).items() if "\n" not in k + v and "\r" not in k + v}
+        # No CR/LF, and no Host: the URL's host is the one the allow-list checked (H1 B-22).
+        all_headers = {
+            k: v
+            for k, v in (headers or {}).items()
+            if "\n" not in k + v and "\r" not in k + v and k.strip().lower() != "host"
+        }
         if json is not None:
             data = jsonlib.dumps(json).encode("utf-8")
             if len(data) > MAX_BODY_OUT:
