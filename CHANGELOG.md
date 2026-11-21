@@ -60,6 +60,8 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   parent is idle now gets an error after 30 seconds instead of waiting for ever (the limit is documented in
   m0-core). Frames are written whole even when a pipe accepts part of a write. A module may hold at most 64
   event subscriptions.
+- Module log redaction covers field names as well as values (H1 B-23 #112). Field names that redact to the same
+  text keep a `#2`, `#3` suffix, so no field is dropped.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

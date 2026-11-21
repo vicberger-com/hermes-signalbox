@@ -34,7 +34,18 @@ def _redact_all(value: Any, redact: Callable[[str], str]) -> Any:
     if isinstance(value, list):
         return [_redact_all(v, redact) for v in value]
     if isinstance(value, dict):
-        return {k: _redact_all(v, redact) for k, v in value.items()}
+        # Keys too (H1 B-23): a module may use a secret as a field name. Keys that redact to the same text are
+        # kept apart with a numeric suffix, so no field is silently dropped.
+        out: dict[Any, Any] = {}
+        for k, v in value.items():
+            key = redact(k) if isinstance(k, str) else k
+            n = 2
+            base = key
+            while key in out:
+                key = f"{base}#{n}"
+                n += 1
+            out[key] = _redact_all(v, redact)
+        return out
     return value
 
 
