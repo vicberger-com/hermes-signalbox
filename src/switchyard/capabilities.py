@@ -91,6 +91,16 @@ def parse_policies(manifest: Manifest) -> frozenset[str]:
     return frozenset(denied)
 
 
+_CLIP = 1000  # below the audit log's 1024-character detail limit, with room for the marker
+
+
+def _clip(detail: Mapping[str, str]) -> dict[str, str]:
+    return {
+        str(k)[:100]: (v if len(v) <= _CLIP else f"{v[: _CLIP - 20]}[+{len(v) - (_CLIP - 20)} chars]")
+        for k, v in ((k, str(v)) for k, v in detail.items())
+    }
+
+
 class PolicyEngine:
     """Default-deny capability checks for registered modules. Thread-safe."""
 
@@ -140,9 +150,9 @@ class PolicyEngine:
             actor=actor,
             action="policy.grant_refused",
             module=module_id,
-            detail={"capability": capability, "reason": reason},
+            detail=_clip({"capability": capability, "reason": reason}),
         )
-        return CapabilityDenied(f"cannot grant {capability!r} to {module_id!r}: {reason}")
+        return CapabilityDenied(f"cannot grant {capability[:100]!r} to {module_id!r}: {reason}")
 
     def grant(self, module_id: str, capability: str, *, actor: str) -> None:
         with self._lock:
@@ -180,8 +190,10 @@ class PolicyEngine:
     # checks -------------------------------------------------------------------------------------------
 
     def _deny(self, module_id: str, detail: dict[str, str], message: str) -> CapabilityDenied:
-        self._audit.append(actor=CORE_ACTOR, action="policy.denied", module=module_id, detail=detail)
-        return CapabilityDenied(message)
+        # H1 A-2: a module controls these strings (hosts, panel ids). The denial is always recorded, with long
+        # values shortened, and the caller always gets CapabilityDenied.
+        self._audit.append(actor=CORE_ACTOR, action="policy.denied", module=module_id, detail=_clip(detail))
+        return CapabilityDenied(message[:500])
 
     def require(self, module_id: str, capability: str, **detail: str) -> None:
         """Raise ``CapabilityDenied`` (and audit it) unless ``capability`` is effective for ``module_id``."""

@@ -144,6 +144,35 @@ class Core:
         # hosting=True: must host (raise if another process does); None: host if free; False: never host.
         self._host_lock = HostLock(self.data_dir / "host.lock")
         self.hosting = bool(hosting is not False and self._host_lock.acquire())
+        try:
+            self._start(hosting, trusted_roots, module_roots, secret_backends, fetcher, hermes_config)
+        except BaseException:
+            # H1 A-10: a failed start must not keep the host lock or the database for the process lifetime
+            self._abort_start()
+            raise
+
+    def _abort_start(self) -> None:
+        for name in ("bridge", "schedules"):
+            part = self.__dict__.get(name)
+            if part is not None:
+                with contextlib.suppress(Exception):
+                    part.close()
+        store = self.__dict__.get("store")
+        if store is not None:
+            with contextlib.suppress(Exception):
+                store.close()
+        with contextlib.suppress(Exception):
+            self._host_lock.release()
+
+    def _start(
+        self,
+        hosting: bool | None,
+        trusted_roots: Sequence[Path] | None,
+        module_roots: Sequence[Path] | None,
+        secret_backends: Sequence[Any],
+        fetcher: Fetcher | None,
+        hermes_config: HermesConfigPort | None,
+    ) -> None:
         if hosting is True and not self.hosting:
             raise SwitchyardError(f"another process hosts modules for {self.data_dir}")
         self.redactor = Redactor()
@@ -244,12 +273,17 @@ class Core:
         broken = self._audit_broken()
         if broken is None:
             return {"acknowledged": False}
-        self.store.core_execute("DELETE FROM meta WHERE key = ?", (_BROKEN_KEY,))
-        # Re-anchor at the log as it is now: the operator has accepted it as the new baseline.
-        self.store.core_execute("DELETE FROM meta WHERE key = ?", (_HEAD_KEY,))
-        self.audit.append(
+        # H1 A-11: record the acknowledgement first, then re-anchor at it (the operator has accepted the log
+        # as it is now as the new baseline), and only then clear the flag. A failure at any step leaves the
+        # warning in place.
+        record = self.audit_log.append(
             actor=actor, action="audit.acknowledged", module="", detail={"failure": broken[:300]}
         )
+        self.store.core_execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+            (_HEAD_KEY, f"{record.seq}:{record.hash}"),
+        )
+        self.store.core_execute("DELETE FROM meta WHERE key = ?", (_BROKEN_KEY,))
         return {"acknowledged": True, "failure": broken}
 
     def run(self, noun: str, verb: str, params: Mapping[str, Any], *, actor: str) -> Any:

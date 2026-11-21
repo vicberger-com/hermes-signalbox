@@ -62,3 +62,20 @@ def test_panel_registry() -> None:
     assert reg.panels("a") == [] and reg.panels("b") == ["b.status"]
     with pytest.raises(SwitchyardError, match="panel"):
         reg.render("a", "a.status")
+
+
+def test_h1_b4_long_event_names_keep_every_line_valid_json(tmp_path: Path) -> None:
+    import json as _json
+
+    from switchyard.logs import MAX_LINE_BYTES, JsonlLogSink
+
+    sink = JsonlLogSink(tmp_path / "logs")
+    sink.write("demo", "s", "e" * 20_000, {})
+    sink.write("demo", "s", "\u00e9" * 10_000, {"k": "v" * 30_000})
+    lines = (tmp_path / "logs" / "s.jsonl").read_bytes().splitlines()
+    assert len(lines) == 2
+    for raw in lines:
+        assert len(raw) < MAX_LINE_BYTES
+        rec = _json.loads(raw)
+        assert rec["module"] == "demo" and rec["stream"] == "s"
+    assert _json.loads(lines[1])["fields"] == {"truncated": True}

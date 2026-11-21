@@ -109,15 +109,15 @@ def test_reopen_continues_the_chain(tmp_path: Path) -> None:
     assert again.verify().ok
 
 
-def test_torn_last_line_fails_closed(tmp_path: Path) -> None:
+def test_torn_last_line_is_quarantined(tmp_path: Path) -> None:
     log = _log(tmp_path)
     _fill(log, 2)
     [(path, _)] = _lines(tmp_path / "audit")
     with path.open("a", encoding="utf-8") as fh:
         fh.write('{"seq": 3, "ts"')
-    log = _log(tmp_path)  # opening no longer fails (R1 follow-up) ...
-    assert AuditLog.verify_directory(tmp_path / "audit").ok is False  # ... verification still reports it
-    log.append(actor="user", action="after", module="demo", detail={})  # the next append repairs the tail
+    assert AuditLog.verify_directory(tmp_path / "audit").ok is False  # on disk it does not verify ...
+    log = _log(tmp_path)  # ... opening repairs it (H1 A-9; before, the first append did)
+    log.append(actor="user", action="after", module="demo", detail={})
     result = AuditLog.verify_directory(tmp_path / "audit")
     assert result.ok and result.records == 4
     assert [r["action"] for r in log.tail(2)] == ["audit.torn_tail_repaired", "after"]
@@ -286,3 +286,102 @@ def test_anchor_hash_mismatch_detected(tmp_path: Path) -> None:
     result = log.verify(expected_head=(seq, "f" * 64))
     assert not result.ok and "anchor" in result.reason
     assert log.verify(expected_head=(2, log.tail(2)[0]["hash"])).ok  # an older anchor is fine
+
+
+# H1 WP9: audit log and startup ------------------------------------------------------------------------------
+
+
+def test_h1_a8_tail_survives_unicode_line_separators(tmp_path: Path) -> None:
+    log = _log(tmp_path)
+    log.append(actor="user", action="a", module="demo", detail={"note": "one\u2028two\u2029three\x85"})
+    log.append(actor="user", action="b", module="demo", detail={})
+    assert [r["action"] for r in log.tail(5)] == ["a", "b"]
+    assert log.tail(1)[0]["action"] == "b"
+
+
+def test_h1_a9_torn_tail_is_repaired_on_open_and_not_tampering(tmp_path: Path) -> None:
+    log = _log(tmp_path)
+    _fill(log, 2)
+    [(path, _)] = _lines(tmp_path / "audit")
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write('{"seq": 3, "ts"')
+    log = _log(tmp_path)  # opening repairs the never-anchored torn record
+    result = AuditLog.verify_directory(tmp_path / "audit", (2, log.tail(3)[1]["hash"]))
+    assert result.ok and result.records == 3
+    assert log.tail(1)[0]["action"] == "audit.torn_tail_repaired"
+    assert list((tmp_path / "audit").glob("*.torn-*"))
+
+
+def test_h1_a9_stripped_final_newline_fails_verify(tmp_path: Path) -> None:
+    log = _log(tmp_path)
+    _fill(log, 3)
+    [(path, _)] = _lines(tmp_path / "audit")
+    path.write_bytes(path.read_bytes().rstrip(b"\n"))
+    result = AuditLog.verify_directory(tmp_path / "audit")
+    assert not result.ok and "not terminated" in result.reason
+
+
+def test_h1_a12_bad_bytes_and_deep_json_are_reported_not_raised(tmp_path: Path) -> None:
+    log = _log(tmp_path)
+    _fill(log, 3)
+    [(path, _)] = _lines(tmp_path / "audit")
+    data = path.read_bytes().split(b"\n")
+    # not utf-8, or nesting that exhausts older parsers (3.14 parses it; it then has the wrong fields)
+    for bad, reason in (
+        (b"\xff\xfe not utf-8", "unparseable"),
+        (b"[" * 100_000 + b"]" * 100_000, "unparseable"),
+    ):
+        lines = list(data)
+        lines[1] = bad
+        path.write_bytes(b"\n".join(lines))
+        result = AuditLog.verify_directory(tmp_path / "audit")
+        assert not result.ok and result.first_bad_seq == 2, (reason, result)
+
+
+def test_h1_a13_large_last_record_does_not_stop_appends(tmp_path: Path) -> None:
+    log = _log(tmp_path)
+    log.append(actor="user", action="big", module="demo", detail={f"k{i}": "v" * 1000 for i in range(70)})
+    log = _log(tmp_path)  # the last record is larger than one tail probe ... reopening still finds it
+    log.append(actor="user", action="after", module="demo", detail={})
+    assert AuditLog.verify_directory(tmp_path / "audit").ok
+    with pytest.raises(AuditError, match="too large"):
+        log.append(
+            actor="user", action="huge", module="demo", detail={f"k{i}": "v" * 1000 for i in range(140)}
+        )
+
+
+def test_h1_a14_short_write_is_completed_or_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    log = _log(tmp_path)
+    real = os.write
+    calls = {"n": 0}
+
+    def half(fd: int, data: bytes) -> int:
+        calls["n"] += 1
+        return real(fd, bytes(data[: max(1, len(data) // 2)]))
+
+    monkeypatch.setattr(os, "write", half)
+    log.append(actor="user", action="a", module="demo", detail={"x": "y" * 50})
+    monkeypatch.setattr(os, "write", real)
+    assert calls["n"] > 1 and AuditLog.verify_directory(tmp_path / "audit").ok
+
+    monkeypatch.setattr(os, "write", lambda fd, data: 0)
+    with pytest.raises(AuditError, match="no progress"):
+        log.append(actor="user", action="b", module="demo", detail={})
+    monkeypatch.setattr(os, "write", real)
+    assert log.head[0] == 1
+
+
+def test_h1_a2_long_denial_detail_is_truncated_and_recorded(
+    tmp_path: Path, make_manifest: ManifestFactory
+) -> None:
+    log = _log(tmp_path)
+    policy = PolicyEngine(MemoryGrantStore(), log)
+    policy.register(make_manifest("demo", request=["net.outbound"], net_hosts=["ok.example"]))
+    policy.grant("demo", "net.outbound", actor="user")
+    with pytest.raises(CapabilityDenied):
+        policy.require_host("demo", "h" * 5000)
+    with pytest.raises(CapabilityDenied):
+        policy.require("demo", "ui.panel", panel="p" * 5000)
+    denied = [r for r in log.tail(10) if r["action"] == "policy.denied"]
+    assert len(denied) == 2 and all(len(v) <= 1024 for r in denied for v in r["detail"].values())
+    assert denied[0]["detail"]["host"].endswith("[+4020 chars]")
