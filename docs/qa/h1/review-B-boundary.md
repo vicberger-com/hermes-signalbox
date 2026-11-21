@@ -19,8 +19,8 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-5 | Low | - | - | - | withheld until fixed (#98) |
 | B-6 | Low | - | - | - | withheld until fixed (#99) |
 | B-7 | Low | - | - | - | withheld until fixed (#100) |
-| B-8 | Low | - | - | - | withheld until fixed (#101) |
-| B-9 | Low | - | - | - | withheld until fixed (#102) |
+| B-8 | Low | confirmed-by-reading | API client | api.py:301-334; cli.py:119-128 | Stale api.port/api.token trusted; the CLI sends the bearer token to whatever answers |
+| B-9 | Low | confirmed-by-reading | CLI/API | api.py:319-322; cli.py:119-128 | Transport error after the request was sent, then offline re-run of the operation (possible double execution) |
 | B-10 | Low | - | - | - | withheld until fixed (#103) |
 | B-11 | Low | confirmed-by-reading | updates | updates.py:57, 294-299 | Refusal gate for unreviewed files misses compiled extensions (.pyd, .so) and is case-sensitive |
 | B-12 | Low | - | - | - | withheld until fixed (#104) |
@@ -108,13 +108,21 @@ Withheld until #99 is closed.
 
 Withheld until #100 is closed.
 
-### B-8 (Low)
+### B-8 (Low), stale API files trusted; bearer token sent to whatever answers
+- **Location:** `api.py:288-292` (files removed only on clean `shutdown`), `api.py:301-307` (`from_data_dir` reads port and token), `api.py:309-334` (`request` sends `Authorization: Bearer` to `127.0.0.1:<port>` and does not check the server's identity).
+- **Evidence (reading):** after a crash, `api.port` and `api.token` persist. A process that later binds that port receives the token and can return forged results.
+- **Impact:** needs port reuse plus a motivated local process. Another OS user could hold the port, so this is more than the documented same-user boundary, but the attack is narrow. Hence Low, suspected.
+- **Fix:** delete stale files at start-up (after checking the PID in a lock file), and bind the CLI to a per-start nonce that the server echoes, or use a named pipe with a user-only ACL.
+- **Suggested test:** start the server, kill it without shutdown, bind a fake listener on the same port, assert the CLI refuses or does not send the token.
+- Fixed in 1.1 (#101): the client sends a fresh challenge to `GET /v1/health` and sends the token only if the answer is the HMAC of the challenge keyed with the token.
 
-Withheld until #101 is closed.
-
-### B-9 (Low)
-
-Withheld until #102 is closed.
+### B-9 (Low), possible double execution of offline operations
+- **Location:** `api.py:319-322` (any `OSError` or `TimeoutError` during the request, including after it was sent, becomes `ApiUnavailable`); `cli.py:119-128` (offline operations then run locally).
+- **Evidence (reading):** `module grant`, `revoke`, `mode`, `remove` and `audit ack` are `offline=True` (ops.py). A daemon that applied the change and then dropped the connection leads to a second, local run.
+- **Impact:** most are idempotent, but `module remove` returns an error on the second run, and an operator sees a failure for a successful change.
+- **Fix:** distinguish "connection refused" (safe to fall back) from "sent, no response" (report an unknown outcome, do not re-run).
+- **Suggested test:** a fake server that accepts and closes after the body; assert no local re-run.
+- Fixed in 1.1 (#102): only a failure to connect falls back to a local run; a failure after the request was sent is `ApiOutcomeUnknown` and nothing runs again.
 
 ### B-10 (Low)
 
@@ -209,7 +217,7 @@ Withheld until #113 is closed.
 - An item for withheld finding B-6.
 - An item for withheld finding B-17.
 - The full pytest suite. I did not run it, to keep the repo free of cache and coverage writes.
-- An item for withheld finding B-9.
+- Concurrency under a live daemon: two processes on one data dir, and the CLI-to-daemon fallback (B-9) under real load.
 - Hermes adapter (`hermes/`), dashboard panel and inbox modules: outside this scope.
 - An item for withheld finding B-15.
 

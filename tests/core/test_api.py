@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 from sy_testing import write_module
 
+from switchyard import api as api_mod
 from switchyard.api import (
     MAX_BODY_BYTES,
     MAX_RESPONSE_BYTES,
@@ -231,6 +232,14 @@ def test_client_unavailable_without_files_or_server(tmp_path: Path) -> None:
 
 
 class _Huge(http.server.BaseHTTPRequestHandler):
+    def do_GET(self) -> None:  # proves it holds the token "token" (H1 B-8), so the client sends the POST
+        challenge = self.headers.get(api_mod.CHALLENGE_HEADER, "")
+        body = json.dumps({"ok": True, "proof": api_mod.token_proof("token", challenge)}).encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_POST(self) -> None:
         self.rfile.read(int(self.headers.get("Content-Length", "0")))
         self.send_response(200)
