@@ -43,6 +43,8 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   Anything else on the daemon's port gets "token not sent". When the connection fails after a command was sent,
   the CLI reports that the daemon may have applied it, instead of running the command again locally. A CLI of
   this version cannot talk to a daemon started by 1.0.x; restart the daemon after upgrading.
+- `fs.read` refuses the remaining Windows device aliases (H1 B-6 #99): superscript forms (`COM¹`, `LPT³.txt`)
+  and names with a colon (`NUL:`, `CON:stream`). Alternate data streams on ordinary files stay allowed.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

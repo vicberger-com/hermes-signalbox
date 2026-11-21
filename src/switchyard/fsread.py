@@ -47,6 +47,14 @@ _RESERVED = frozenset(
         *(f"LPT{i}" for i in range(10)),
     }
 )
+_SUPERSCRIPT = str.maketrans("\u00b9\u00b2\u00b3", "123")  # COM¹ LPT³: legacy device aliases (H1 B-6)
+
+
+def _device_stem(part: str) -> str:
+    """The name Windows matches against device names: before any ``:`` (``NUL:``, ``CON:stream``), before the
+    first ``.``, trailing spaces and dots dropped, superscript digits as digits, upper case."""
+    stem = part.split(":", 1)[0].split(".", 1)[0].rstrip(" .")
+    return stem.translate(_SUPERSCRIPT).upper()
 
 
 class FsReadFailed(SwitchyardError):
@@ -66,7 +74,7 @@ def check_local_path(path: str | Path, *, windows: bool | None = None) -> Path:
                 "fs.read needs an absolute local path with a drive letter (no UNC or device path)"
             )
         for part in pure.parts[1:]:
-            if part.split(".")[0].rstrip(" ").upper() in _RESERVED:
+            if _device_stem(part) in _RESERVED:
                 raise SwitchyardError("fs.read refuses Windows device names")
         return Path(text)
     if not text.startswith("/"):
