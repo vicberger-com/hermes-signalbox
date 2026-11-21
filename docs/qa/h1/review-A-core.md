@@ -33,22 +33,22 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 | A-13 | Low | confirmed-by-probe | audit.py:37, 135-143 | A complete last record larger than 64 KiB makes every append fail after restart. |
 | A-14 | Low | confirmed-by-reading | audit.py:227, 215 | `os.write` return value unchecked; chain state advances on a short write. |
 | A-15 | Low | confirmed-by-reading | capabilities.py:184-186, 198-199 | `require_host`/`require_secret` read `self._modules[...]` after the lock is released: `KeyError` if unregistered in between. |
-| A-16 | Low | confirmed-by-reading | manifest.py:155-158; config.py:99-104 | Whole file read into memory before the size check. |
+| A-16 | Low | - | - | withheld until fixed (#89) |
 | A-17 | Low | confirmed-by-probe | secrets.py:89-90, 99-101 | `MemoryBackend`'s test-only guard is `"pytest" in sys.modules`; a stub module satisfies it. |
 | A-18 | Low | confirmed-by-probe | secrets.py:209-216, 225 | Non-`KeyError` backend exceptions propagate unwrapped; a token in the backend's message reaches the caller. |
 | A-19 | Low | confirmed-by-probe | manifest.py:148-150; capabilities.py:79-91, 107 | `validate_file` (and `tools/validate_manifest.py`) accept `contributes.policies` rules that discovery rejects. |
-| A-20 | Low | confirmed-by-reading | manifest.py:187, 245 | `requires_core` is stored and never compared with the running core version. |
+| A-20 | Low | - | - | withheld until fixed (#91) |
 | A-21 | Low | confirmed-by-reading | contract.py:184; capabilities.py:162-164 | The contract's "grants gone" check is vacuous: `granted()` returns empty for any unregistered module, whatever the store holds. |
 | A-22 | Low | confirmed-by-reading | context.py:424-436; lifecycle.py:326-331 | `ModuleContext.close()` is not exception-safe: a raise early on skips secret-backend and bridge cleanup. |
 | A-23 | — | — | — | Withdrawn during review: not a finding (see the note under Details). |
 | A-24 | Low | confirmed-by-reading | secrets.py:116-127 | Redactor value set grows without bound and is never cleared; each `redact()` scans every value. |
-| A-25 | Low | confirmed-by-reading | state.py:263-286 | No storage quota for module tables or kv. A module can grow `state.db` until disk fills. |
+| A-25 | Low | - | - | withheld until fixed (#93) |
 | A-26 | Info | confirmed-by-reading | capabilities.py:170; m0-core.md §4 | `policy.denied` is listed as an event in the docs; it is only audited, never published to the bus. |
-| A-27 | Info | confirmed-by-reading | context.py:242 | `ModuleContext.audit` truncates keys to 64 and values to 256 chars silently; two long keys with a common prefix collide. |
+| A-27 | Info | - | - | withheld until fixed (#94) |
 | A-28 | Info | confirmed-by-reading | state.py:229; m0-core.md §6 | Docs say CTEs are refused by the authorizer. Code allows `SQLITE_RECURSIVE`. Cost is still bounded by the work budget (P06b: 0.08 s) and the row cap. Docs need fixing. |
-| A-29 | Info | confirmed-by-reading | context.py:99-100, 217, 381-412, 387; audit.py:127 | Typing: public `ctx.state`, `ctx.secrets`, `ctx.notify`, `ctx.hermes_config` return `object`; `ContextServices.audit`/`bridge` are `Any`; a `# type: ignore` covers a regex match. Module authors get no static types. |
-| A-30 | Info | confirmed-by-reading | context.py:258-309; capabilities.py:185-206; lifecycle.py (463 lines) | Duplication and cohesion: the bridge-None and hook-declared checks repeat three times in `context.py`; lock/lookup/deny is duplicated in `require_host`/`require_secret`; `ModuleManager` mixes discovery, import, transitions, health, persistence and records; `ModuleContext` (~25 members) includes Hermes-adapter methods. |
-| A-31 | Info | confirmed-by-reading | errors.py:8-38; secrets.py:47-52 | Error taxonomy: `SwitchyardError` is the catch-all for usage, state and policy-like errors; callers cannot separate them without string matching. |
+| A-29 | Info | - | - | withheld until fixed (#95) |
+| A-30 | Info | - | - | withheld until fixed (#96) |
+| A-31 | Info | - | - | withheld until fixed (#97) |
 
 ### Details
 
@@ -158,11 +158,7 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 - Fix: do the lookup and the check under one lock hold (RLock makes that simple), or use `.get` and deny.
 - Test: concurrent `unregister` during `require_host` → `CapabilityDenied` only.
 
-**A-16 · Low · confirmed-by-reading · manifest.py:155-158; config.py:99-104**
-- Wrong: `path.read_bytes()` loads the whole file before `len(raw) > MAX_*_BYTES`. The limit is applied after the memory is spent.
-- Impact: a large `module.toml` or `config.toml` exhausts memory before rejection. Same-user, low likelihood.
-- Fix: `os.stat` first, or read at most `MAX+1` bytes.
-- Fixed in 1.1 (#89): both files are read through `paths.read_limited`, which reads at most the limit plus one byte.
+**A-16 · Low**: withheld until #89 is closed.
 
 **A-17 · Low · confirmed-by-probe · secrets.py:89-90, 99-101**
 - Wrong: `_running_under_pytest()` is `"pytest" in sys.modules`.
@@ -185,11 +181,7 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 - Fix: call `parse_policies`-equivalent grammar checks from `cross_field`, and have the validator use them.
 - Test: `policies = ["allow:fs.read"]` → `validate_file` returns an error.
 
-**A-20 · Low · confirmed-by-reading · manifest.py:187, 245**
-- Wrong: `requires_core` is stored on `Manifest` and never compared with the running version. grep finds no other use.
-- Impact: a module that says it needs core `>=99` loads anyway. Compatibility is not enforced.
-- Fix: check it against `switchyard.__version__` (or document the field as informational and drop it from the schema).
-- Fixed in 1.1 (#91), per Q-SY-1.1-3 (a): `requires_core` is parsed at load (unreadable specs are manifest errors) and compared with the core at discovery, reload and update staging. A mismatch refuses the module. The exception, until core 2.0: when the only failing clause is the old template's `<1`, the module loads with an audited `module.requires_core_outdated` and a note in `module show`. The bundled modules and the template now declare `>=1.0,<2`.
+**A-20 · Low**: withheld until #91 is closed.
 
 **A-21 · Low · confirmed-by-reading · contract.py:184; capabilities.py:118, 162-164**
 - Wrong: the contract's "grants gone" check is `not core.policy.granted(mid)`. After `remove`, the module is unregistered, so `granted()` returns empty whatever the store holds.
@@ -209,39 +201,22 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 - Fix: bounded LRU of recent values, or clear on `remove_backends`.
 - Fixed in 1.1 (#92): bounded LRU of 256 values, and a removed backend's values are forgotten.
 
-**A-25 · Low · confirmed-by-reading · state.py:205-224, 263-274**
-- Wrong: `execute` (INSERT), `kv_set` and `create_table` have no size or count limit.
-- Impact: a module can grow `state.db` until the disk fills. The work budget bounds CPU per statement, not storage.
-- Fix: per-module quota checked on write, or a documented cap.
-- Fixed in 1.1 (#93): values are capped at 4 MiB with SQLite's length limit during module statements (which also covers `zeroblob`/`randomblob`) and in `kv_set`. A module may have at most 64 tables and 256 MiB over its tables and kv rows. Usage is measured with dbstat, or summed lengths where dbstat is missing, on `create_table` and after each 1 MiB of database growth. Over the quota, inserts, updates and kv writes are refused until the module deletes data.
+**A-25 · Low**: withheld until #93 is closed.
 
 **A-26 · Info · confirmed-by-reading · capabilities.py:170; m0-core.md §4**
 - The docs list `policy.denied` among the events. `PolicyEngine` has no bus reference, so the event is only audited. Either publish it or fix the docs.
 
-**A-27 · Info · confirmed-by-reading · context.py:242**
-- `clean = {str(k)[:64]: str(v)[:256] for ...}` silently collapses keys that match in their first 64 characters, and truncates values without a marker.
-- Fixed in 1.1 (#94): names over 64 characters keep an 8-character digest of the whole name; cut values end in `[truncated]`.
+**A-27 · Info**: withheld until #94 is closed.
 
 **A-28 · Info · confirmed-by-probe · state.py:229; m0-core.md §6**
 - Docs: "CTEs were already refused by the authorizer". Code: `if action in (SQLITE_SELECT, SQLITE_RECURSIVE): return OK`.
 - Evidence (P17): `WITH RECURSIVE c(n) AS (…) SELECT n FROM c` → `[(1,), …, (5,)]`. CPU-bound CTE (P06b): `module query exceeded its work budget 0.08 s`. Some CTE forms are denied (`count(*)` over a CTE → `access denied to table 'c'`), which is inconsistent. Safety holds through the budget and the row cap, but the doc is wrong.
 
-**A-29 · Info · confirmed-by-reading · context.py:99-100, 217, 381-412; audit.py:127**
-- The public module-facing types are `object` (`ctx.state`, `ctx.secrets`, `ctx.notify`, `ctx.hermes_config`), and `ContextServices.audit`/`bridge` are `Any`. A `# type: ignore[union-attr]` covers a regex match that cannot fail (`_FILE_RE` is checked on the same name first). mypy cannot check module code against these APIs.
-- Fix: return `ModuleSecrets`, `ModuleState`, etc., with Protocols for the optional ports.
-- Fixed in 1.1 (#95): the facade properties (`state`, `notify`, `secrets`, `net`, `schedule`, `fs`, `core`, `hermes_config`, `spawn`) return their facade classes; `ContextServices.audit` is an `AuditSink` and `bridge` a new `BridgePort` Protocol. The audit reader checks the match explicitly. mypy now checks module code against these APIs, which also removed two `type: ignore` comments in `host_t2.py`.
+**A-29 · Info**: withheld until #95 is closed.
 
-**A-30 · Info · confirmed-by-reading · context.py:258-309; capabilities.py:185-206; lifecycle.py**
-- `_bridge_check`, `hermes_transform` and `hermes_delegation` each repeat "bridge is None" and the hook-declared check. `require_host` and `require_secret` duplicate the lock/lookup/deny pattern. `ModuleManager` (463 lines) mixes discovery, import, transitions, health, persistence and audit records. `ModuleContext` has about 25 members, including Hermes-adapter methods, which makes it hard to test in isolation.
-- **Fixed in 1.1 (#96):**
-  - **Context:** the Hermes registrations share `ModuleContext._hermes_port` (open, capability, declared hook, bridge).
-  - **Policy engine:** `require_host`, `require_program` and `require_secret` share `PolicyEngine._registration` (capability, registration lookup, refusal when unregistered).
-  - **Module manager:** discovery, verification and the module records moved to `discovery.ModuleDirectory`, which `ModuleManager` extends. `lifecycle.py` went from 522 to under 400 lines.
-  - **Not changed:** `ModuleContext` keeps its members. They are the module API, so moving the Hermes-adapter methods would break modules.
+**A-30 · Info**: withheld until #96 is closed.
 
-**A-31 · Info · confirmed-by-reading · errors.py; secrets.py:47-52**
-- `SwitchyardError` is the base for usage errors, unknown names, state errors, and "not declared" errors alike. Callers that need to tell "bad input" from "policy refusal" must match strings. A small subclass set (`UsageError`, `PolicyRefused`, `NotAvailable`) would fix this.
-- Fixed in 1.1 (#97): `errors.py` adds `UsageError`, `PolicyRefused` (now the base of `CapabilityDenied`) and `NotAvailable` (the base of `SecretUnavailable`, `ApiUnavailable` and the new `ChannelNotFound`). Core raise sites use them; the CLI exits 3 for any policy refusal; the API answers 403 `policy_refused` and 503 `not_available`, and the client raises the same classes. `ops.UsageError` is the same class. `updates.py` no longer matches "not found" in message text.
+**A-31 · Info**: withheld until #97 is closed.
 
 ## Against the prework and the accepted limits
 

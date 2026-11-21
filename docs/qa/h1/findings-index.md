@@ -24,47 +24,47 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | A-13 | Low | audit.py | H1 should | WP9 | see [review A](review-A-core.md) | fixed in #86 |
 | A-14 | Low | audit.py | H1 should | WP9 | see [review A](review-A-core.md) | fixed in #86 |
 | A-15 | Low | capabilities.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
-| A-16 | Low | config.py, manifest.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #142 (backlog #89) |
-| A-17 | Low | secrets.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #133 (backlog #90) |
+| A-16 | Low | config.py, manifest.py | Backlog 1.1 | - | private until fixed | backlog #89 |
+| A-17 | Low | secrets.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed (#90) |
 | A-18 | Low | secrets.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-19 | Low | capabilities.py, manifest.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
-| A-20 | Low | manifest.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #149 (backlog #91) |
+| A-20 | Low | manifest.py | Backlog 1.1 | - | private until fixed | backlog #91 |
 | A-21 | Low | capabilities.py, contract.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-22 | Low | context.py, lifecycle.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-23 | - | - | No action: withdrawn by the reviewer | - | withdrawn | no action |
-| A-24 | Low | secrets.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #133 (backlog #92) |
-| A-25 | Low | state.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #151 (backlog #93) |
+| A-24 | Low | secrets.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed (#92) |
+| A-25 | Low | state.py | Backlog 1.1 | - | private until fixed | backlog #93 |
 | A-26 | Info | capabilities.py, m0-core.md | H1 should | WP10 | see [review A](review-A-core.md) | fixed in #87 |
-| A-27 | Info | context.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #144 (backlog #94) |
+| A-27 | Info | context.py | Backlog 1.1 | - | private until fixed | backlog #94 |
 | A-28 | Info | m0-core.md, state.py | H1 should | WP10 | see [review A](review-A-core.md) | fixed in #87 |
-| A-29 | Info | audit.py, context.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #153 (backlog #95) |
-| A-30 | Info | capabilities.py, context.py, lifecycle.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #154 (backlog #96) |
-| A-31 | Info | errors.py, secrets.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed in #147 (backlog #97) |
+| A-29 | Info | audit.py, context.py | Backlog 1.1 | - | private until fixed | backlog #95 |
+| A-30 | Info | capabilities.py, context.py, lifecycle.py | Backlog 1.1 | - | private until fixed | backlog #96 |
+| A-31 | Info | errors.py, secrets.py | Backlog 1.1 | - | private until fixed | backlog #97 |
 | B-1 | Medium | updates.py | H1 must | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
 | B-2 | Medium | core.py, updates.py | H1 must | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
 | B-3 | Medium | process.py | H1 must | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
 | B-4 | Low | logs.py | H1 should | WP9 | see [review B](review-B-boundary.md) | fixed in #86 |
-| B-5 | Low | scheduler.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #143 (backlog #98) |
-| B-6 | Low | fsread.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #135 (backlog #99) |
-| B-7 | Low | api.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #138 (backlog #100) |
-| B-8 | Low | api.py, cli.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #134 (backlog #101) |
-| B-9 | Low | api.py, cli.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #134 (backlog #102) |
-| B-10 | Low | process.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #148 (backlog #103) |
+| B-5 | Low | scheduler.py | Backlog 1.1 | - | private until fixed | backlog #98 |
+| B-6 | Low | fsread.py | Backlog 1.1 | - | private until fixed | backlog #99 |
+| B-7 | Low | api.py | Backlog 1.1 | - | private until fixed | backlog #100 |
+| B-8 | Low | api.py, cli.py | Backlog 1.1 | - | private until fixed | backlog #101 |
+| B-9 | Low | api.py, cli.py | Backlog 1.1 | - | private until fixed | backlog #102 |
+| B-10 | Low | process.py | Backlog 1.1 | - | private until fixed | backlog #103 |
 | B-11 | Low | updates.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
-| B-12 | Low | updates.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #137 (backlog #104) |
-| B-13 | Low | updates.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #137 (backlog #105) |
+| B-12 | Low | updates.py | Backlog 1.1 | - | private until fixed | backlog #104 |
+| B-13 | Low | updates.py | Backlog 1.1 | - | private until fixed | backlog #105 |
 | B-14 | Low | host_t2.py, rpc.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
-| B-15 | Low | host_t2.py, host_t2_child.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #139 (backlog #106) |
-| B-16 | Low | host_t2.py, rpc.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #139 (backlog #107) |
-| B-17 | Low | api.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #138 (backlog #108) |
-| B-18 | Low | events.py, host_t2.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #139 (backlog #109) |
-| B-19 | Low | schedule.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #143 (backlog #110) |
+| B-15 | Low | host_t2.py, host_t2_child.py | Backlog 1.1 | - | private until fixed | backlog #106 |
+| B-16 | Low | host_t2.py, rpc.py | Backlog 1.1 | - | private until fixed | backlog #107 |
+| B-17 | Low | api.py | Backlog 1.1 | - | private until fixed | backlog #108 |
+| B-18 | Low | events.py, host_t2.py | Backlog 1.1 | - | private until fixed | backlog #109 |
+| B-19 | Low | schedule.py | Backlog 1.1 | - | private until fixed | backlog #110 |
 | B-20 | Info | api.py | H1 should | WP2 | see [review B](review-B-boundary.md) | fixed in #79 |
 | B-21 | Info | scheduler.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
-| B-22 | Info | net.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #141 (backlog #111) |
-| B-23 | Info | logs.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #140 (backlog #112) |
+| B-22 | Info | net.py | Backlog 1.1 | - | private until fixed | backlog #111 |
+| B-23 | Info | logs.py | Backlog 1.1 | - | private until fixed | backlog #112 |
 | B-24 | Info | api.py | H1 should | WP2 | see [review B](review-B-boundary.md) | fixed in #79 |
-| B-25 | Info | host_t2.py, ops.py, updates.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #145 (backlog #113) |
+| B-25 | Info | host_t2.py, ops.py, updates.py | Backlog 1.1 | - | private until fixed | backlog #113 |
 | C-1 | High | router / bridge | H1 must | WP1 | see [review C](review-C-modules.md) | fixed in #78 |
 | C-2 | Medium | bridge | H1 must | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
 | C-3 | Medium | trim / bridge | H1 must | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
@@ -78,11 +78,11 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | C-11 | Low | resources | H1 should | WP10 | see [review C](review-C-modules.md) | fixed in #87 |
 | C-12 | Low | dashboard | H1 should | WP10 | see [review C](review-C-modules.md) | fixed in #87 |
 | C-13 | Low | code quality | H1 should | WP10 | see [review C](review-C-modules.md) | fixed in #87 |
-| C-14 | Low | adapter / router / meter | Backlog 1.1 | 1.1 | see [review C](review-C-modules.md) | fixed in #152 (backlog #114) |
+| C-14 | Low | adapter / router / meter | Backlog 1.1 | - | private until fixed | backlog #114 |
 | C-15 | Low | secrets | H1 should | WP6 | see [review C](review-C-modules.md) | fixed in #83 |
 | C-16 | Low | activation | H1 should | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
-| C-17 | Low | config | Backlog 1.1 | 1.1 | see [review C](review-C-modules.md) | fixed in #150 (backlog #115) |
-| C-18 | Info | dashboard | Backlog 1.1 | 1.1 | see [review C](review-C-modules.md) | fixed in #146 (backlog #116) |
+| C-17 | Low | config | Backlog 1.1 | - | private until fixed | backlog #115 |
+| C-18 | Info | dashboard | Backlog 1.1 | - | private until fixed | backlog #116 |
 | D-1 | High | USER-GUIDE.md, README.md | H1 must | WP2 | Guide's first module activation fails: `router` also needs `ui.panel`, which the guide never grants | fixed in #79 |
 | D-2 | High | process.py, updates.py | H1 must | WP4 | On Windows the core picks Hermes Desktop's packaged git (WindowsApps), which this process cannot run; git-based update features are disabled here | fixed in #81 |
 | D-3 | High | release.yml, CONTRIBUTING.md | H1 must | WP3 | Release publishes from any `v*.*.*` tag with no test gate or CI-green check; tags are not signed though CONTRIBUTING says "signed"; guide pins pip to a movable tag | fixed in #80 (adapted) |
@@ -104,7 +104,7 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | D-19 | Low | REFERENCE.md | H1 should | WP10 | REFERENCE.md says "Generated from the code" but no generator exists; it omits `--json`, `--data-dir`, `backup/`, `trigger.fired`, and never defines status values | fixed in #87 |
 | D-20 | Low | __init__.py | H1 should | WP2 | `switchyard_modules` tool description advertises `deactivate`; its enum excludes it, as the CHANGELOG says | fixed in #79 |
 | D-21 | Low | local .venv metadata (read only) | No action: local environment only; fixed 2026-11-20 | - | Local `C:/Users/Vic/src/hermes-switchyard/.venv` reports `hermes-switchyard 0.0.1` (stale editable install); CI installs fresh and is unaffected | no action |
-| D-22 | Low | ci.yml | Backlog 1.1 | 1.1 | Dashboard JS/CSS is committed with no source or build; `plugin_api.py` is outside mypy, bandit and any test that uses real FastAPI | fixed in #146 (backlog #117) |
+| D-22 | Low | ci.yml | Backlog 1.1 | - | Dashboard JS/CSS is committed with no source or build; `plugin_api.py` is outside mypy, bandit and any test that uses real FastAPI | backlog #117 |
 | D-23 | Low | ci.yml, test_r1_hardening.py, test_state.py | H1 should | WP3 | CI runs only 3.11 and 3.13; 3.14 passes locally but emits 10 ResourceWarnings from unclosed SQLite connections in tests | fixed in #80 |
 | D-24 | Low | CHANGELOG.md, release.yml | H1 should | WP3 | Release notes are auto-generated from PR titles, not from the CHANGELOG entry; CHANGELOG has no compare links | fixed in #80 |
 | D-25 | Low | pyproject.toml | H1 should | WP3 | `build-system` requires `hatchling` unpinned; the lock pins 1.33.0; isolated builds (pip default) get whatever is latest | fixed in #80 |

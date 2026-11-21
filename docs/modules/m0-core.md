@@ -9,8 +9,7 @@ contract need an ADR.
 ```
 src/switchyard/
   __init__.py        version, public re-exports
-  errors.py          SwitchyardError; the kinds UsageError, PolicyRefused (CapabilityDenied), NotAvailable;
-                     ManifestError, ConfigError, AuditError, StateError, UpdateError
+  errors.py          SwitchyardError, ManifestError, CapabilityDenied, AuditError, StateError, UpdateError
   paths.py           data-directory resolution
   config.py          CoreConfig (TOML, tomllib), defaults, env override SWITCHYARD_DATA_DIR
   manifest.py        load + validate module.toml -> Manifest (frozen dataclass)
@@ -21,13 +20,10 @@ src/switchyard/
   events.py          EventBus (typed, in-process, synchronous with error isolation)
   scheduler.py       Trigger, Scheduler (time / event / usage / capacity)
   lifecycle.py       ModuleManager (discover -> verify -> active <-> stopped; activation needs every required grant)
-  discovery.py       ModuleDirectory: discovery, verification, module records (ModuleManager's base; 1.1 A-30)
   host_t2.py         Subprocess host: parent side; host_t2_child.py child side; rpc.py framing
   secrets.py         SecretRef, SecretBackend protocol, SecretsBroker, MemoryBackend (tests only)
   hostinfo.py        HostProfile, profile() -> tiny | laptop | workstation | server
-  updates.py         UpdateController (verify, stage, swap, health, rollback)
-  gitfetch.py        GitFetcher: pinned-commit fetch and channel heads with git
-  sbom.py            tree inventory and digest, SBOM delta, patch notes, version order
+  updates.py         UpdateController (fetch, verify, stage, swap, health, rollback)
   api.py             Loopback control API server and bounded client
   cli.py             `switchyard` entry point (argparse)
   core.py            Core: wires all of the above; the only object adapters hold
@@ -68,7 +64,6 @@ class PolicyEngine:
     def granted(self, module_id: str) -> frozenset[str]
     def require(self, module_id: str, capability: str, **detail: str) -> None    # raises CapabilityDenied; denial audited
     def require_host(self, module_id: str, host: str) -> None                    # net.outbound + net_hosts allow-list
-    def require_program(self, module_id: str, argv0: str) -> None                # process.spawn + programs list (1.1)
     def require_secret(self, module_id: str, name: str) -> None                  # secrets.read + secrets allow-list
 ```
 
@@ -82,7 +77,7 @@ are not audited; grants, revokes, refused grants and denials are.
 Built per module at activation from `ContextServices(policy, logs, panels, bus, brokers)`. Members always present:
 `module_id`, `log(stream, event, **fields)` (declared `log_streams` only), `register_panel(panel_id, render)`
 (declared `panels` only, needs `ui.panel`), `emit(type, data)` (type must be `<module_id>.<name>`, so a module
-cannot spoof core events), `subscribe(type, handler)` (at most 64 per module), `state` (namespaced store, added with the state store),
+cannot spoof core events), `subscribe(type, handler)`, `state` (namespaced store, added with the state store),
 `health_report(ok, detail)`. `close()` removes panels and subscriptions and makes every member raise. Capability-gated members raise `CapabilityDenied` when ungranted: `secrets`
 (`secrets.read`), `net` (`net.outbound`, host allow-list), `schedule` (`schedule`), `spawn` (`process.spawn`).
 The context never exposes the core, other modules or the policy engine.
@@ -96,12 +91,6 @@ authorizer callback, not SQL parsing: while a module statement is prepared, any 
 (core tables, other modules, `sqlite_master`) and any PRAGMA, ATTACH, DDL or transaction control is denied.
 Names match `^[a-z][a-z0-9_]{0,31}$`; module ids and table names may not contain `__`, so one module cannot
 forge another's prefix (also a manifest rule). Grants persist through `SqliteGrantStore`.
-Storage bounds (1.1, H1 A-25): one value, column or kv, is at most 4 MiB (SQLite's length limit is lowered
-while a module statement runs, so `zeroblob()` and the like cannot exceed it); a module has at most 64 tables
-and a 256 MiB quota over its tables and kv rows (`ModuleState.usage_bytes()`: `dbstat` pages when SQLite has
-them, else summed value lengths). Usage is measured on `create_table` and whenever the database file has
-grown by 1 MiB since the module's last check; over the quota, inserts, updates and `kv_set` raise
-`StateError` until the module deletes data, and deletes always work. The quota is per process.
 
 ### Audit log
 
@@ -123,20 +112,14 @@ and never propagated. Re-entrant publishing is limited to depth 8 per thread.
 `Trigger(id, owner, kind, spec, callback, min_interval_s)`. Specs: `time` `{"every": s}` or `{"cron": "m h dom mon dow"}`;
 `event` `{"type": pattern}`; `usage`/`capacity` `{"metric": name, "above"|"below": x}` fed by `observe()`
 (edge-triggered). `tick()`, `observe()`, `fire()`; one run at a time per trigger; runs within `min_interval_s` are
-skipped and counted; `trigger.fired`/`trigger.skipped` events; failures audited by class name. A cron trigger does
-not fire again for a minute it already passed: when the wall clock steps back by up to 3 hours (NTP, DST
-fall-back) the passed minutes are skipped; a larger step counts as a clock correction and starts afresh. The
-scheduler owns no thread; `ctx.schedule` jobs run on one worker per module, released when the module's jobs are
-removed. **Open (Hermes adapter PR):** Hermes idle tasks are gated by `min_idle_hours`/`interval_hours`, too
+skipped and counted; `trigger.fired`/`trigger.skipped` events; failures audited by class name. The scheduler owns
+no thread. **Open (Hermes adapter PR):** Hermes idle tasks are gated by `min_idle_hours`/`interval_hours`, too
 coarse for minute-level triggers; choose the Hermes-side driver (plugin thread or Hermes cron) in that PR.
 
 ### Lifecycle
 
 `ModuleManager`: `discover(roots)` (load + verify manifests; reject invalid, duplicate, or untrusted in-process
-modules, and modules whose `requires_core` excludes this core: since 1.1, H1 A-20. `requires_core` is comparisons
-such as `>=1.0,<2`. Until core 2.0 a module whose only mismatch is the pre-1.0 template's `<1` still loads,
-with an audited `module.requires_core_outdated` and a `requires_core_note` in `module show`; an update whose
-staged manifest excludes this core is refused), `activate(id)`, `deactivate(id, reason)`, `health(id)`, `remove(id, keep_data=False)`,
+modules), `activate(id)`, `deactivate(id, reason)`, `health(id)`, `remove(id, keep_data=False)`,
 `set_mode(id, manual|auto|disabled)`, `start_auto()`, `touch(id)`, `tick()` (idle stop), `modules()`, `info(id)`.
 States: `verified`, `active`, `stopped`, `failed`. `activate(id)` refuses (`CapabilityDenied`, audited as
 `policy.denied`) while a requested, non-optional capability is not granted, before importing any module code
@@ -162,10 +145,7 @@ violation or child exit kills the child and fails the module closed (`T2Timeout`
 replayed on the module's real `ModuleContext`; state operations are limited to `table`, `create_table`, `execute`,
 `kv_get`, `kv_set`; capability brokers are policy-checked and then refused in M0 (objects cannot cross the boundary).
 Errors cross with the exception class only; core errors (`CapabilityDenied`, `StateError`) also carry their message and
-are rebuilt as the same class in the child. The parent answers the child's requests while it waits on one of its own
-calls (activate, an action, an event, a panel): a module thread that calls `ctx` while the parent is idle waits
-for the next call, at most 30 s, then gets an error. Do background work in a scheduled job or an event handler
-instead. Frames are written whole even when a pipe accepts part of a write.
+are rebuilt as the same class in the child.
 
 ### Secrets broker (interface only in M0)
 
@@ -177,8 +157,7 @@ with no exception context, and the value is deleted from the frame before any ra
 `ctx.secrets` returns `ModuleSecrets` (broker bound to the module, via a `for_module` hook on brokers). `Redactor`
 masks registered values (>= 4 chars, longest first) and default credential shapes (OpenAI/Anthropic `sk-`, GitHub
 `ghp_`/`github_pat_`, AWS `AKIA`, Slack `xox?-`, bearer tokens). `MemoryBackend` is test-only (refuses without `allow_test_backend=True`).
-The redactor remembers the 16 384 most recently used secret values (`MAX_REDACT_VALUES`; 256 before the 1.1
-acceptance review) and forgets a backend's
+The redactor remembers the 256 most recently used secret values (`MAX_REDACT_VALUES`) and forgets a backend's
 values when the module that provided it is deactivated; credential-shape patterns apply regardless.
 
 ### Host profiler
@@ -196,14 +175,8 @@ Token: `secrets.token_urlsafe(32)` written to `api.token` with user-only permiss
 Request checks, in order: method `POST` (or `GET /v1/health`); `Host` is `127.0.0.1:<port>` or `localhost:<port>`;
 any `Origin` header (including `null`) is refused, since the only client is the CLI; `Authorization: Bearer` compared with
 `hmac.compare_digest`; `Content-Type: application/json`; no `Transfer-Encoding`; body <= 64 KiB, checked before
-reading. `GET /v1/health` needs no token; with an `X-Switchyard-Challenge` header (32-128 lowercase hex) it also
-returns `proof`, the HMAC-SHA256 of `switchyard-api-v1:<challenge>` keyed with the token. The client checks that
-proof before it sends the token, so a process that took over a dead daemon's port never receives it
-(`ApiUntrusted`). A failure to connect lets the CLI run an offline operation locally; a failure after the request
-was sent is `ApiOutcomeUnknown`: the daemon may have applied it, and nothing runs again. Status codes: 400 usage, 401 token, 403 Host/Origin/denied/policy refused, 404 route,
-409 operation error, 503 not available, 411/413/415 framing, 500 unexpected (class name only). Socket timeout 10 s per read, and the
-whole request must arrive within 10 s; at most 16 connections are handled at once, and further ones are closed at
-once. The token file is restricted before the token is written. Request lines are
+reading. `GET /v1/health` needs no token. Status codes: 400 usage, 401 token, 403 Host/Origin/denied, 404 route,
+409 operation error, 411/413/415 framing, 500 unexpected (class name only). Socket timeout 10 s; request lines are
 never logged; `Server: switchyard`. Routes `POST /v1/<noun>/<verb>` map 1:1 to CLI
 operations. Responses never echo request text into headers; a header writer rejects CR/LF. Client reads are
 capped at 1 MiB.
@@ -260,10 +233,7 @@ null device, `protocol.file.allow=never` (tests may allow file URLs), `--depth 1
 and removes `.git`. The staged manifest must be valid and keep the module id and the pinned source URL. Then
 deactivate, swap by rename (previous kept as `previous-<version>-<time>`), `ModuleManager.reload` (re-checks trust),
 reactivate if it was running, health check; any failure restores the previous directory (`module.rolled_back`).
-An older manifest version needs `allow_downgrade` (preview reports `downgrade`). The previous directory's tree
-digest is recorded next to it (`previous-….digest`); `rollback(id)` restores the most recent previous version only
-if that digest still matches (a directory from 1.0.x without one is restored and audited `digest=unrecorded`),
-then runs the health check and returns `{id, version, ok, detail}`. Operations `module update {id, ref}` and
+`rollback(id)` restores the most recent previous version. Operations `module update {id, ref}` and
 `module rollback {id}` require the hosting process. Every outcome is audited (`module.update_rejected`,
 `module.updated`, `module.rolled_back`).
 
