@@ -304,12 +304,15 @@ def run_action(
     locked=False, id=ID, ref=Param(str, help="full 40-character commit SHA"),
     digest=Param(str, required=False, help="tree digest from module preview; refuses different files"),
     accept_wider=Param(bool, required=False, default=False,
-                       help="accept new capabilities, hosts, secrets or weaker isolation"))  # fmt: skip
+                       help="accept new capabilities, hosts, secrets or weaker isolation"),
+    allow_downgrade=Param(bool, required=False, default=False,
+                          help="install a version older than the installed one"))  # fmt: skip
 def _module_update(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
     return core.updates.update(
-        p["id"], p["ref"], actor=actor, digest=p.get("digest"), accept_wider=bool(p.get("accept_wider"))
-    ).to_dict()
+        p["id"], p["ref"], actor=actor, digest=p.get("digest"), accept_wider=bool(p.get("accept_wider")),
+        allow_downgrade=bool(p.get("allow_downgrade")),
+    ).to_dict()  # fmt: skip
 
 
 @op("module", "preview", "Stage a commit without applying it: SBOM delta, patch notes and tree digest.",
@@ -331,8 +334,7 @@ def _module_check_updates(core: Core, p: dict[str, Any], actor: str) -> Any:
                        help="accept a previous version that may do more than the current one"))  # fmt: skip
 def _module_rollback(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
-    version = core.updates.rollback(p["id"], actor=actor, accept_wider=bool(p.get("accept_wider")))
-    return {"id": p["id"], "version": version}
+    return core.updates.rollback(p["id"], actor=actor, accept_wider=bool(p.get("accept_wider")))
 
 
 @op("audit", "verify", "Verify the audit hash chain against the stored head anchor.", offline=True)
