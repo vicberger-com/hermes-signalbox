@@ -46,7 +46,7 @@ def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
     """Kill the child and everything it started."""
     try:
         if sys.platform == "win32":
-            killer = find_program("taskkill")
+            killer = system_program("taskkill")
             if killer is not None:
                 argv = [killer, "/T", "/F", "/PID", str(proc.pid)]
                 subprocess.run(argv, capture_output=True, timeout=10, check=False)  # noqa: S603 # nosec B603
@@ -72,6 +72,20 @@ def find_program(name: str) -> str | None:
     if exe is None or not os.path.isabs(exe) or not _outside_cwd(exe):
         return None
     return exe
+
+
+def system_program(name: str) -> str | None:
+    """Absolute path of a Windows system tool (``icacls``, ``taskkill``) in ``%SystemRoot%\\System32``.
+
+    Not a PATH search: Task Scheduler starts programs with ``System32`` as the working directory, where
+    ``find_program`` refuses every hit (1.1 S-7). ``None`` when ``SYSTEMROOT`` is unset or the tool is
+    missing. (Windows environment names are case-insensitive.)
+    """
+    root = os.environ.get("SYSTEMROOT")
+    if not root or not os.path.isabs(root):
+        return None
+    exe = os.path.join(root, "System32", f"{name}.exe")
+    return exe if os.path.isfile(exe) else None
 
 
 def _outside_cwd(exe: str) -> bool:

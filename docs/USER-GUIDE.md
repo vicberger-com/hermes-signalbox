@@ -211,17 +211,28 @@ daemon needs no administrator rights; run it as your own user, with the same `SW
 `switchyard` commands use. After a crash, the next command removes the daemon's stale `api.port` and
 `api.token` and reports that no daemon is running.
 
-These recipes follow each service manager's documented form; they have not yet been run end to end on each
-system.
+The Windows recipe was run end to end on Windows 11 (1.1): start, commands through the daemon, a hard kill,
+restart, and stop. The systemd and launchd recipes follow each service manager's documented form and have not
+yet been run end to end.
 
-Windows (Task Scheduler, at logon, restarted on failure; replace the path with `where switchyard`):
+Windows (Task Scheduler, as your user, no administrator rights). Replace the program path with the output of
+`where switchyard` and the data directory with yours; passing `--data-dir` keeps the task independent of
+environment variables:
 
 ```powershell
-$action  = New-ScheduledTaskAction -Execute "C:\Path\To\switchyard.exe" -Argument "api serve"
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$set     = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit 0
-Register-ScheduledTask -TaskName "Switchyard daemon" -Action $action -Trigger $trigger -Settings $set
+$exe     = "C:\Path\To\switchyard.exe"
+$action  = New-ScheduledTaskAction -Execute $exe -Argument '--data-dir "C:\Path\To\data" api serve'
+$logon   = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$watch   = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
+$set     = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit 0
+Register-ScheduledTask -TaskName "Switchyard daemon" -Action $action -Trigger @($logon, $watch) -Settings $set
 ```
+
+Task Scheduler's "restart on failure" setting only retries a task that fails to start; it does not restart a
+daemon that stops later. The repeating trigger does: every 5 minutes it starts the task again, and
+`IgnoreNew` makes that a no-op while the daemon runs. Task Scheduler does not keep the program's output; if the
+task's "Last Run Result" is not 0x41301 (running), run the same command in a terminal to see the error.
+Remove the task with `Unregister-ScheduledTask -TaskName "Switchyard daemon"`.
 
 Linux (systemd user unit `~/.config/systemd/user/switchyard.service`, then
 `systemctl --user enable --now switchyard`):

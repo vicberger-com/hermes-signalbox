@@ -178,7 +178,11 @@ def main(argv: list[str] | None = None) -> int:
         print(__version__)
         return 0
     if args.noun == "api":
-        return _serve(args.data_dir, args.port)
+        try:
+            return _serve(args.data_dir, args.port)
+        except SwitchyardError as exc:  # 1.1 S-7: a service manager logs one clear line, not a traceback
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
     operation = OPERATIONS[(args.noun, args.verb)]
     try:
         result = _run(operation, _params(operation, args), args.data_dir)
