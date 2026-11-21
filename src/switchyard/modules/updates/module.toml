@@ -8,7 +8,7 @@ version = "0.13.0"
 license = "Apache-2.0"
 license_class = "open"
 summary = "Checks git-installed modules against the head of their update channel on a schedule and announces available updates. It never applies one: preview and update are operator commands."
-requires_core = ">=0.1,<1"
+requires_core = ">=1.0,<2"
 isolation = "in-process"
 entry = "updates_module:UpdatesModule"
 

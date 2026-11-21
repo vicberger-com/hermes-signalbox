@@ -135,6 +135,12 @@ def cross_field(doc: Mapping[str, Any]) -> list[str]:
             errors.append(f"$.capabilities: {cap!r} must be requested exactly when {field!r} is non-empty")
     if caps.get("programs") and "process.spawn" not in requested:  # H1 B-10
         errors.append("$.capabilities: 'programs' needs 'process.spawn' in 'request'")
+    spec = module.get("requires_core")
+    if isinstance(spec, str):  # H1 A-20: enforced at discovery, so it must be readable
+        try:
+            parse_requires_core(spec)
+        except ValueError as exc:
+            errors.append(f"$.module.requires_core: {exc}")
     if module.get("license_class") == "proprietary-connector" and module.get("isolation") != "subprocess":
         errors.append("$.module: a proprietary-connector must use isolation = 'subprocess'")
     if update.get("source") == "git" and not (update.get("url") and update.get("ref")):
@@ -184,6 +190,59 @@ def validate_file(path: Path) -> list[str]:
     except ManifestError as exc:
         return [f"{path}: {e}" for e in exc.errors]
     return validate_document(doc)
+
+
+# requires_core (H1 A-20, Q-SY-1.1-3 (a)) ----------------------------------------------------------------
+# A comma-separated list of comparisons with the core version: ``>=1.0,<2``. Versions are 1 to 3 numbers;
+# missing parts count as 0. A pre-release core (``1.1.0-rc.1``) compares as its release.
+_REQ_CLAUSE = re.compile(r"\s*(>=|<=|==|!=|>|<)\s*(\d+(?:\.\d+){0,2})\s*\Z")
+_TRANSITION_UNTIL = (2, 0, 0)  # the 1.0 transition for the old template's "<1" ends at core 2.0
+
+
+def _version_tuple(text: str) -> tuple[int, int, int]:
+    parts = [int(p) for p in text.split(".")] + [0, 0]
+    return (parts[0], parts[1], parts[2])
+
+
+def parse_requires_core(spec: str) -> list[tuple[str, tuple[int, int, int]]]:
+    """``[(operator, (major, minor, patch)), ...]``; ``ValueError`` when ``spec`` is not of that form."""
+    clauses = []
+    for part in spec.split(","):
+        m = _REQ_CLAUSE.match(part)
+        if m is None:
+            raise ValueError(f"cannot read {part.strip()!r}: use comparisons like '>=1.0,<2'")
+        clauses.append((m.group(1), _version_tuple(m.group(2))))
+    return clauses
+
+
+def _holds(op: str, have: tuple[int, int, int], bound: tuple[int, int, int]) -> bool:
+    return {
+        ">=": have >= bound, "<=": have <= bound, "==": have == bound,
+        "!=": have != bound, ">": have > bound, "<": have < bound,
+    }[op]  # fmt: skip
+
+
+def core_compatibility(spec: str, core_version: str) -> tuple[str, str]:
+    """``("ok", "")``, ``("outdated", note)`` or ``("incompatible", reason)`` for this core.
+
+    ``outdated`` is the 1.0 transition: the only failing clause is the old module template's ``<1`` upper
+    bound and the core is older than 2.0. Such a module still loads, with a warning. Anything else that
+    fails is ``incompatible`` and the module is refused.
+    """
+    have = _version_tuple(core_version.split("-", 1)[0].split("+", 1)[0])
+    try:
+        clauses = parse_requires_core(spec)
+    except ValueError as exc:
+        return "incompatible", f"requires_core {spec!r}: {exc}"
+    failing = [(op, bound) for op, bound in clauses if not _holds(op, have, bound)]
+    if not failing:
+        return "ok", ""
+    if have < _TRANSITION_UNTIL and all(op == "<" and bound == (1, 0, 0) for op, bound in failing):
+        return "outdated", (
+            f"requires_core {spec!r} is outdated (the pre-1.0 module template); it loads until core 2.0. "
+            "Change it to '>=1.0,<2'."
+        )
+    return "incompatible", f"module requires core {spec}; this core is {core_version}"
 
 
 @dataclass(frozen=True)

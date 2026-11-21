@@ -9,7 +9,7 @@ version = "0.1.0"
 license = "Apache-2.0"
 license_class = "open"            # open | proprietary-connector
 summary = "Template module that shows the full contract and does nothing else."
-requires_core = ">=0.1,<1"
+requires_core = ">=1.0,<2"        # core versions it runs on; enforced: a mismatch refuses the module
 isolation = "in-process"          # in-process (this repository only) | subprocess
 entry = "example:ExampleModule"
 

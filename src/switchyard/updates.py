@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import switchyard
 from switchyard.capabilities import CORE_ACTOR, AuditSink
 from switchyard.errors import ChannelNotFound, ManifestError, SwitchyardError, UpdateError
 from switchyard.gitfetch import (
@@ -64,7 +65,7 @@ from switchyard.gitfetch import (
     resolved_git as resolved_git,
 )
 from switchyard.lifecycle import ModuleManager, ModuleStatus
-from switchyard.manifest import Manifest, load_manifest
+from switchyard.manifest import Manifest, core_compatibility, load_manifest
 from switchyard.sbom import (
     _CONTROL as _CONTROL,
 )
@@ -196,6 +197,9 @@ class UpdateController:
                 raise UpdateError(f"staged manifest is invalid: {'; '.join(exc.errors)[:300]}") from None
             if new.id != module_id:
                 raise UpdateError(f"staged module id {new.id!r} does not match {module_id!r}")
+            verdict, why = core_compatibility(new.requires_core, switchyard.__version__)  # H1 A-20
+            if verdict == "incompatible":
+                raise UpdateError(f"staged version cannot run here: {why}")
             if new.update_source != "git" or new.update_url != old.update_url:
                 raise UpdateError("staged manifest changes the pinned update source; refused")
         except UpdateError as exc:

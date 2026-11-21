@@ -8,7 +8,7 @@ version = "0.4.0"
 license = "Apache-2.0"
 license_class = "open"
 summary = "Picks the model for each Hermes request from the registry: free first, paid only by rule and budget, failover with cool-down."
-requires_core = ">=0.1,<1"
+requires_core = ">=1.0,<2"
 isolation = "in-process"
 entry = "router_module:RouterModule"
 
