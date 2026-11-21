@@ -12,6 +12,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   never charge or record. Cool-downs are never shortened by a later error. Every request shape is sized.
 
 ### Changed
+- Real-Hermes integration test (H1 D-4). CI job `hermes-integration` installs Hermes Agent v0.23.2 (commit
+  `ae2a81c`, the release the operator runs) from a checkout with `uv sync --frozen`, then loads Switchyard
+  through Hermes's own plugin discovery and drives the model tools, the slash command, hooks, `llm_request`
+  middleware and the dashboard API module through Hermes. The job never skips and is required by `ci-required`.
 - Project status is **Beta** (`Development Status :: 4 - Beta`; H1 D-14). SECURITY.md states the support and
   deprecation policy: breaking changes only in minor releases, with the operator step in this file.
 - Documentation and metadata (H1 WP10). The dashboard manifest version matches the package, and a test checks
