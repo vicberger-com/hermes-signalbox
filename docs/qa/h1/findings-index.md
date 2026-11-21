@@ -25,14 +25,14 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | A-14 | Low | audit.py | H1 should | WP9 | see [review A](review-A-core.md) | fixed in #86 |
 | A-15 | Low | capabilities.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-16 | Low | config.py, manifest.py | Backlog 1.1 | - | private until fixed | backlog #89 |
-| A-17 | Low | secrets.py | Backlog 1.1 | - | private until fixed | backlog #90 |
+| A-17 | Low | secrets.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed (#90) |
 | A-18 | Low | secrets.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-19 | Low | capabilities.py, manifest.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-20 | Low | manifest.py | Backlog 1.1 | - | private until fixed | backlog #91 |
 | A-21 | Low | capabilities.py, contract.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-22 | Low | context.py, lifecycle.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-23 | - | - | No action: withdrawn by the reviewer | - | withdrawn | no action |
-| A-24 | Low | secrets.py | Backlog 1.1 | - | private until fixed | backlog #92 |
+| A-24 | Low | secrets.py | Backlog 1.1 | 1.1 | see [review A](review-A-core.md) | fixed (#92) |
 | A-25 | Low | state.py | Backlog 1.1 | - | private until fixed | backlog #93 |
 | A-26 | Info | capabilities.py, m0-core.md | H1 should | WP10 | see [review A](review-A-core.md) | fixed in #87 |
 | A-27 | Info | context.py | Backlog 1.1 | - | private until fixed | backlog #94 |

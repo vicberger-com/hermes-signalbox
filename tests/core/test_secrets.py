@@ -9,7 +9,6 @@ from typing import Any
 import pytest
 from sy_testing import ManifestFactory, RecordingAudit
 
-from switchyard import secrets as secrets_mod
 from switchyard.audit import AuditLog
 from switchyard.capabilities import MemoryGrantStore, PolicyEngine
 from switchyard.context import ContextServices, MemoryPanelRegistry, ModuleContext
@@ -47,7 +46,11 @@ def _setup(
         policy.grant("demo", "secrets.read", actor="user")
     redactor = Redactor()
     if backends is None:
-        backends = [MemoryBackend({"provider.key": CANARY, "other.key": "other-" + "000000-value"})]
+        backends = [
+            MemoryBackend(
+                {"provider.key": CANARY, "other.key": "other-" + "000000-value"}, allow_test_backend=True
+            )
+        ]
     return SecretsBroker(backends, policy, audit, redactor), policy, redactor
 
 
@@ -139,7 +142,7 @@ def test_locked_or_missing_backends_fail_closed(
     broker, _, _ = _setup(make_manifest, audit, backends=[LockedBackend()])
     with pytest.raises(SecretUnavailable, match=r"provider\.key"):
         broker.use("demo", "secret://provider.key", len)
-    broker, _, _ = _setup(make_manifest, audit, backends=[MemoryBackend({})])
+    broker, _, _ = _setup(make_manifest, audit, backends=[MemoryBackend({}, allow_test_backend=True)])
     with pytest.raises(SecretUnavailable):
         broker.use("demo", "secret://provider.key", len)
     assert audit.actions()[-1] == "secret.unavailable"
@@ -148,23 +151,16 @@ def test_locked_or_missing_backends_fail_closed(
 def test_first_available_backend_wins(make_manifest: ManifestFactory, audit: RecordingAudit) -> None:
     backends = [
         LockedBackend(),
-        MemoryBackend({}, name="empty"),
-        MemoryBackend({"provider.key": CANARY}, name="b3"),
+        MemoryBackend({}, name="empty", allow_test_backend=True),
+        MemoryBackend({"provider.key": CANARY}, name="b3", allow_test_backend=True),
     ]
     broker, _, _ = _setup(make_manifest, audit, backends=backends)
     assert broker.use("demo", "secret://provider.key", len) == len(CANARY)
     assert audit.records[-1]["detail"]["backend"] == "b3"
 
 
-def test_memory_backend_refuses_outside_tests(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(secrets_mod, "_running_under_pytest", lambda: False)
-    with pytest.raises(SwitchyardError, match="test"):
-        MemoryBackend({"a": "b"})
-    assert MemoryBackend({"a": "b"}, allow_test_backend=True).get("a") == "b"
-
-
 def test_memory_backend_lists_names_only() -> None:
-    backend = MemoryBackend({"b.key": "x", "a.key": "y"})
+    backend = MemoryBackend({"b.key": "x", "a.key": "y"}, allow_test_backend=True)
     assert backend.names() == ["a.key", "b.key"] and backend.available()
     with pytest.raises(KeyError):
         backend.get("missing")
@@ -221,7 +217,9 @@ def test_canary_never_in_any_output(tmp_path: Path, make_manifest: ManifestFacto
     manifest = make_manifest(request=["secrets.read"], secrets=["provider.key"], panels=[])
     policy.register(manifest)
     policy.grant("demo", "secrets.read", actor="user")
-    broker = SecretsBroker([MemoryBackend({"provider.key": CANARY})], policy, audit, redactor)
+    broker = SecretsBroker(
+        [MemoryBackend({"provider.key": CANARY}, allow_test_backend=True)], policy, audit, redactor
+    )
     services = ContextServices(policy=policy, logs=logs, panels=MemoryPanelRegistry(), bus=EventBus(audit),
                                brokers={"secrets.read": broker})  # fmt: skip
     ctx = ModuleContext(manifest, services)

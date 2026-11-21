@@ -34,14 +34,14 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 | A-14 | Low | confirmed-by-reading | audit.py:227, 215 | `os.write` return value unchecked; chain state advances on a short write. |
 | A-15 | Low | confirmed-by-reading | capabilities.py:184-186, 198-199 | `require_host`/`require_secret` read `self._modules[...]` after the lock is released: `KeyError` if unregistered in between. |
 | A-16 | Low | - | - | withheld until fixed (#89) |
-| A-17 | Low | - | - | withheld until fixed (#90) |
+| A-17 | Low | confirmed-by-probe | secrets.py:89-90, 99-101 | `MemoryBackend`'s test-only guard is `"pytest" in sys.modules`; a stub module satisfies it. |
 | A-18 | Low | confirmed-by-probe | secrets.py:209-216, 225 | Non-`KeyError` backend exceptions propagate unwrapped; a token in the backend's message reaches the caller. |
 | A-19 | Low | confirmed-by-probe | manifest.py:148-150; capabilities.py:79-91, 107 | `validate_file` (and `tools/validate_manifest.py`) accept `contributes.policies` rules that discovery rejects. |
 | A-20 | Low | - | - | withheld until fixed (#91) |
 | A-21 | Low | confirmed-by-reading | contract.py:184; capabilities.py:162-164 | The contract's "grants gone" check is vacuous: `granted()` returns empty for any unregistered module, whatever the store holds. |
 | A-22 | Low | confirmed-by-reading | context.py:424-436; lifecycle.py:326-331 | `ModuleContext.close()` is not exception-safe: a raise early on skips secret-backend and bridge cleanup. |
 | A-23 | — | — | — | Withdrawn during review: not a finding (see the note under Details). |
-| A-24 | Low | - | - | withheld until fixed (#92) |
+| A-24 | Low | confirmed-by-reading | secrets.py:116-127 | Redactor value set grows without bound and is never cleared; each `redact()` scans every value. |
 | A-25 | Low | - | - | withheld until fixed (#93) |
 | A-26 | Info | confirmed-by-reading | capabilities.py:170; m0-core.md §4 | `policy.denied` is listed as an event in the docs; it is only audited, never published to the bus. |
 | A-27 | Info | - | - | withheld until fixed (#94) |
@@ -160,7 +160,12 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 
 **A-16 · Low**: withheld until #89 is closed.
 
-**A-17 · Low**: withheld until #90 is closed.
+**A-17 · Low · confirmed-by-probe · secrets.py:89-90, 99-101**
+- Wrong: `_running_under_pytest()` is `"pytest" in sys.modules`.
+- Evidence (P15): `outside pytest refused: SwitchyardError`; after `sys.modules['pytest'] = stub`, `MemoryBackend` is built and returns the stored value.
+- Impact: a test backend (plain dict) can be enabled in production by any code that touches `sys.modules`. In-process modules are trusted anyway, so this is a tripwire, not a control.
+- Fix: require an explicit `allow_test_backend=True` only, or remove the class from the production import path.
+- Fixed in 1.1 (#90): the flag is the only way in.
 
 **A-18 · Low · confirmed-by-probe · secrets.py:209-216, 225**
 - Wrong: `_resolve` catches `KeyError` only. Other exceptions from `backend.get` propagate raw, outside `use()`'s `try`, so the message is not reduced to a class name.
@@ -190,7 +195,11 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 
 **A-23 · (retracted)** Checked during the review and not a finding: unregistered modules are denied by default (`granted()` returns empty). Kept only so the IDs are contiguous.
 
-**A-24 · Low**: withheld until #92 is closed.
+**A-24 · Low · confirmed-by-reading · secrets.py:116-127**
+- Wrong: `Redactor._values` is a set that `add` grows and nothing clears. Every `redact()` (every log line, every audit record) iterates the full set.
+- Impact: memory and CPU grow with each distinct secret used in the process lifetime. Secrets stay in process memory after use.
+- Fix: bounded LRU of recent values, or clear on `remove_backends`.
+- Fixed in 1.1 (#92): bounded LRU of 256 values, and a removed backend's values are forgotten.
 
 **A-25 · Low**: withheld until #93 is closed.
 
