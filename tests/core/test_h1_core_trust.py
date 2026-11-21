@@ -143,7 +143,7 @@ def test_h1_a7_health_and_panel_results_are_redacted(tmp_path: Path) -> None:
         .replace('panels = ["leak.status"]', 'panels = ["leak.status"]'),
         encoding="utf-8",
     )
-    backend = MemoryBackend({"api.key": SECRET})
+    backend = MemoryBackend({"api.key": SECRET}, allow_test_backend=True)
     with Core(data_dir=tmp_path / "d", trusted_roots=[root], module_roots=[root], hosting=True,
               secret_backends=[backend]) as c:  # fmt: skip
         for cap in ("ui.panel", "secrets.read"):

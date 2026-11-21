@@ -216,7 +216,7 @@ def surfaces(
     probe.mkdir()
     (probe / "mod.py").write_text(PROBE, encoding="utf-8")
     (probe / "module.toml").write_text(PROBE_TOML, encoding="utf-8")
-    backend = MemoryBackend({"provider.key": CANARY})
+    backend = MemoryBackend({"provider.key": CANARY}, allow_test_backend=True)
     monkeypatch.setattr(
         hermes_mod, "Core", functools.partial(Core, trusted_roots=[modules], secret_backends=[backend])
     )

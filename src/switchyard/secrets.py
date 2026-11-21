@@ -16,9 +16,9 @@ from __future__ import annotations
 import base64
 import json
 import re
-import sys
 import threading
 import urllib.parse
+from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, TypeVar
@@ -30,6 +30,9 @@ T = TypeVar("T")
 REF_PREFIX = "secret://"
 _NAME = re.compile(r"[a-z][a-z0-9_.-]{0,63}\Z")
 MIN_REDACT_CHARS = 4
+# Distinct secret values the redactor remembers (H1 A-24). Least recently used values drop out first; a value
+# is refreshed each time it is used, and a removed backend's values are forgotten at once.
+MAX_REDACT_VALUES = 256
 MASK = "[REDACTED]"
 
 # Common credential shapes, redacted even when the value was never registered (defence in depth).
@@ -86,17 +89,14 @@ class SecretBackend(Protocol):
         ...
 
 
-def _running_under_pytest() -> bool:
-    return "pytest" in sys.modules
-
-
 class MemoryBackend:
-    """Test-only backend. Refuses to construct outside pytest unless ``allow_test_backend``."""
+    """Test-only backend: a plain dict. Refuses to construct without ``allow_test_backend=True`` (H1 A-17: the
+    old "running under pytest" check could be satisfied by any module named ``pytest``)."""
 
     def __init__(
         self, values: Mapping[str, str], *, name: str = "memory", allow_test_backend: bool = False
     ) -> None:
-        if not (allow_test_backend or _running_under_pytest()):
+        if not allow_test_backend:
             raise SwitchyardError(
                 "MemoryBackend is a test backend; pass allow_test_backend=True deliberately"
             )
@@ -117,18 +117,38 @@ class Redactor:
     """Replaces registered secret values and known credential shapes with ``[REDACTED]``. Thread-safe."""
 
     def __init__(self, patterns: tuple[str, ...] = DEFAULT_PATTERNS) -> None:
-        self._values: set[str] = set()
+        self._values: OrderedDict[str, str] = OrderedDict()  # value -> source backend, oldest first
+        self._by_length: list[str] | None = None  # cached longest-first order
         self._patterns = [re.compile(p) for p in patterns]
         self._lock = threading.Lock()
 
-    def add(self, value: str) -> None:
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._values)
+
+    def add(self, value: str, source: str = "") -> None:
+        """Remember ``value`` (from backend ``source``) as the most recently used; drop the oldest past
+        ``MAX_REDACT_VALUES``."""
         if isinstance(value, str) and len(value) >= MIN_REDACT_CHARS:
             with self._lock:
-                self._values.add(value)
+                self._values[value] = source
+                self._values.move_to_end(value)
+                while len(self._values) > MAX_REDACT_VALUES:
+                    self._values.popitem(last=False)
+                self._by_length = None
+
+    def forget_source(self, source: str) -> None:
+        """Drop every value that came from backend ``source`` (its module was deactivated or removed)."""
+        with self._lock:
+            for value in [v for v, s in self._values.items() if s == source]:
+                del self._values[value]
+            self._by_length = None
 
     def redact(self, text: str) -> str:
         with self._lock:
-            values = sorted(self._values, key=len, reverse=True)
+            if self._by_length is None:
+                self._by_length = sorted(self._values, key=len, reverse=True)
+            values = self._by_length
         for value in values:
             text = text.replace(value, MASK)
         for pattern in self._patterns:
@@ -199,6 +219,7 @@ class SecretsBroker:
     def remove_backends(self, owner: str) -> None:
         for backend in self._owned.pop(owner, []):
             self._backends = [b for b in self._backends if b is not backend]
+            self._redactor.forget_source(str(backend.name))
             self._audit.append(
                 actor="core", action="secret.backend_removed", module=owner, detail={"backend": backend.name}
             )
@@ -237,7 +258,7 @@ class SecretsBroker:
         if len(value) < MIN_REDACT_CHARS:  # too short to redact reliably (R1 review)
             del value
             raise SwitchyardError(f"secret {name!r} is shorter than {MIN_REDACT_CHARS} characters; refused")
-        self._redactor.add(value)
+        self._redactor.add(value, backend)
         self._audit.append(
             actor="core", action="secret.used", module=module_id, detail={"secret": name, "backend": backend}
         )

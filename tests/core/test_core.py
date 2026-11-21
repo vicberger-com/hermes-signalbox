@@ -134,7 +134,9 @@ def test_secrets_are_wired_and_the_value_never_lands_on_disk(tmp_path: Path) -> 
         'request = ["secrets.read"]', 'request = ["secrets.read"]\nsecrets = ["provider.key"]'
     )
     toml.write_text(text, encoding="utf-8")
-    with _core(tmp_path, secret_backends=[MemoryBackend({"provider.key": CANARY})]) as core:
+    with _core(
+        tmp_path, secret_backends=[MemoryBackend({"provider.key": CANARY}, allow_test_backend=True)]
+    ) as core:
         core.run("module", "grant", {"id": "sec", "capability": "secrets.read"}, actor="cli")
         core.run("module", "activate", {"id": "sec"}, actor="cli")
         assert core.run("module", "list", {}, actor="cli")[0]["status"] == "active"

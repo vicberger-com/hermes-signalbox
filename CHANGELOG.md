@@ -33,6 +33,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   token file and exited with a traceback. Windows system tools (`icacls`, `taskkill`) now come from
   `%SystemRoot%\System32` directly; the same fault had also skipped the process-tree kill on timeout for
   daemons started this way. A start failure prints one `error:` line and exits 1.
+- Secret handling (H1 A-17 #90, A-24 #92). `MemoryBackend`, the test-only backend, now refuses to construct
+  without `allow_test_backend=True`; the old "running under pytest" check could be met by any module named
+  `pytest`. The redactor keeps the 256 most recently used secret values instead of every value ever used, and
+  forgets a backend's values when the module that provided it is deactivated. Credential-shape patterns still
+  redact regardless.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

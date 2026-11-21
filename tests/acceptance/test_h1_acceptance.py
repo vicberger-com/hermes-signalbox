@@ -66,7 +66,10 @@ def test_h1_every_finding_is_dispositioned_and_backlog_has_an_issue() -> None:
     rows = _rows()
     assert [r[0] for r in rows if r[6] == "open"] == []
     backlog = [r for r in rows if r[3] == "Backlog 1.1"]
-    assert backlog and all(re.fullmatch(r"backlog #\d+", r[6]) for r in backlog)
+    status = re.compile(r"backlog #\d+|fixed in #\d+ \(backlog #\d+\)")
+    assert backlog and all(status.fullmatch(r[6]) for r in backlog)
+    # A fixed backlog finding is published (Q-SY-H1-3).
+    assert [r[0] for r in backlog if r[6].startswith("fixed") and r[5] == "private until fixed"] == []
 
 
 def test_h1_d3_release_publishes_only_a_verified_annotated_tag_on_main() -> None:
