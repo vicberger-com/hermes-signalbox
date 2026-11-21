@@ -14,8 +14,10 @@ Server: ``ThreadingHTTPServer`` bound to ``127.0.0.1`` only. Every request is ch
    (checked before reading), body a JSON object.
 
 Responses use fixed headers only; ``safe_header`` rejects CR/LF (CPython's ``send_header`` does not). The
-``Server`` header does not reveal the Python version. Request lines are never logged. A socket timeout stops
-slow clients holding threads.
+``Server`` header does not reveal the Python version. Request lines are never logged. At most
+``MAX_CONNECTIONS`` handler threads run at once (further connections are closed), and each request must arrive
+whole within ``REQUEST_READ_DEADLINE_S`` (H1 B-7). The token file is restricted before the token is written
+into it (H1 B-17).
 
 Client: reads ``api.port`` and ``api.token``, talks to ``127.0.0.1`` only, and reads at most
 ``MAX_RESPONSE_BYTES`` (an unbounded read trusts ``Content-Length``; CVE-2025-13836 class). It sends the token
@@ -29,12 +31,15 @@ from __future__ import annotations
 import hashlib
 import hmac
 import http.client
+import io
 import json
 import os
 import re
 import secrets
+import socket
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -47,6 +52,8 @@ MAX_RESPONSE_BYTES = 1024 * 1024
 SOCKET_TIMEOUT_S = 10.0
 CLIENT_TIMEOUT_S = 60.0
 CONNECT_TIMEOUT_S = 0.5  # loopback: a refused or dead port must not cost seconds (H1 D-9)
+MAX_CONNECTIONS = 16  # handler threads at once; further connections are closed at once (H1 B-7)
+REQUEST_READ_DEADLINE_S = 10.0  # the whole request (head and body) must arrive within this (H1 B-7)
 LOOPBACK = "127.0.0.1"
 _ROUTE = re.compile(r"/v1/([a-z]+)/([a-z_]+)\Z")
 CHALLENGE_HEADER = "X-Switchyard-Challenge"
@@ -85,16 +92,20 @@ def safe_header(key: str, value: str) -> tuple[str, str]:
 
 
 def _write_private(path: Path, text: str) -> None:
+    """Write ``text`` to a file only this user can read. The file is restricted while still empty, and only
+    then written (H1 B-17); a leftover file is truncated first."""
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
     fd = os.open(path, flags, 0o600)
+    os.close(fd)
+    if os.name == "posix":
+        os.chmod(path, 0o600)
+    else:
+        _restrict_windows_acl(path)  # deletes the file and raises if it cannot
+    fd = os.open(path, os.O_WRONLY | os.O_TRUNC | getattr(os, "O_BINARY", 0))
     try:
         os.write(fd, text.encode("utf-8"))
     finally:
         os.close(fd)
-    if os.name == "posix":
-        os.chmod(path, 0o600)
-    else:
-        _restrict_windows_acl(path)
 
 
 def _restrict_windows_acl(path: Path) -> None:
@@ -125,11 +136,36 @@ def _restrict_windows_acl(path: Path) -> None:
         raise SwitchyardError(f"could not restrict access to {path.name}: {type(exc).__name__}") from None
 
 
+class _DeadlineReader(io.RawIOBase):
+    """Socket reads that share one deadline for the whole request (H1 B-7): ``SOCKET_TIMEOUT_S`` alone is per
+    read, so a client sending a byte at a time could hold a handler thread for ever."""
+
+    def __init__(self, sock: socket.socket, deadline: float) -> None:
+        self._sock = sock
+        self._deadline = deadline
+        self.read_timeout = SOCKET_TIMEOUT_S  # per read; lowered while discarding an unwanted body
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("request not received within the deadline")
+        self._sock.settimeout(min(remaining, self.read_timeout))
+        return self._sock.recv_into(buffer)
+
+
 class _Handler(BaseHTTPRequestHandler):
     server_version = "switchyard"
     sys_version = ""
     timeout = SOCKET_TIMEOUT_S
     control: ControlServer  # set on the subclass created per server
+
+    def setup(self) -> None:
+        super().setup()
+        deadline = time.monotonic() + REQUEST_READ_DEADLINE_S
+        self.rfile = io.BufferedReader(_DeadlineReader(self.connection, deadline))
 
     def log_message(self, format: str, *args: Any) -> None:  # request lines can carry data; never log them
         pass
@@ -168,7 +204,11 @@ class _Handler(BaseHTTPRequestHandler):
             if 0 < length <= MAX_BODY_BYTES:
                 self.rfile.read(length)
         else:  # unknown length (usually no Content-Length at all): discard what arrives, briefly, bounded
-            self.connection.settimeout(0.5)
+            raw = getattr(self.rfile, "raw", None)
+            if isinstance(raw, _DeadlineReader):
+                raw.read_timeout = 0.5
+            else:
+                self.connection.settimeout(0.5)
             remaining = MAX_BODY_BYTES
             try:
                 while remaining > 0:
@@ -290,6 +330,26 @@ DASHBOARD_ACTIONS = frozenset({("inbox", "list"), ("inbox", "ack"), ("inbox", "a
 
 class _Server(ThreadingHTTPServer):
     allow_reuse_address = False  # Windows SO_REUSEADDR would let a second socket bind a held port (M9 review)
+
+    def __init__(self, address: tuple[str, int], handler: type[BaseHTTPRequestHandler]) -> None:
+        self._slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        super().__init__(address, handler)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self._slots.acquire(blocking=False):  # full: close at once instead of starting a thread (B-7)
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
 
     def handle_error(self, request: Any, client_address: Any) -> None:
         """No tracebacks (H1 B-24): a dropped connection is normal; anything else is one line, class only."""
