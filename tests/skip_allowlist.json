@@ -9,14 +9,7 @@
     "tests/modules/test_secrets.py::test_wincred_is_locked_off_windows"
   ],
   "linux": [
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[%PATH%]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a!b]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a\"&echo=Q]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a&echo=INJ]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a(b)]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a>out.txt]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a^b]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a|more]",
+    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file",
     "tests/core/test_1_1_acc_spawn.py::test_s1_1_plain_arguments_still_reach_a_batch_file",
     "tests/core/test_1_1_acc_spawn.py::test_s1_9_a_skipped_tree_kill_is_logged",
     "tests/core/test_1_1_api_server.py::test_h1_b17_windows_acl_is_applied_to_an_empty_file",
@@ -26,14 +19,7 @@
     "tests/modules/test_secrets.py::test_wincred_round_trip_on_windows"
   ],
   "darwin": [
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[%PATH%]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a!b]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a\"&echo=Q]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a&echo=INJ]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a(b)]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a>out.txt]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a^b]",
-    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file[a|more]",
+    "tests/core/test_1_1_acc_spawn.py::test_s1_1_cmd_metacharacters_never_reach_a_batch_file",
     "tests/core/test_1_1_acc_spawn.py::test_s1_1_plain_arguments_still_reach_a_batch_file",
     "tests/core/test_1_1_acc_spawn.py::test_s1_9_a_skipped_tree_kill_is_logged",
     "tests/core/test_1_1_api_server.py::test_h1_b17_windows_acl_is_applied_to_an_empty_file",
