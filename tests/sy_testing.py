@@ -30,6 +30,7 @@ def make_manifest(tmp_path: Path) -> ManifestFactory:
         panels: list[str] | None = None,
         log_streams: list[str] | None = None,
         policies: list[str] | None = None,
+        programs: list[str] | None = None,
     ) -> Manifest:
         d = tmp_path / f"{module_id}-{next(counter)}"
         d.mkdir()
@@ -43,6 +44,7 @@ def make_manifest(tmp_path: Path) -> ManifestFactory:
             "policies": policies or [],
         }
         q = {k: json.dumps(v) for k, v in lists.items()}
+        programs_line = f"programs = {json.dumps(programs)}\n" if programs is not None else ""
         (d / "module.toml").write_text(
             f"""schema = 1
 [module]
@@ -59,7 +61,7 @@ entry = "mod:Mod"
 request = {q["request"]}
 net_hosts = {q["net_hosts"]}
 secrets = {q["secrets"]}
-[contributes]
+{programs_line}[contributes]
 panels = {q["panels"]}
 log_streams = {q["log_streams"]}
 policies = {q["policies"]}

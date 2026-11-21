@@ -67,6 +67,7 @@ class PolicyEngine:
     def granted(self, module_id: str) -> frozenset[str]
     def require(self, module_id: str, capability: str, **detail: str) -> None    # raises CapabilityDenied; denial audited
     def require_host(self, module_id: str, host: str) -> None                    # net.outbound + net_hosts allow-list
+    def require_program(self, module_id: str, argv0: str) -> None                # process.spawn + programs list (1.1)
     def require_secret(self, module_id: str, name: str) -> None                  # secrets.read + secrets allow-list
 ```
 

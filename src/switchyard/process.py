@@ -172,7 +172,7 @@ class ProcessBroker:
         if data is not None and len(data) > MAX_INPUT_BYTES:
             raise SwitchyardError(f"input is larger than {MAX_INPUT_BYTES} bytes")
         program = Path(argv[0]).name
-        self._policy.require(module_id, "process.spawn", program=program)
+        self._policy.require_program(module_id, argv[0])  # the grant, and the manifest's programs (H1 B-10)
         exe = find_program(argv[0])
         if exe is None:
             raise SwitchyardError(f"program {program!r} not found")

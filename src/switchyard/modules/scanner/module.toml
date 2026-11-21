@@ -15,6 +15,7 @@ entry = "scanner_module:ScannerModule"
 [capabilities]
 optional = ["notify"]
 request = ["process.spawn", "schedule", "notify", "ui.panel"]
+programs = ["bandit", "gitleaks", "osv-scanner", "pip-audit", "semgrep", "trivy"]
 
 [contributes]
 commands = ["report", "findings", "run_now"]

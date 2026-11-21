@@ -15,6 +15,7 @@ entry = "offload_module:OffloadModule"
 [capabilities]
 optional = ["process.spawn"]
 request = ["net.outbound", "process.spawn", "ui.panel"]
+programs = ["claude", "codex"]
 net_hosts = ["127.0.0.1", "localhost"]
 
 [contributes]

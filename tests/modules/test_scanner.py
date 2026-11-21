@@ -263,10 +263,18 @@ def test_process_broker_bounds(core: Core, tmp_path: Path, fakes: Path) -> None:
         "time.sleep(float(sys.argv[1]))\n",
         encoding="utf-8",
     )
+    # 1.1 H1 B-10: the scanner may only run its listed programs by bare name, so the slow script stands in
+    # for one of them (bandit) on PATH, the way the other fakes do.
+    if os.name == "nt":
+        (fakes / "bandit.cmd").write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="utf-8")
+    else:
+        launcher = fakes / "bandit"
+        launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf-8")
+        launcher.chmod(0o755)
     spawn = core.manager._entry("scanner").instance.ctx.spawn
     started = time.monotonic()
     with pytest.raises(SwitchyardError, match="timed out"):
-        spawn.run([sys.executable, str(script), "30"], timeout=1)
+        spawn.run(["bandit", "30"], timeout=1)
     assert time.monotonic() - started < 15  # a grandchild holding output no longer blocks the timeout
-    done = spawn.run([sys.executable, str(script), "0"], timeout=20, max_output=100)
+    done = spawn.run(["bandit", "0"], timeout=20, max_output=100)
     assert done.stdout.startswith("caf\ufffd") and len(done.stdout) == 100 and done.truncated

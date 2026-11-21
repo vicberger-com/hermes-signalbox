@@ -14,6 +14,7 @@ audited (they are frequent and carry no decision). The engine is the single chok
 
 from __future__ import annotations
 
+import os
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -68,12 +69,27 @@ class MemoryGrantStore:
         self._grants.pop(module_id, None)
 
 
+_WINDOWS_EXTENSIONS = (".exe", ".com", ".cmd", ".bat")
+
+
+def program_key(name: str) -> str:
+    """How program names compare: exact on POSIX; on Windows case-insensitive, without .exe/.com/.cmd/.bat."""
+    if os.name != "nt":
+        return name
+    low = name.lower()
+    for ext in _WINDOWS_EXTENSIONS:
+        if low.endswith(ext):
+            return low[: -len(ext)]
+    return low
+
+
 @dataclass(frozen=True)
 class _Registration:
     requested: frozenset[str]
     denied: frozenset[str]
     net_hosts: frozenset[str]
     secrets: frozenset[str]
+    programs: frozenset[str] = frozenset()  # empty: any program (H1 B-10)
 
 
 def parse_policies(manifest: Manifest) -> frozenset[str]:
@@ -119,6 +135,7 @@ class PolicyEngine:
             denied=parse_policies(manifest),
             net_hosts=frozenset(h.lower() for h in manifest.net_hosts),
             secrets=frozenset(manifest.secrets),
+            programs=frozenset(program_key(p) for p in manifest.programs),
         )
         with self._lock:
             self._modules[manifest.id] = reg
@@ -222,6 +239,35 @@ class PolicyEngine:
                 module_id,
                 {"capability": "net.outbound", "host": host},
                 f"module {module_id!r} may not contact {host!r}",
+            )
+
+    def require_program(self, module_id: str, argv0: str) -> None:
+        """``process.spawn`` plus the manifest's ``programs`` list when it has one (H1 B-10). With a list,
+        ``argv[0]`` must be a bare name (found on PATH), so a module cannot run its own file named like a
+        listed program. Without one, any program runs, as the grant prompt says."""
+        program = os.path.basename(argv0.replace("\\", "/"))
+        self.require(module_id, "process.spawn", program=program)
+        with self._lock:
+            reg = self._modules.get(module_id)
+        if reg is None:  # unregistered between the two checks (H1 A-15)
+            raise self._deny(
+                module_id,
+                {"capability": "process.spawn", "program": program},
+                f"module {module_id!r} is not registered",
+            )
+        if not reg.programs:
+            return
+        if program != argv0:
+            raise self._deny(
+                module_id,
+                {"capability": "process.spawn", "program": program},
+                f"module {module_id!r} must name a program by its bare program name, not a path",
+            )
+        if program_key(program) not in reg.programs:
+            raise self._deny(
+                module_id,
+                {"capability": "process.spawn", "program": program},
+                f"module {module_id!r} may not run {program!r}",
             )
 
     def require_secret(self, module_id: str, name: str) -> None:
