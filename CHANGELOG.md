@@ -38,6 +38,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   `pytest`. The redactor keeps the 256 most recently used secret values instead of every value ever used, and
   forgets a backend's values when the module that provided it is deactivated. Credential-shape patterns still
   redact regardless.
+- CLI to daemon trust (H1 B-8 #101, B-9 #102). The CLI now sends its token only to a daemon that proves it holds
+  it: a fresh challenge to `GET /v1/health` must come back as the HMAC of the challenge keyed with the token.
+  Anything else on the daemon's port gets "token not sent". When the connection fails after a command was sent,
+  the CLI reports that the daemon may have applied it, instead of running the command again locally. A CLI of
+  this version cannot talk to a daemon started by 1.0.x; restart the daemon after upgrading.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

@@ -175,7 +175,11 @@ Token: `secrets.token_urlsafe(32)` written to `api.token` with user-only permiss
 Request checks, in order: method `POST` (or `GET /v1/health`); `Host` is `127.0.0.1:<port>` or `localhost:<port>`;
 any `Origin` header (including `null`) is refused, since the only client is the CLI; `Authorization: Bearer` compared with
 `hmac.compare_digest`; `Content-Type: application/json`; no `Transfer-Encoding`; body <= 64 KiB, checked before
-reading. `GET /v1/health` needs no token. Status codes: 400 usage, 401 token, 403 Host/Origin/denied, 404 route,
+reading. `GET /v1/health` needs no token; with an `X-Switchyard-Challenge` header (32-128 lowercase hex) it also
+returns `proof`, the HMAC-SHA256 of `switchyard-api-v1:<challenge>` keyed with the token. The client checks that
+proof before it sends the token, so a process that took over a dead daemon's port never receives it
+(`ApiUntrusted`). A failure to connect lets the CLI run an offline operation locally; a failure after the request
+was sent is `ApiOutcomeUnknown`: the daemon may have applied it, and nothing runs again. Status codes: 400 usage, 401 token, 403 Host/Origin/denied, 404 route,
 409 operation error, 411/413/415 framing, 500 unexpected (class name only). Socket timeout 10 s; request lines are
 never logged; `Server: switchyard`. Routes `POST /v1/<noun>/<verb>` map 1:1 to CLI
 operations. Responses never echo request text into headers; a header writer rejects CR/LF. Client reads are
