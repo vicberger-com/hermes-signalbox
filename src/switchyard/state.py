@@ -81,13 +81,34 @@ MAX_ROWS = 10_000
 # Storage bounds (H1 A-25). One value (a column value or a kv value) is at most MAX_VALUE_BYTES: SQLite's
 # own length limit while a module statement runs, so functions such as zeroblob() cannot exceed it either.
 # A module holds at most MAX_TABLES_PER_MODULE tables and MODULE_QUOTA_BYTES in tables plus kv rows. Usage is
-# measured when a module writes after the database file grew by QUOTA_CHECK_GROWTH since its last check
-# (PRAGMA page_count is cheap; the measurement is not), and on every create_table. Over the quota, inserts,
-# updates and kv writes are refused until the module deletes data (deleting is allowed and rechecks at once).
+# measured on every create_table, and when a module writes after the database's used pages (page_count minus
+# freelist_count, so writes into reused free pages count; 1.1 acceptance S2-2) grew by QUOTA_CHECK_GROWTH
+# since its last check; the pragmas are cheap, the measurement is not. A statement can pass the quota by what
+# it writes before the check; the work budget below bounds that (1.1 acceptance S2-3, documented limit). Over
+# the quota, inserts, updates and kv writes are refused until the module deletes data (deleting is allowed and
+# rechecks at once).
 MAX_VALUE_BYTES = 4 * 1024 * 1024
 MAX_TABLES_PER_MODULE = 64
 MODULE_QUOTA_BYTES = 256 * 1024 * 1024
 QUOTA_CHECK_GROWTH = 1024 * 1024
+# Bytes a module query may return (1.1 acceptance S2-4): MAX_ROWS alone allowed 10 000 rows of 4 MiB each.
+MAX_RESULT_BYTES = 16 * 1024 * 1024
+
+
+def _bounded_rows(cursor: sqlite3.Cursor) -> list[tuple[Any, ...]]:
+    """At most MAX_ROWS + 1 rows and MAX_RESULT_BYTES of values, read row by row (1.1 acceptance S2-4)."""
+    rows: list[tuple[Any, ...]] = []
+    size = 0
+    for row in cursor:
+        size += sum(len(v) if isinstance(v, (bytes, str)) else 8 for v in row)
+        if size > MAX_RESULT_BYTES:
+            raise StateError(
+                f"module query result is larger than {MAX_RESULT_BYTES} bytes; page with LIMIT/OFFSET"
+            )
+        rows.append(row)
+        if len(rows) > MAX_ROWS:
+            break
+    return rows
 
 
 class StateStore:
@@ -248,16 +269,20 @@ class StateStore:
         return int(total)
 
     def _db_bytes(self) -> int:
+        """Bytes in use: pages minus free pages (writes into reused free pages count; 1.1 acceptance S2-2)."""
         with self._locked():
             pages = self._conn.execute("PRAGMA page_count").fetchone()[0]
+            free = self._conn.execute("PRAGMA freelist_count").fetchone()[0]
             size = self._conn.execute("PRAGMA page_size").fetchone()[0]
-        return int(pages) * int(size)
+        return (int(pages) - int(free)) * int(size)
 
     def check_quota(self, module_id: str, *, force: bool = False) -> None:
         """After a module writes: measure its usage when forced, while it is over the quota (so a delete frees
-        it at once), or when the database grew by QUOTA_CHECK_GROWTH since its last check."""
+        it at once), or when the database's used pages grew by QUOTA_CHECK_GROWTH since its last check."""
         size = self._db_bytes()
         last = self._checked_at.setdefault(module_id, size)
+        if size < last:  # another module freed pages: measure growth from the new low
+            self._checked_at[module_id] = last = size
         if not force and module_id not in self.over_quota and size - last < QUOTA_CHECK_GROWTH:
             return
         self._checked_at[module_id] = size
@@ -284,7 +309,7 @@ class StateStore:
             changes = self._conn.total_changes
             self._local.changed = False
             try:
-                rows = self._conn.execute(sql, params).fetchmany(MAX_ROWS + 1)
+                rows = _bounded_rows(self._conn.execute(sql, params))
                 self._local.changed = self._conn.total_changes != changes
             except sqlite3.DataError as exc:
                 raise StateError(f"module value too large (limit {MAX_VALUE_BYTES} bytes): {exc}") from None
