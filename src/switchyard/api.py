@@ -50,6 +50,10 @@ class ApiUnavailable(SwitchyardError):
     """No running daemon could be reached."""
 
 
+class ApiRestricted(CapabilityDenied):
+    """The hosting process's API does not serve this operation (the restricted profile Hermes runs)."""
+
+
 def safe_header(key: str, value: str) -> tuple[str, str]:
     if any(c in key or c in value for c in "\r\n"):
         raise ValueError("header contains a line break")
@@ -217,7 +221,16 @@ class _Handler(BaseHTTPRequestHandler):
         redact = core.redactor.redact
         actor = self.control.actor_for(noun, verb, params)
         if actor is None:
-            self._fail(403, "not_allowed", f"{noun} {verb} is not available on this API (use the CLI)")
+            # 1.1 S-4: the restricted profile runs inside Hermes; name the routes that do work.
+            self._fail(
+                403,
+                NOT_SERVED,
+                (
+                    f"'{noun} {verb}' is not served by the Switchyard API inside Hermes: run it as "
+                    f"/switchyard {noun} {verb} in a Hermes chat, "
+                    "or stop Hermes and use 'switchyard api serve'"
+                ),
+            )
             return
         try:
             result = core.redactor.redact_obj(core.run(noun, verb, params, actor=actor))  # M9: panels too
@@ -239,8 +252,9 @@ class _Handler(BaseHTTPRequestHandler):
 DASHBOARD_OPS = frozenset({
     ("module", "list"), ("module", "show"), ("module", "panel"), ("module", "activate"),
     ("module", "deactivate"), ("module", "action"), ("report", "show"), ("audit", "tail"),
-    ("audit", "verify"), ("host", "profile"),
+    ("audit", "verify"), ("host", "profile"), ("module", "health"),
 })  # fmt: skip
+NOT_SERVED = "not_served"
 DASHBOARD_ACTIONS = frozenset({("inbox", "list"), ("inbox", "ack"), ("inbox", "ack_all")})
 
 
@@ -366,4 +380,6 @@ class ApiClient:
         if isinstance(payload, dict) and payload.get("ok") is True:
             return payload.get("result")
         message = str(payload.get("message", "")) if isinstance(payload, dict) else ""
+        if resp.status == 403 and isinstance(payload, dict) and payload.get("error") == NOT_SERVED:
+            raise ApiRestricted(message)
         raise _STATUS_ERRORS.get(resp.status, SwitchyardError)(message or f"API error HTTP {resp.status}")

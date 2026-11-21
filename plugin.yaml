@@ -8,6 +8,9 @@ author: Vic Berger
 license: Apache-2.0
 homepage: https://github.com/vicberger-com/hermes-switchyard
 requires_hermes: ">=0.22"
+# No runtime dependencies (ADR-0001): Hermes must not install this repository into its shared environment (a
+# [build-system] in pyproject.toml would otherwise make it a package to admit; 1.1 S-1).
+python_runtime: external
 provides_tools:
   - switchyard_modules
   - switchyard_audit

@@ -234,7 +234,7 @@ def test_dashboard_api_profile_refuses_privileged_ops(core: Core) -> None:
             ("module", "revoke", {"id": "inbox", "capability": "ui.panel"}),
             ("module", "mode", {"id": "inbox", "mode": "manual"}),
         ]:
-            with pytest.raises(SwitchyardError, match="not available on this API"):
+            with pytest.raises(SwitchyardError, match="not served by the Switchyard API inside Hermes"):
                 client.request(noun, verb, params)
         core.bus.publish("meter", "meter.exhausted", {"quota": "day"})
         items = client.request("module", "action", {"id": "inbox", "action": "list", "args": {}})["items"]

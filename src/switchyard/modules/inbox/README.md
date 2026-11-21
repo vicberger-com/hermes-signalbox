@@ -28,8 +28,8 @@ Notifications below `min_severity` (default `low`) are dropped. Nothing leaves t
 
 The control API that Hermes starts for the dashboard serves only a dashboard profile: module list, show, panels,
 activate/deactivate, reports, audit reads and the inbox actions. Other module actions run with the model's
-rights (read-only only). Grants, modes, installs, updates, removal and config are refused there; use the CLI
-(`switchyard serve` keeps the full API for it).
+rights (read-only only). Grants, modes, installs, updates, removal and config are refused there; use the
+command line or `/switchyard` in a Hermes chat (`switchyard api serve` keeps the full API for them).
 
 Set `[api] enabled = true` in Switchyard's `config.toml` and restart Hermes; the **Switchyard** tab then shows
 modules (state, health, activate/deactivate), the inbox and reports. Grants, installs and config changes stay in

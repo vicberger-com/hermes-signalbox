@@ -4,6 +4,21 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Fixed
+- Installing as a plugin no longer changes Hermes's own environment: `plugin.yaml` declares
+  `python_runtime: external` (Switchyard has no dependencies). Before, Hermes installed the package into its
+  shared environment, every profile listed `switchyard`, and a Hermes Desktop install warned
+  `install out of sync` on every command. The plugin loads its own `src/` before any other installed copy.
+- The command line works while Hermes hosts the modules (#123). Offline commands (grant, revoke, mode, audit,
+  config) run on the data directory again when the loopback API inside Hermes is enabled; before, it refused all
+  of them. That API also serves the read-only `module health`. A refused command names the routes that work
+  (`/switchyard ...` in a Hermes chat, or `switchyard api serve` with Hermes stopped), instead of
+  "use the CLI".
+
+### Documentation
+- USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,
+  and a new section 10 on running the standalone daemon as a service (Task Scheduler, systemd, launchd).
+
 ### Documentation
 - Phase H2 results (first real install and real turns; re-verified on Hermes v0.23.3) in
   `docs/qa/15-h1-prework.md`. The user guide covers Hermes Desktop, where the gateway hosts the modules,
