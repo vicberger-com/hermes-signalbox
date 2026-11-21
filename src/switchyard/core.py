@@ -44,6 +44,7 @@ from switchyard.updates import Fetcher, GitFetcher, UpdateController
 
 BUILTIN_MODULES = Path(switchyard.__file__).resolve().parent / "modules"
 _HEAD_KEY = "audit.head"
+CROSS_CALL_AUDIT_WINDOW_S = 60.0  # 1.1 #124: one audit record per cross-module read call path per window
 _BROKEN_KEY = "audit.broken"
 
 
@@ -244,6 +245,8 @@ class Core:
         )
         self.manager.discover(roots)
         self._lock = threading.RLock()
+        self._cross_lock = threading.Lock()
+        self._cross_calls: dict[tuple[str, str, str], tuple[float | None, int]] = {}
         self._closed = False
         self.updates = UpdateController(
             self.manager, self.audit, self.data_dir, fetcher or GitFetcher(configured=self.config.git),
@@ -253,7 +256,19 @@ class Core:
     def _module_call(self, caller: str, module_id: str, action: str, args: Mapping[str, Any]) -> Any:
         from switchyard.ops import run_action
 
-        return run_action(self, module_id, action, args, actor=f"module:{caller}", read_only_only=True)
+        # 1.1 #124: a read-only cross-module call can run on every model request (router -> resources).
+        # It is recorded once per (caller, target, action) per window, with the number of calls since the
+        # last record, instead of one fsynced record per call. Operator and model actions are still
+        # recorded every time.
+        key = (caller, module_id, action)
+        now = time.monotonic()
+        with self._cross_lock:
+            last, count = self._cross_calls.get(key, (None, 0))
+            count += 1
+            record = last is None or now - last >= CROSS_CALL_AUDIT_WINDOW_S
+            self._cross_calls[key] = (now, 0) if record else (last, count)
+        return run_action(self, module_id, action, args, actor=f"module:{caller}", read_only_only=True,
+                          audit=record, audit_detail={"calls": str(count)})  # fmt: skip
 
     def _audit_broken(self) -> str | None:
         rows = self.store.core_query("SELECT value FROM meta WHERE key = ?", (_BROKEN_KEY,))

@@ -250,9 +250,18 @@ def _module_action(core: Core, p: dict[str, Any], actor: str) -> Any:
 
 
 def run_action(
-    core: Core, module_id: str, name: str, raw: Mapping[str, Any], *, actor: str, read_only_only: bool
+    core: Core,
+    module_id: str,
+    name: str,
+    raw: Mapping[str, Any],
+    *,
+    actor: str,
+    read_only_only: bool,
+    audit_detail: Mapping[str, str] | None = None,
+    audit: bool = True,
 ) -> Any:
-    """Validate and run one module action; shared by ``module action`` and ``ctx.call`` (ADR-0004)."""
+    """Validate and run one module action; shared by ``module action`` and ``ctx.call`` (ADR-0004).
+    ``audit=False`` only for cross-module read-only calls the core records in aggregate (1.1 #124)."""
     action = core.actions.get(module_id, name)
     if read_only_only and not action.read_only:
         raise SwitchyardError(f"action {action.name!r} is not read-only; run it from /switchyard or the CLI")
@@ -270,7 +279,9 @@ def run_action(
         if not isinstance(value, kind) or (kind is int and isinstance(value, bool)):
             raise UsageError(f"argument {name!r} must be {kind.__name__}")
         args[name] = value
-    core.audit.append(actor=actor, action="module.action", module=p["id"], detail={"action": action.name})
+    if audit:
+        detail = {"action": action.name, **(audit_detail or {})}
+        core.audit.append(actor=actor, action="module.action", module=p["id"], detail=detail)
     try:
         result = action.handler(**args)
     except TypeError as exc:
