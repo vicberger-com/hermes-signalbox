@@ -18,263 +18,96 @@ update with the Switchyard release. ``UpdateController.update(id, ref)``:
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
-import os
-import re
 import shutil
-import subprocess  # nosec B404
-import tempfile
 import threading
 import time
-import unicodedata
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from switchyard.capabilities import CORE_ACTOR, AuditSink
 from switchyard.errors import ManifestError, SwitchyardError, UpdateError
+from switchyard.gitfetch import (
+    _CHANNEL as _CHANNEL,
+)
+from switchyard.gitfetch import (
+    _GIT_ENV_ALLOW as _GIT_ENV_ALLOW,
+)
+from switchyard.gitfetch import (
+    _SHA as _SHA,
+)
+from switchyard.gitfetch import (
+    GIT_TIMEOUT_S as GIT_TIMEOUT_S,
+)
+from switchyard.gitfetch import (
+    LS_REMOTE_TIMEOUT_S as LS_REMOTE_TIMEOUT_S,
+)
+from switchyard.gitfetch import (
+    Fetcher as Fetcher,
+)
+from switchyard.gitfetch import (
+    GitFetcher as GitFetcher,
+)
+from switchyard.gitfetch import (
+    _check_ref as _check_ref,
+)
+from switchyard.gitfetch import (
+    _force_remove as _force_remove,
+)
+from switchyard.gitfetch import (
+    git_usable as git_usable,
+)
+from switchyard.gitfetch import (
+    resolved_git as resolved_git,
+)
 from switchyard.lifecycle import ModuleManager, ModuleStatus
 from switchyard.manifest import Manifest, load_manifest
-from switchyard.process import find_runnable
+from switchyard.sbom import (
+    _CONTROL as _CONTROL,
+)
+from switchyard.sbom import (
+    _SEMVER as _SEMVER,
+)
+from switchyard.sbom import (
+    MAX_FILE_BYTES as MAX_FILE_BYTES,
+)
+from switchyard.sbom import (
+    MAX_FILES as MAX_FILES,
+)
+from switchyard.sbom import (
+    MAX_NOTES as MAX_NOTES,
+)
+from switchyard.sbom import (
+    _declared as _declared,
+)
+from switchyard.sbom import (
+    inventory as inventory,
+)
+from switchyard.sbom import (
+    is_downgrade as is_downgrade,
+)
+from switchyard.sbom import (
+    patch_notes as patch_notes,
+)
+from switchyard.sbom import (
+    sbom_delta as sbom_delta,
+)
+from switchyard.sbom import (
+    tree_digest as tree_digest,
+)
+from switchyard.sbom import (
+    version_key as version_key,
+)
 
-_SHA = re.compile(r"[0-9a-f]{40}\Z")
-GIT_TIMEOUT_S = 300
-LS_REMOTE_TIMEOUT_S = 60  # a check reads one ref; a hung remote should not hold it for minutes (H1 B-2)
-_GIT_ENV_ALLOW = ("PATH", "SYSTEMROOT", "TEMP", "TMP", "HOME", "USERPROFILE", "LANG")
-
-
-class Fetcher(Protocol):
-    def fetch(self, url: str, ref: str, dest: Path) -> None: ...
-
-    def latest(self, url: str, channel: str) -> str: ...
-
-
-MAX_FILES = 5000
-MAX_FILE_BYTES = 50_000_000
 KEEP_PREVIOUS = 3
 CHECK_CACHE_SECONDS = 3600.0
 CHECK_MIN_SECONDS = 60.0
 # Files Python or the OS loader would run but nobody reviews as source (M12 review); extension modules and
 # native libraries included, suffixes compared case-insensitively (H1 B-11).
 _UNREVIEWABLE = (".pyc", ".pyo", ".pth", ".pyw", ".pyd", ".so", ".dylib", ".dll")
-MAX_NOTES = 4000
-_CHANNEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}\Z")
-_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
-
-
-def inventory(root: Path) -> dict[str, str]:
-    """SBOM of a module tree: every file's relative path and SHA-256 (``__pycache__`` skipped)."""
-    out: dict[str, str] = {}
-    for path in sorted(root.rglob("*")):
-        if "__pycache__" in path.parts or path.is_dir():
-            continue
-        if len(out) >= MAX_FILES:
-            raise UpdateError(f"module tree has more than {MAX_FILES} files; refused")
-        if path.stat().st_size > MAX_FILE_BYTES:
-            raise UpdateError(
-                f"{path.relative_to(root).as_posix()} is larger than {MAX_FILE_BYTES} bytes; refused"
-            )
-        with path.open("rb") as fh:
-            digest = hashlib.file_digest(fh, "sha256").hexdigest()
-        out[path.relative_to(root).as_posix()] = digest
-    return out
-
-
-_SEMVER = re.compile(r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?\Z")
-
-
-def version_key(version: str) -> tuple[Any, ...] | None:
-    """Sort key for a manifest version (semver precedence: a pre-release sorts before its release, build
-    metadata is ignored); ``None`` when the text is not of that form."""
-    m = _SEMVER.match(version)
-    if m is None:
-        return None
-    major, minor, patch, pre = m.groups()
-    if pre is None:
-        return (int(major), int(minor), int(patch), 1, ())
-    ids = tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in pre.split("."))
-    return (int(major), int(minor), int(patch), 0, ids)
-
-
-def is_downgrade(old: str, new: str) -> bool:
-    """True when ``new`` is an older version than ``old`` (H1 B-12). Unparseable versions never count."""
-    a, b = version_key(old), version_key(new)
-    return a is not None and b is not None and b < a
-
-
-def tree_digest(inv: dict[str, str]) -> str:
-    h = hashlib.sha256()
-    for name in sorted(inv):
-        h.update(f"{name}\0{inv[name]}\n".encode())
-    return h.hexdigest()
-
-
-def _declared(m: Manifest) -> dict[str, Any]:
-    return {
-        "version": m.version,
-        "license": m.license,
-        "license_class": m.license_class,
-        "capabilities": sorted(m.requested),
-        "net_hosts": sorted(m.net_hosts),
-        "secrets": sorted(m.secrets),
-        "isolation": m.isolation,
-        "entry": f"{m.entry_module}:{m.entry_class}",
-        "contributes": {k: sorted(v) for k, v in m.contributes.items() if v},
-    }
-
-
-def sbom_delta(old_dir: Path, new_dir: Path, old: Manifest, new: Manifest) -> dict[str, Any]:
-    """What an update changes: files added, removed and changed, and every declared-permission difference.
-    ``widens`` lists the changes that need the operator's explicit acceptance (ADR-0011)."""
-    a, b = inventory(old_dir), inventory(new_dir)
-    before, after = _declared(old), _declared(new)
-    declared = {k: {"from": before[k], "to": after[k]} for k in before if before[k] != after[k]}
-    widens = []
-    for key in ("capabilities", "net_hosts", "secrets"):
-        added = sorted(set(after[key]) - set(before[key]))
-        if added:
-            widens.append(f"{key}: {', '.join(added)}")
-    for kind, names in after["contributes"].items():  # new hooks etc. run under grants already given
-        added = sorted(set(names) - set(before["contributes"].get(kind, ())))
-        if added:
-            widens.append(f"contributes.{kind}: {', '.join(added)}")
-    if before["isolation"] == "subprocess" and after["isolation"] != "subprocess":
-        widens.append("isolation: in-process")
-    if before["license_class"] != after["license_class"]:
-        widens.append(f"license_class: {after['license_class']}")
-    return {
-        "files": {
-            "added": sorted(set(b) - set(a)),
-            "removed": sorted(set(a) - set(b)),
-            "changed": sorted(k for k in set(a) & set(b) if a[k] != b[k]),
-        },
-        "declared": declared,
-        "widens": widens,
-        "digest": tree_digest(b),
-    }
-
-
-def patch_notes(root: Path, version: str) -> str:
-    """The ``## [version]`` section of the staged tree's CHANGELOG.md, cleaned and capped; empty if absent.
-    Written by the module's author: shown to the operator, never to the model."""
-    path = root / "CHANGELOG.md"
-    if not path.is_file() or path.is_symlink():
-        return ""
-    with path.open("rb") as fh:
-        text = fh.read(1_000_000).decode("utf-8", errors="replace")
-    heading = re.compile(rf"## (\[{re.escape(version)}\]|{re.escape(version)})(\s|\Z)")
-    out: list[str] = []
-    for line in text.splitlines():
-        if line.startswith("## "):
-            if out:
-                break
-            if heading.match(line):
-                out.append(line)
-            continue
-        if out:
-            out.append(line)
-    notes = _CONTROL.sub("", "\n".join(out).strip())
-    # Format characters (bidi overrides, zero-width) can make text read differently from what it is.
-    return "".join(ch for ch in notes if unicodedata.category(ch) != "Cf")[:MAX_NOTES]
-
-
-def _check_ref(ref: str) -> None:
-    if not isinstance(ref, str) or not _SHA.match(ref):
-        raise UpdateError("ref must be a full 40-character lower-case commit SHA")
-
-
-def resolved_git(git: str = "git", configured: str | None = None) -> str | None:
-    """The git this process will run: ``configured`` (``[tools] git``) or the first runnable one on PATH."""
-    return find_runnable(git, configured=configured)
-
-
-def git_usable(git: str = "git", configured: str | None = None) -> bool:
-    """True if this process can run git (H1 D-2: the first git on PATH may be one it may not execute)."""
-    return resolved_git(git, configured) is not None
-
-
-class GitFetcher:
-    """Fetch one exact commit with the system ``git``. Used only by the core (T0)."""
-
-    def __init__(
-        self, *, git: str = "git", allow_file_protocol: bool = False, configured: str | None = None
-    ) -> None:
-        self._git = git
-        self._configured = configured
-        self._allow_file = allow_file_protocol
-        self._exe: str | None = None
-
-    def executable(self) -> str | None:
-        """The resolved git, probed once per fetcher (and again after it stops working)."""
-        if self._exe is None:
-            self._exe = resolved_git(self._git, self._configured)
-        return self._exe
-
-    def _run(self, args: list[str], cwd: Path, timeout: float = GIT_TIMEOUT_S) -> str:
-        exe = self.executable()
-        if exe is None:
-            where = "[tools] git" if self._configured else "PATH"
-            raise UpdateError(f"no git this process can run was found ({where})")
-        env = {k: v for k in _GIT_ENV_ALLOW if (v := os.environ.get(k)) is not None}
-        env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
-                    # never discover a repository (and its config) above the working directory (M12 review)
-                    "GIT_CEILING_DIRECTORIES": str(cwd.resolve().parent)})  # fmt: skip
-        protocol = "always" if self._allow_file else "never"
-        cmd = [exe, "-c", f"protocol.file.allow={protocol}", "-c", "core.hooksPath=" + os.devnull, *args]
-        try:
-            # Fixed argv; url and ref are validated above; no shell.
-            done = subprocess.run(  # noqa: S603 # nosec B603
-                cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, check=False
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            self._exe = None  # look again next time
-            raise UpdateError(f"git could not run: {type(exc).__name__}") from None
-        if done.returncode != 0:
-            raise UpdateError(f"git {args[0]} failed (exit {done.returncode})")
-        return done.stdout.strip()
-
-    def fetch(self, url: str, ref: str, dest: Path) -> None:
-        if not (url.startswith("https://") or (self._allow_file and url.startswith("file:"))):
-            raise UpdateError("update URLs must use https://")
-        _check_ref(ref)
-        dest.mkdir(parents=True)
-        try:
-            self._run(["init", "-q"], dest)
-            self._run(["fetch", "-q", "--depth", "1", "--no-tags", url, ref], dest)
-            self._run(["checkout", "-q", "--detach", "FETCH_HEAD"], dest)
-            head = self._run(["rev-parse", "HEAD"], dest)
-        except UpdateError:
-            shutil.rmtree(dest, ignore_errors=True)
-            raise
-        if head != ref:
-            shutil.rmtree(dest, ignore_errors=True)
-            raise UpdateError(f"fetched commit {head} does not match the requested {ref}")
-        shutil.rmtree(dest / ".git", onerror=_force_remove)
-
-    def latest(self, url: str, channel: str) -> str:
-        """The commit at the head of ``channel`` (``git ls-remote``); nothing is downloaded."""
-        if not (url.startswith("https://") or (self._allow_file and url.startswith("file:"))):
-            raise UpdateError("update URLs must use https://")
-        if not _CHANNEL.match(channel) or ".." in channel:
-            raise UpdateError("invalid channel name")
-        with tempfile.TemporaryDirectory(prefix="switchyard-ls-") as empty:  # no repository config applies
-            out = self._run(["ls-remote", "--heads", "--", url, f"refs/heads/{channel}"], Path(empty),
-                            timeout=LS_REMOTE_TIMEOUT_S)  # fmt: skip
-        for line in out.splitlines():
-            sha, _, name = line.partition("\t")
-            if name == f"refs/heads/{channel}" and _SHA.match(sha):
-                return sha
-        raise UpdateError(f"channel {channel!r} not found")
-
-
-def _force_remove(
-    func: Any, path: str, _exc: Any
-) -> None:  # pragma: no cover - read-only git objects on Windows
-    os.chmod(path, 0o700)
-    func(path)
 
 
 @dataclass(frozen=True)
