@@ -133,6 +133,8 @@ def cross_field(doc: Mapping[str, Any]) -> list[str]:
             )  # a backend provider needs the grant, not a name list (ADR-0002)
         if (cap in requested) != listed:
             errors.append(f"$.capabilities: {cap!r} must be requested exactly when {field!r} is non-empty")
+    if caps.get("programs") and "process.spawn" not in requested:  # H1 B-10
+        errors.append("$.capabilities: 'programs' needs 'process.spawn' in 'request'")
     if module.get("license_class") == "proprietary-connector" and module.get("isolation") != "subprocess":
         errors.append("$.module: a proprietary-connector must use isolation = 'subprocess'")
     if update.get("source") == "git" and not (update.get("url") and update.get("ref")):
@@ -212,6 +214,8 @@ class Manifest:
     update_ref: str | None
     optional: frozenset[str] = frozenset()  # requested, but not needed to start (auto activation)
     update_channel: str = "main"  # branch whose head scheduled checks compare with (ADR-0011)
+    # Programs process.spawn may run (bare names); empty means any program (H1 B-10).
+    programs: tuple[str, ...] = ()
 
 
 def _entry_file(directory: Path, entry_module: str) -> Path:
@@ -288,6 +292,7 @@ def load_manifest(path: Path) -> Manifest:
         optional=frozenset(caps.get("optional", ())),
         net_hosts=tuple(caps.get("net_hosts", ())),
         secrets=tuple(caps.get("secrets", ())),
+        programs=tuple(caps.get("programs", ())),
         contributes=MappingProxyType({k: tuple(contributes.get(k, ())) for k in CONTRIBUTION_KINDS}),
         activation=life["activation"],
         idle_stop_seconds=life.get("idle_stop_seconds", 0),

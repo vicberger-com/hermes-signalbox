@@ -47,9 +47,9 @@ def test_h1_b10_a_listed_program_passes_the_policy(
 def test_h1_b10_a_path_in_argv0_is_refused_when_programs_are_listed(
     make_manifest: ManifestFactory, audit: RecordingAudit
 ) -> None:
-    pb = _broker(make_manifest, audit, ["switchyard-demo"])
+    pb = _broker(make_manifest, audit, [Path(sys.executable).stem])
     with pytest.raises(CapabilityDenied, match="bare program name"):
-        pb.run("demo", [str(Path(sys.executable).parent / "switchyard-demo.exe"), "-c", "pass"])
+        pb.run("demo", [sys.executable, "-c", "pass"])
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows program names ignore case and .exe")

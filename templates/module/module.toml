@@ -9,7 +9,7 @@ version = "0.1.0"
 license = "Apache-2.0"
 license_class = "open"            # open | proprietary-connector
 summary = "Template module that shows the full contract and does nothing else."
-requires_core = ">=1.0,<2"        # core versions it runs on; enforced: a mismatch refuses the module
+requires_core = ">=0.1,<1"
 isolation = "in-process"          # in-process (this repository only) | subprocess
 entry = "example:ExampleModule"
 
@@ -17,7 +17,7 @@ entry = "example:ExampleModule"
 # Request the minimum. Each entry must be justified in the module README.
 request = ["ui.panel"]
 net_hosts = []                    # required when "net.outbound" is requested
-# programs = ["tool"]            # with "process.spawn": the only programs it may run (bare names); omit = any, [] = none
+# programs = ["tool"]            # with "process.spawn": the only programs it may run (bare names); omit = any
 secrets = []                      # secret names (never values); required with "secrets.read"
 
 [contributes]

@@ -89,7 +89,7 @@ class _Registration:
     denied: frozenset[str]
     net_hosts: frozenset[str]
     secrets: frozenset[str]
-    programs: frozenset[str] | None = None  # None: no list, any program (H1 B-10); empty: none (S1-4)
+    programs: frozenset[str] = frozenset()  # empty: any program (H1 B-10)
 
 
 def parse_policies(manifest: Manifest) -> frozenset[str]:
@@ -135,9 +135,7 @@ class PolicyEngine:
             denied=parse_policies(manifest),
             net_hosts=frozenset(h.lower() for h in manifest.net_hosts),
             secrets=frozenset(manifest.secrets),
-            programs=None
-            if manifest.programs is None
-            else frozenset(program_key(p) for p in manifest.programs),
+            programs=frozenset(program_key(p) for p in manifest.programs),
         )
         with self._lock:
             self._modules[manifest.id] = reg
@@ -223,22 +221,18 @@ class PolicyEngine:
                 f"module {module_id!r} does not hold capability {capability!r}",
             )
 
-    def _registration(self, module_id: str, capability: str, missing: str, **detail: str) -> _Registration:
-        """``capability`` for ``module_id``, then its registration (H1 A-30: the shared part of the allow-list
-        checks). A module unregistered between the two steps is refused with ``missing`` (H1 A-15)."""
-        self.require(module_id, capability, **detail)
-        with self._lock:
-            reg = self._modules.get(module_id)
-        if reg is None:
-            raise self._deny(module_id, {"capability": capability, **detail}, missing)
-        return reg
-
     def require_host(self, module_id: str, host: str) -> None:
         """``net.outbound`` plus the manifest's host allow-list (case-insensitive, exact match)."""
-        reg = self._registration(
-            module_id, "net.outbound", f"module {module_id!r} is not registered", host=host
-        )
+        self.require(module_id, "net.outbound", host=host)
+        with self._lock:
+            reg = self._modules.get(module_id)
         host = host.lower()
+        if reg is None:  # unregistered between the two checks (H1 A-15)
+            raise self._deny(
+                module_id,
+                {"capability": "net.outbound", "host": host},
+                f"module {module_id!r} is not registered",
+            )
         bare = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
         if host not in reg.net_hosts and bare not in reg.net_hosts:  # a bare entry allows any port
             raise self._deny(
@@ -252,18 +246,17 @@ class PolicyEngine:
         ``argv[0]`` must be a bare name (found on PATH), so a module cannot run its own file named like a
         listed program. Without one, any program runs, as the grant prompt says."""
         program = os.path.basename(argv0.replace("\\", "/"))
-        missing = f"module {module_id!r} is not registered"
-        reg = self._registration(module_id, "process.spawn", missing, program=program)
-        if reg.programs is None:
-            return
-        if (
-            not argv0.isascii()
-        ):  # 1.1 acceptance S1-5: case folding maps some non-ASCII letters onto ASCII ones
+        self.require(module_id, "process.spawn", program=program)
+        with self._lock:
+            reg = self._modules.get(module_id)
+        if reg is None:  # unregistered between the two checks (H1 A-15)
             raise self._deny(
                 module_id,
                 {"capability": "process.spawn", "program": program},
-                f"module {module_id!r} must name a listed program in ASCII",
+                f"module {module_id!r} is not registered",
             )
+        if not reg.programs:
+            return
         if program != argv0:
             raise self._deny(
                 module_id,
@@ -279,7 +272,12 @@ class PolicyEngine:
 
     def require_secret(self, module_id: str, name: str) -> None:
         """``secrets.read`` plus the manifest's secret-name allow-list."""
-        refused = f"module {module_id!r} may not read secret {name!r}"
-        reg = self._registration(module_id, "secrets.read", refused, secret=name)
-        if name not in reg.secrets:
-            raise self._deny(module_id, {"capability": "secrets.read", "secret": name}, refused)
+        self.require(module_id, "secrets.read", secret=name)
+        with self._lock:
+            reg = self._modules.get(module_id)
+        if reg is None or name not in reg.secrets:  # None: unregistered between the two checks (H1 A-15)
+            raise self._deny(
+                module_id,
+                {"capability": "secrets.read", "secret": name},
+                f"module {module_id!r} may not read secret {name!r}",
+            )

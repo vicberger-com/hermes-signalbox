@@ -153,6 +153,8 @@ def _module_show(core: Core, p: dict[str, Any], actor: str) -> Any:
         "contributes": {k: list(v) for k, v in manifest.contributes.items()},
         "net_hosts": list(manifest.net_hosts),
         "secrets": list(manifest.secrets),
+        # H1 B-10: what process.spawn may run; "any" is the blanket grant the prompt must show.
+        "programs": (list(manifest.programs) or "any") if "process.spawn" in manifest.requested else [],
         "panels": core.panels.panels(p["id"]),
     }
 
