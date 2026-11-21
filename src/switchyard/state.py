@@ -34,6 +34,7 @@ MAX_KV_KEY_CHARS = 128
 _TABLE_ACTIONS = frozenset(
     {sqlite3.SQLITE_READ, sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE}
 )
+_QUOTA = "storage quota"
 _DENIED_FUNCTIONS = frozenset({"load_extension", "readfile", "writefile", "edit", "fts3_tokenizer"})
 
 Migration = tuple[int, str]
@@ -77,6 +78,16 @@ def _check_name(kind: str, name: str) -> None:
 PROGRESS_EVERY = 1000
 MAX_WORK_STEPS = 10_000
 MAX_ROWS = 10_000
+# Storage bounds (H1 A-25). One value (a column value or a kv value) is at most MAX_VALUE_BYTES: SQLite's
+# own length limit while a module statement runs, so functions such as zeroblob() cannot exceed it either.
+# A module holds at most MAX_TABLES_PER_MODULE tables and MODULE_QUOTA_BYTES in tables plus kv rows. Usage is
+# measured when a module writes after the database file grew by QUOTA_CHECK_GROWTH since its last check
+# (PRAGMA page_count is cheap; the measurement is not), and on every create_table. Over the quota, inserts,
+# updates and kv writes are refused until the module deletes data (deleting is allowed and rechecks at once).
+MAX_VALUE_BYTES = 4 * 1024 * 1024
+MAX_TABLES_PER_MODULE = 64
+MODULE_QUOTA_BYTES = 256 * 1024 * 1024
+QUOTA_CHECK_GROWTH = 1024 * 1024
 
 
 class StateStore:
@@ -93,6 +104,8 @@ class StateStore:
         self._lock = threading.RLock()
         self._local = threading.local()
         self._busy_ms = BUSY_TIMEOUT_MS
+        self._checked_at: dict[str, int] = {}  # database size (bytes) at each module's last usage check
+        self.over_quota: set[str] = set()
         self._conn = sqlite3.connect(str(path), isolation_level=None, check_same_thread=False)
         try:
             for pragma in (
@@ -103,6 +116,11 @@ class StateStore:
         except BaseException:  # H1 A-10: a failed open does not leave the connection behind
             self._conn.close()
             raise
+        try:  # dbstat gives exact page usage; not every SQLite build has it
+            self._conn.execute("SELECT 1 FROM dbstat LIMIT 1").fetchall()
+            self._dbstat = True
+        except sqlite3.Error:
+            self._dbstat = False
 
     # wait budgets -------------------------------------------------------------------------------------
 
@@ -198,6 +216,56 @@ class StateStore:
 
     # modules ------------------------------------------------------------------------------------------
 
+    # storage quota (H1 A-25) ----------------------------------------------------------------------------
+
+    def module_tables(self, prefix: str) -> list[str]:
+        rows = self.core_query(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND substr(name, 1, ?) = ?",
+            (len(prefix), prefix),
+        )
+        return [name for (name,) in rows if _owned(name[len(prefix) :])]
+
+    def usage_bytes(self, module_id: str) -> int:
+        """Bytes a module stores: its tables (dbstat pages, else summed value lengths) plus its kv rows."""
+        tables = self.module_tables(f"m_{module_id}__")
+        total = 0
+        with self._locked():
+            if tables and self._dbstat:
+                marks = ", ".join("?" * len(tables))  # only "?" placeholders are formatted in
+                inner = f"SELECT name FROM sqlite_master WHERE tbl_name IN ({marks})"  # noqa: S608 # nosec B608
+                sql = f"SELECT coalesce(sum(pgsize), 0) FROM dbstat WHERE name IN ({inner})"  # noqa: S608 # nosec
+                total += self._conn.execute(sql, tables).fetchone()[0]
+            else:
+                for table in tables:  # names are module-owned and matched _NAME; quoted
+                    cols = [r[1] for r in self._conn.execute(f'PRAGMA table_info("{table}")')]
+                    expr = " + ".join(f'coalesce(length(CAST("{c}" AS BLOB)), 0)' for c in cols) or "0"
+                    sql = f'SELECT coalesce(sum({expr}), 0) FROM "{table}"'  # noqa: S608 # nosec B608
+                    total += self._conn.execute(sql).fetchone()[0]
+            total += self._conn.execute(
+                "SELECT coalesce(sum(length(key) + length(value)), 0) FROM kv WHERE module_id = ?",
+                (module_id,),
+            ).fetchone()[0]
+        return int(total)
+
+    def _db_bytes(self) -> int:
+        with self._locked():
+            pages = self._conn.execute("PRAGMA page_count").fetchone()[0]
+            size = self._conn.execute("PRAGMA page_size").fetchone()[0]
+        return int(pages) * int(size)
+
+    def check_quota(self, module_id: str, *, force: bool = False) -> None:
+        """After a module writes: measure its usage when forced, while it is over the quota (so a delete frees
+        it at once), or when the database grew by QUOTA_CHECK_GROWTH since its last check."""
+        size = self._db_bytes()
+        last = self._checked_at.setdefault(module_id, size)
+        if not force and module_id not in self.over_quota and size - last < QUOTA_CHECK_GROWTH:
+            return
+        self._checked_at[module_id] = size
+        if self.usage_bytes(module_id) > MODULE_QUOTA_BYTES:
+            self.over_quota.add(module_id)
+        else:
+            self.over_quota.discard(module_id)
+
     def module(self, module_id: str) -> ModuleState:
         _check_module_id(module_id)
         return ModuleState(self, module_id)
@@ -212,13 +280,22 @@ class StateStore:
         with self._locked():
             self._conn.set_authorizer(authorizer)
             self._conn.set_progress_handler(progress, PROGRESS_EVERY)
+            length = self._conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, MAX_VALUE_BYTES)  # H1 A-25
+            changes = self._conn.total_changes
+            self._local.changed = False
             try:
                 rows = self._conn.execute(sql, params).fetchmany(MAX_ROWS + 1)
+                self._local.changed = self._conn.total_changes != changes
+            except sqlite3.DataError as exc:
+                raise StateError(f"module value too large (limit {MAX_VALUE_BYTES} bytes): {exc}") from None
             except sqlite3.OperationalError as exc:
                 if budget[0] > MAX_WORK_STEPS:
                     raise StateError("module query exceeded its work budget") from None
+                if "too big" in str(exc).lower():
+                    raise StateError(f"module value too large (limit {MAX_VALUE_BYTES} bytes)") from None
                 raise StateError(f"module query failed: {exc}") from None
             finally:
+                self._conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, length)
                 self._conn.set_progress_handler(None, 0)
                 self._conn.set_authorizer(None)
         if len(rows) > MAX_ROWS:
@@ -278,6 +355,9 @@ class ModuleState:
         full = self.table(name)
         if not columns:
             raise StateError("a table needs at least one column")
+        existing = self._store.module_tables(self._prefix)
+        if full not in existing and len(existing) >= MAX_TABLES_PER_MODULE:  # H1 A-25
+            raise StateError(f"module {self._id!r} may have at most {MAX_TABLES_PER_MODULE} tables")
         names = []
         for col, kind in columns:
             _check_name("column", col)
@@ -292,12 +372,16 @@ class ModuleState:
             parts.append("PRIMARY KEY (" + ", ".join(f'"{c}"' for c in primary_key) + ")")
         ddl = f'CREATE TABLE IF NOT EXISTS "{full}" ({", ".join(parts)}) STRICT'
         self._store.core_execute(ddl)
+        self._store.check_quota(self._id, force=True)
 
     def _authorize(
         self, action: int, arg1: str | None, arg2: str | None, db: str | None, _src: str | None
     ) -> int:
         if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_RECURSIVE):
             return sqlite3.SQLITE_OK
+        if action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE) and self._id in self._store.over_quota:
+            self._denied = _QUOTA  # H1 A-25: deleting stays allowed
+            return sqlite3.SQLITE_DENY
         if action in _TABLE_ACTIONS:
             # count(*) reads with db=None; ATTACH is denied, so that can only be main.
             main = db == "main" or (db is None and action == sqlite3.SQLITE_READ and arg2 == "")
@@ -320,11 +404,28 @@ class ModuleState:
         """Run one statement on this module's tables. Returns all result rows."""
         self._denied = None
         try:
-            return self._store._run_confined(self._authorize, sql, params)
-        except (sqlite3.Error, sqlite3.Warning) as exc:
+            rows = self._store._run_confined(self._authorize, sql, params)
+        except (sqlite3.Error, sqlite3.Warning, StateError) as exc:
+            if self._denied == _QUOTA:
+                raise self._quota_error() from None
+            if isinstance(exc, StateError):
+                raise
             if self._denied is not None:
                 raise StateError(f"module {self._id!r}: access denied to {self._denied}") from None
             raise StateError(f"module {self._id!r}: statement not allowed: {exc}") from None
+        if getattr(self._store._local, "changed", False):
+            self._store.check_quota(self._id)
+        return rows
+
+    def _quota_error(self) -> StateError:
+        return StateError(
+            f"module {self._id!r} reached its storage quota ({MODULE_QUOTA_BYTES // (1024 * 1024)} MiB); "
+            "delete data to write again"
+        )
+
+    def usage_bytes(self) -> int:
+        """Bytes this module stores (tables and kv rows); the quota is MODULE_QUOTA_BYTES."""
+        return self._store.usage_bytes(self._id)
 
     def kv_get(self, key: str, default: Any = None) -> Any:
         rows = self._store.core_query("SELECT value FROM kv WHERE module_id = ? AND key = ?", (self._id, key))
@@ -337,11 +438,16 @@ class ModuleState:
             text = json.dumps(value, separators=(",", ":"))
         except (TypeError, ValueError) as exc:
             raise StateError(f"kv value is not JSON-serialisable: {exc}") from None
+        if len(text.encode("utf-8")) > MAX_VALUE_BYTES:  # H1 A-25
+            raise StateError(f"kv value is larger than {MAX_VALUE_BYTES} bytes")
+        if self._id in self._store.over_quota:
+            raise self._quota_error()
         self._store.core_execute(
             "INSERT INTO kv (module_id, key, value) VALUES (?, ?, ?) "
             "ON CONFLICT (module_id, key) DO UPDATE SET value = excluded.value",
             (self._id, key, text),
         )
+        self._store.check_quota(self._id)
 
     def drop_all(self) -> None:
         """Remove every table and kv row this module owns (uninstall without ``--keep-data``)."""

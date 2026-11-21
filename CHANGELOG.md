@@ -101,6 +101,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Hermes config writes (the activation module's `skills.disabled`) now hold a lock shared by every Switchyard
   process, and a rollback no longer overwrites a change someone else made after Switchyard's write; the error
   and the `hermes.config.rollback` record say `skipped` in that case (H1 C-17 #115).
+- Module storage is bounded (H1 A-25 #93): one stored value is at most 4 MiB, a module has at most 64 tables,
+  and a module's tables plus key/value rows are capped at 256 MiB. Over the cap a module can still read and
+  delete, but its inserts, updates and `kv_set` fail with a "storage quota" error until it deletes data.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

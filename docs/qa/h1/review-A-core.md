@@ -42,7 +42,7 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 | A-22 | Low | confirmed-by-reading | context.py:424-436; lifecycle.py:326-331 | `ModuleContext.close()` is not exception-safe: a raise early on skips secret-backend and bridge cleanup. |
 | A-23 | — | — | — | Withdrawn during review: not a finding (see the note under Details). |
 | A-24 | Low | confirmed-by-reading | secrets.py:116-127 | Redactor value set grows without bound and is never cleared; each `redact()` scans every value. |
-| A-25 | Low | - | - | withheld until fixed (#93) |
+| A-25 | Low | confirmed-by-reading | state.py:263-286 | No storage quota for module tables or kv. A module can grow `state.db` until disk fills. |
 | A-26 | Info | confirmed-by-reading | capabilities.py:170; m0-core.md §4 | `policy.denied` is listed as an event in the docs; it is only audited, never published to the bus. |
 | A-27 | Info | confirmed-by-reading | context.py:242 | `ModuleContext.audit` truncates keys to 64 and values to 256 chars silently; two long keys with a common prefix collide. |
 | A-28 | Info | confirmed-by-reading | state.py:229; m0-core.md §6 | Docs say CTEs are refused by the authorizer. Code allows `SQLITE_RECURSIVE`. Cost is still bounded by the work budget (P06b: 0.08 s) and the row cap. Docs need fixing. |
@@ -209,7 +209,11 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 - Fix: bounded LRU of recent values, or clear on `remove_backends`.
 - Fixed in 1.1 (#92): bounded LRU of 256 values, and a removed backend's values are forgotten.
 
-**A-25 · Low**: withheld until #93 is closed.
+**A-25 · Low · confirmed-by-reading · state.py:205-224, 263-274**
+- Wrong: `execute` (INSERT), `kv_set` and `create_table` have no size or count limit.
+- Impact: a module can grow `state.db` until the disk fills. The work budget bounds CPU per statement, not storage.
+- Fix: per-module quota checked on write, or a documented cap.
+- Fixed in 1.1 (#93): values are capped at 4 MiB with SQLite's length limit during module statements (which also covers `zeroblob`/`randomblob`) and in `kv_set`. A module may have at most 64 tables and 256 MiB over its tables and kv rows. Usage is measured with dbstat, or summed lengths where dbstat is missing, on `create_table` and after each 1 MiB of database growth. Over the quota, inserts, updates and kv writes are refused until the module deletes data.
 
 **A-26 · Info · confirmed-by-reading · capabilities.py:170; m0-core.md §4**
 - The docs list `policy.denied` among the events. `PolicyEngine` has no bus reference, so the event is only audited. Either publish it or fix the docs.
