@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from switchyard.capabilities import CORE_ACTOR, AuditSink
-from switchyard.errors import ManifestError, UpdateError
+from switchyard.errors import ManifestError, SwitchyardError, UpdateError
 from switchyard.lifecycle import ModuleManager, ModuleStatus
 from switchyard.manifest import Manifest, load_manifest
 from switchyard.process import find_runnable
@@ -410,6 +410,16 @@ class UpdateController:
         delta: dict[str, Any], notes: str,
     ) -> UpdateResult:  # fmt: skip
         stage_root = stage.parent
+        # Staging and the checks above ran without the core lock (H1 B-2). Under it, refuse if the installed
+        # module is no longer the one they compared against (replaced or removed meanwhile).
+        try:
+            unchanged = self._installed(module_id) == current and self._manager.manifest(module_id) == old
+        except SwitchyardError:
+            unchanged = False
+        if not unchanged:
+            reason = "the installed module changed while the update was staged; refused"
+            self._record("module.update_rejected", module_id, actor, ref=ref, reason=reason)
+            raise UpdateError(f"{reason}; run the update again")
         was_active = self._manager.info(module_id).status is ModuleStatus.ACTIVE
         previous = stage_root / f"previous-{old.version}-{time.strftime('%Y%m%dT%H%M%S')}-{time.time_ns()}"
         prior_ref = self.installed_ref(module_id)

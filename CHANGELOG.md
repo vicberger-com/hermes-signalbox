@@ -4,7 +4,24 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-20
+
+Maintenance release from phase H1: fixes for the 2026-11-20 evaluation of v1.0.0 (every High and Medium
+finding; index in `docs/qa/h1/findings-index.md`).
+
+### Upgrading from 1.0.0
+- `module activate` refuses (exit 3, `policy.denied` audited) until every required capability is granted;
+  grant them first (`switchyard module show <id>` lists them under `missing_grants`). The model may start only modules in `auto` mode.
+- A delegated persona model with no registered cost is treated as paid: register its cost to keep it free.
+- An explicit `--data-dir` (or the plugin's configured directory) now wins over `SWITCHYARD_DATA_DIR`.
+- Modules from outside the bundled roots must run as subprocess (T2) modules; in-process is bundled-only.
+- A grant whose capability a module's manifest no longer requests is removed (audited `policy.revoked`).
+- A module whose hooks time out 3 times is paused for 60 seconds (`module.hooks_paused`); an expired
+  activation preset ends at the next turn.
+
 ### Security
+- Module updates: the swap step re-checks, under the core lock, that the installed module is still the one
+  that was staged and compared; otherwise the update is refused and audited (phase-close review CR-1).
 - Release workflow (H1 D-3): a `verify` job re-runs the full gate and checks that the tag is an annotated tag on
   `main` matching the project version; the release job needs it. Release notes come from this file.
 - Router: H1 C-1, C-4, C-8 (ADR-0013). A route that misses the bridge deadline fails closed: a remembered
@@ -414,7 +431,8 @@ Repository bootstrap (phase P0). No runtime code.
 - Tooling is installed from a hash-pinned `requirements-dev.txt`; `ci-required` and `security-required` gate jobs added.
 - Secret scanning runs the pinned gitleaks CLI. Repository moved to the `vicberger-com` organization.
 
-[Unreleased]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.13.0...v1.0.0
 [0.13.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.11.0...v0.12.0
