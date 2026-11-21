@@ -308,11 +308,10 @@ def run_action(
         if not isinstance(value, kind) or (kind is int and isinstance(value, bool)):
             raise UsageError(f"argument {name!r} must be {kind.__name__}")
         args[name] = value
-    _check_arguments(action, args)
-    if audit:
+    if audit:  # before argument binding, so a refused call is recorded too (as in 1.0; 1.1 acceptance S3-5)
         detail = {"action": action.name, **(audit_detail or {})}
         core.audit.append(actor=actor, action="module.action", module=p["id"], detail=detail)
-    result = call_action_handler(action, args)
+    result = call_action_handler(action, args)  # binds the arguments first (H1 B-25)
     try:
         json.dumps(result)
     except (TypeError, ValueError):

@@ -177,7 +177,8 @@ with no exception context, and the value is deleted from the frame before any ra
 `ctx.secrets` returns `ModuleSecrets` (broker bound to the module, via a `for_module` hook on brokers). `Redactor`
 masks registered values (>= 4 chars, longest first) and default credential shapes (OpenAI/Anthropic `sk-`, GitHub
 `ghp_`/`github_pat_`, AWS `AKIA`, Slack `xox?-`, bearer tokens). `MemoryBackend` is test-only (refuses without `allow_test_backend=True`).
-The redactor remembers the 256 most recently used secret values (`MAX_REDACT_VALUES`) and forgets a backend's
+The redactor remembers the 16 384 most recently used secret values (`MAX_REDACT_VALUES`; 256 before the 1.1
+acceptance review) and forgets a backend's
 values when the module that provided it is deactivated; credential-shape patterns apply regardless.
 
 ### Host profiler

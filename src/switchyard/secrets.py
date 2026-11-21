@@ -32,7 +32,7 @@ _NAME = re.compile(r"[a-z][a-z0-9_.-]{0,63}\Z")
 MIN_REDACT_CHARS = 4
 # Distinct secret values the redactor remembers (H1 A-24). Least recently used values drop out first; a value
 # is refreshed each time it is used, and a removed backend's values are forgotten at once.
-MAX_REDACT_VALUES = 256
+MAX_REDACT_VALUES = 16384  # was 256 before the 1.1 acceptance review (S2-5)
 MASK = "[REDACTED]"
 
 # Common credential shapes, redacted even when the value was never registered (defence in depth).
