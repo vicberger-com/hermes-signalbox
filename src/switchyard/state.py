@@ -253,14 +253,14 @@ class StateStore:
         with self._locked():
             if tables and self._dbstat:
                 marks = ", ".join("?" * len(tables))  # only "?" placeholders are formatted in
-                inner = f"SELECT name FROM sqlite_master WHERE tbl_name IN ({marks})"  # noqa: S608
+                inner = f"SELECT name FROM sqlite_master WHERE tbl_name IN ({marks})"  # noqa: S608 # nosec B608
                 sql = f"SELECT coalesce(sum(pgsize), 0) FROM dbstat WHERE name IN ({inner})"  # noqa: S608 # nosec
                 total += self._conn.execute(sql, tables).fetchone()[0]
             else:
                 for table in tables:  # names are module-owned and matched _NAME; quoted
                     cols = [r[1] for r in self._conn.execute(f'PRAGMA table_info("{table}")')]
                     expr = " + ".join(f'coalesce(length(CAST("{c}" AS BLOB)), 0)' for c in cols) or "0"
-                    sql = f'SELECT coalesce(sum({expr}), 0) FROM "{table}"'  # noqa: S608
+                    sql = f'SELECT coalesce(sum({expr}), 0) FROM "{table}"'  # noqa: S608 # nosec B608
                     total += self._conn.execute(sql).fetchone()[0]
             total += self._conn.execute(
                 "SELECT coalesce(sum(length(key) + length(value)), 0) FROM kv WHERE module_id = ?",
