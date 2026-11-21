@@ -181,12 +181,14 @@ def test_dashboard_backend_proxy(core: Core, monkeypatch: pytest.MonkeyPatch, tm
         def get(self, path: str) -> Any:
             return self._add("GET", path)
 
-        def post(self, path: str) -> Any:
+        def post(self, path: str, dependencies: Any = None) -> Any:
             return self._add("POST", path)
 
     fake = types.ModuleType("fastapi")
     fake.APIRouter = Router  # type: ignore[attr-defined]
     fake.HTTPException = HTTPException  # type: ignore[attr-defined]
+    fake.Depends = lambda fn: fn  # type: ignore[attr-defined]
+    fake.Request = object  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "fastapi", fake)
     spec = importlib.util.spec_from_file_location("sy_dashboard_api", ROOT / "dashboard" / "plugin_api.py")
     assert spec and spec.loader

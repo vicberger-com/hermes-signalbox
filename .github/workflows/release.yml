@@ -45,7 +45,7 @@ jobs:
         env:
           SWITCHYARD_CHECK_SKIPS: "1"
         run: python -m pytest -rs
-      - run: bandit -q -r src tools templates -x '*/tests/*'
+      - run: bandit -q -r src tools templates dashboard -x '*/tests/*'
       - run: python -m build --no-isolation --outdir dist
       - run: python tools/check_dist.py dist
       - run: python tools/release_notes.py "$GITHUB_REF_NAME" > release-notes.md

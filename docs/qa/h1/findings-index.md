@@ -82,7 +82,7 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | C-15 | Low | secrets | H1 should | WP6 | see [review C](review-C-modules.md) | fixed in #83 |
 | C-16 | Low | activation | H1 should | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
 | C-17 | Low | config | Backlog 1.1 | - | private until fixed | backlog #115 |
-| C-18 | Info | dashboard | Backlog 1.1 | - | private until fixed | backlog #116 |
+| C-18 | Info | dashboard | Backlog 1.1 | 1.1 | see [review C](review-C-modules.md) | fixed in #146 (backlog #116) |
 | D-1 | High | USER-GUIDE.md, README.md | H1 must | WP2 | Guide's first module activation fails: `router` also needs `ui.panel`, which the guide never grants | fixed in #79 |
 | D-2 | High | process.py, updates.py | H1 must | WP4 | On Windows the core picks Hermes Desktop's packaged git (WindowsApps), which this process cannot run; git-based update features are disabled here | fixed in #81 |
 | D-3 | High | release.yml, CONTRIBUTING.md | H1 must | WP3 | Release publishes from any `v*.*.*` tag with no test gate or CI-green check; tags are not signed though CONTRIBUTING says "signed"; guide pins pip to a movable tag | fixed in #80 (adapted) |
@@ -104,7 +104,7 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | D-19 | Low | REFERENCE.md | H1 should | WP10 | REFERENCE.md says "Generated from the code" but no generator exists; it omits `--json`, `--data-dir`, `backup/`, `trigger.fired`, and never defines status values | fixed in #87 |
 | D-20 | Low | __init__.py | H1 should | WP2 | `switchyard_modules` tool description advertises `deactivate`; its enum excludes it, as the CHANGELOG says | fixed in #79 |
 | D-21 | Low | local .venv metadata (read only) | No action: local environment only; fixed 2026-11-20 | - | Local `C:/Users/Vic/src/hermes-switchyard/.venv` reports `hermes-switchyard 0.0.1` (stale editable install); CI installs fresh and is unaffected | no action |
-| D-22 | Low | ci.yml | Backlog 1.1 | - | Dashboard JS/CSS is committed with no source or build; `plugin_api.py` is outside mypy, bandit and any test that uses real FastAPI | backlog #117 |
+| D-22 | Low | ci.yml | Backlog 1.1 | 1.1 | Dashboard JS/CSS is committed with no source or build; `plugin_api.py` is outside mypy, bandit and any test that uses real FastAPI | fixed in #146 (backlog #117) |
 | D-23 | Low | ci.yml, test_r1_hardening.py, test_state.py | H1 should | WP3 | CI runs only 3.11 and 3.13; 3.14 passes locally but emits 10 ResourceWarnings from unclosed SQLite connections in tests | fixed in #80 |
 | D-24 | Low | CHANGELOG.md, release.yml | H1 should | WP3 | Release notes are auto-generated from PR titles, not from the CHANGELOG entry; CHANGELOG has no compare links | fixed in #80 |
 | D-25 | Low | pyproject.toml | H1 should | WP3 | `build-system` requires `hatchling` unpinned; the lock pins 1.33.0; isolated builds (pip default) get whatever is latest | fixed in #80 |

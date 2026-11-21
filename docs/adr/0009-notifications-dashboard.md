@@ -16,7 +16,9 @@ Status: accepted, 2026-11-20. Phase: M9. Q&A: [10-m9-prework.md](../qa/10-m9-pre
    Module ids `core`, `hermes`, `api`, `cli`, `switchyard`, `dashboard` are reserved.
 5. The dashboard tab (`dashboard/`) is plain JS against the Hermes plugin SDK. Its backend (`plugin_api.py`) is
    a proxy with a fixed list of operations to the control API. Grants, installs and config changes are not
-   offered in the dashboard.
+   offered in the dashboard. Its writes sit behind Hermes's dashboard auth (session header, or `SameSite=Lax`
+   cookies with a `Sec-Fetch-Site` check) and also refuse a write the browser marks as another page's
+   (1.1, H1 C-18).
 
 ## Consequences
 

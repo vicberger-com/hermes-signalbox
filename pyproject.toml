@@ -81,7 +81,19 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src", "tools", "templates/module/example.py"]
+files = ["src", "tools", "templates/module/example.py", "dashboard/plugin_api.py"]
 # The repository root carries a Hermes plugin shim (__init__.py); map packages from these bases instead.
 explicit_package_bases = true
-mypy_path = ["src", "tools", "templates/module"]
+mypy_path = ["src", "tools", "templates/module", "dashboard"]
+
+# dashboard/plugin_api.py runs inside Hermes, which provides FastAPI and plugins.plugin_storage; neither is in
+# the dev lock (H1 D-22). Their types come from Hermes, so here they are untyped and so are the route
+# decorators; the function bodies are still checked strictly. Its routes run under real FastAPI in
+# tests/integration (the hermes-integration CI job).
+[[tool.mypy.overrides]]
+module = ["fastapi", "fastapi.*", "plugins", "plugins.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["plugin_api"]
+disallow_untyped_decorators = false

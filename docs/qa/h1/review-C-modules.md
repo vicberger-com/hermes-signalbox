@@ -30,7 +30,7 @@ Hermes API facts were checked against the installed v0.23.2 source (`hermes_cli/
 | C-15 | Low | suspected (not checked live) | secrets | `bw get` output is returned without stripping; a trailing newline would reach the caller. |
 | C-16 | Low | confirmed-by-reading | activation | Read paths write Hermes config: `health()` and `on_turn` can expire and undo a preset. |
 | C-17 | Low | - | - | withheld until fixed (#115) |
-| C-18 | Info | - | - | withheld until fixed (#116) |
+| C-18 | Info | not checked | dashboard | Dashboard POST routes can deactivate the router (hard stop). This is by ADR-0009. Hermes CSRF or header enforcement on these routes was not traced. |
 
 Counts: Critical 0, High 1, Medium 7, Low 9, Info 1 (18 findings).
 
@@ -185,9 +185,12 @@ Withheld until #114 is closed.
 
 Withheld until #115 is closed.
 
-### C-18 (Info)
+### C-18 (Info): dashboard can deactivate the router
 
-Withheld until #116 is closed.
+- **Where:** `dashboard/plugin_api.py:76-80` (`POST /modules/{id}/{verb}` with `activate` or `deactivate`). `dashboard/dist/index.js` (the Modules table button calls the same route). ADR-0009 §4 allows it.
+- **Not checked:** whether Hermes requires the session header on these POST routes. The HTTP gate in `hermes_cli/web_server_dashboard.py` and `plugin_host.py` was not traced to the end. The bundled JS uses `SDK.fetchJSON`, which other bundled plugins also use. Please confirm that CSRF-prone cookie auth is not used.
+- **Checked in 1.1 (#116), against Hermes v0.23.3:** loopback mode requires `X-Hermes-Session-Token` on every `/api/` request (`web_server.py` `auth_middleware`); a page on another site cannot set that header without a CORS preflight, which is not allowed. Behind the OAuth gate, session cookies are `SameSite=Lax` (`dashboard_auth/cookies.py`), and `dashboard_auth/middleware.py` `_cookie_write_refusal` answers 403 to any non-GET cookie request whose `Sec-Fetch-Site` is `same-site` or `cross-site`; `/api/plugins/` is not on the gate's public list. So cookie CSRF is refused in both modes.
+- **Fixed in 1.1 (#116):** `plugin_api.py` repeats the `Sec-Fetch-Site` refusal on its three POST routes (`_own_page_only`), so it does not depend on Hermes keeping that gate. Tested under real FastAPI in `tests/integration/test_dashboard_api.py`.
 
 ## Done well
 
@@ -217,7 +220,7 @@ Withheld until #116 is closed.
 ## Not checked
 
 - `core.py`, `state.py`, `audit.py`, `api.py` and `updates.py` beyond the lines cited. `state.table()` naming was not read.
-- An item for withheld finding C-18.
+- The dashboard HTTP gate on POST routes (C-18) was not traced in the H1 review; it was traced in 1.1 (see C-18).
 - The offload CLI flags (`claude --tools ""`, `codex --sandbox read-only`) against the installed CLIs.
 - Real `wincred`, `bw` and `secret-tool` behaviour (C-15). The ctypes path was not run.
 - An item for withheld finding C-14.
