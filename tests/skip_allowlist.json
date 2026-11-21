@@ -1,6 +1,7 @@
 {
   "_comment": "Tests expected to skip on each platform (H1 D-12). CI sets SWITCHYARD_CHECK_SKIPS=1 and fails when the skipped set differs. Update this file in the same pull request that adds or removes a platform skip.",
   "win32": [
+    "tests/core/test_1_1_api_server.py::test_h1_b17_posix_mode_is_user_only_before_the_write",
     "tests/core/test_audit.py::test_files_are_user_only",
     "tests/core/test_fsread.py::test_device_files_are_refused",
     "tests/core/test_logs_panels.py::test_log_files_are_user_only",
@@ -8,11 +9,13 @@
     "tests/modules/test_secrets.py::test_wincred_is_locked_off_windows"
   ],
   "linux": [
+    "tests/core/test_1_1_api_server.py::test_h1_b17_windows_acl_is_applied_to_an_empty_file",
     "tests/core/test_api.py::test_token_file_acl_is_user_only_on_windows",
     "tests/core/test_h1_core_trust.py::test_h1_a3_junction_package_does_not_run",
     "tests/modules/test_secrets.py::test_wincred_round_trip_on_windows"
   ],
   "darwin": [
+    "tests/core/test_1_1_api_server.py::test_h1_b17_windows_acl_is_applied_to_an_empty_file",
     "tests/core/test_api.py::test_token_file_acl_is_user_only_on_windows",
     "tests/core/test_h1_core_trust.py::test_h1_a3_junction_package_does_not_run",
     "tests/modules/test_secrets.py::test_wincred_round_trip_on_windows"

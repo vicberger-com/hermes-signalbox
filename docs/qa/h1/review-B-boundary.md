@@ -18,7 +18,7 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-4 | Low | confirmed-by-probe | logs | logs.py:59, 64-71 | Long event names make log lines invalid JSON |
 | B-5 | Low | - | - | - | withheld until fixed (#98) |
 | B-6 | Low | confirmed-by-probe (acceptance); device behaviour suspected | fs.read | fsread.py:38-49, 68-70 | Device-name screen misses superscript aliases (COM¹, LPT³) and trailing-colon names |
-| B-7 | Low | - | - | - | withheld until fixed (#100) |
+| B-7 | Low | confirmed-by-probe | API | api.py:98-101, 244-260 | One thread per connection, no cap; 40 stalled sockets gave 42 threads |
 | B-8 | Low | confirmed-by-reading | API client | api.py:301-334; cli.py:119-128 | Stale api.port/api.token trusted; the CLI sends the bearer token to whatever answers |
 | B-9 | Low | confirmed-by-reading | CLI/API | api.py:319-322; cli.py:119-128 | Transport error after the request was sent, then offline re-run of the operation (possible double execution) |
 | B-10 | Low | - | - | - | withheld until fixed (#103) |
@@ -28,7 +28,7 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-14 | Low | confirmed-by-reading | RPC | rpc.py:162-167; host_t2.py:126-148 | Send time is outside the call deadline; a call can run about 2x the documented limit |
 | B-15 | Low | - | - | - | withheld until fixed (#106) |
 | B-16 | Low | - | - | - | withheld until fixed (#107) |
-| B-17 | Low | - | - | - | withheld until fixed (#108) |
+| B-17 | Low | confirmed-by-reading | API | api.py:57-67 | Token written before the Windows ACL is restricted (window in a shared data dir) |
 | B-18 | Low | - | - | - | withheld until fixed (#109) |
 | B-19 | Low | - | - | - | withheld until fixed (#110) |
 | B-20 | Info | confirmed-by-probe | API | api.py:162-165 | PUT/PATCH/DELETE/OPTIONS reply 501 without the Host or Origin check |
@@ -110,9 +110,13 @@ Withheld until #98 is closed.
 - **Suggested test:** a parametrised test over the names above, asserting refusal.
 - Fixed in 1.1 (#99): each component is reduced to the name Windows matches (before any `:` and the first `.`, trailing spaces and dots dropped, superscript digits as digits) before the device-name check. Alternate data streams stay allowed.
 
-### B-7 (Low)
-
-Withheld until #100 is closed.
+### B-7 (Low), API has no connection cap; one thread per socket
+- **Location:** `api.py:98-101` (`timeout = SOCKET_TIMEOUT_S`), `api.py:244-248` (`ThreadingHTTPServer`), `api.py:259-260` (`daemon_threads = True`).
+- **Evidence:** probe p2, 40 sockets sending a partial request and stalling: `threads before=2 during=42`. The health check still answered: `(200, ...) in 0.02s`.
+- **Impact:** any local process can exhaust threads. The 10 s limit is per read, so a slow drip keeps a thread indefinitely. This is local and same-user-scoped, hence Low.
+- **Fix:** bound concurrent handlers (a semaphore, or `ThreadPoolExecutor` with a queue cap) and add a total deadline for the request head.
+- **Suggested test:** open 100 stalled sockets and assert the server still serves a health check and the thread count stays bounded.
+- Fixed in 1.1 (#100): at most 16 handler threads (further connections closed at once) and a 10 s deadline for the whole request.
 
 ### B-8 (Low), stale API files trusted; bearer token sent to whatever answers
 - **Location:** `api.py:288-292` (files removed only on clean `shutdown`), `api.py:301-307` (`from_data_dir` reads port and token), `api.py:309-334` (`request` sends `Authorization: Bearer` to `127.0.0.1:<port>` and does not check the server's identity).
@@ -168,9 +172,11 @@ Withheld until #106 is closed.
 
 Withheld until #107 is closed.
 
-### B-17 (Low)
-
-Withheld until #108 is closed.
+### B-17 (Low), token written before the Windows ACL is applied
+- **Location:** `api.py:57-67` (`os.write` at line 61, `_restrict_windows_acl` at line 67).
+- **Impact:** for the default user-only profile directory this does not matter. For `SWITCHYARD_DATA_DIR` on a shared folder, the token is readable briefly. If icacls fails, the file is removed (fail closed), but the bytes were already on disk.
+- **Fix:** create the file with the ACL applied first (for example, create an empty file, restrict it, then write).
+- Fixed in 1.1 (#108): the file is created empty, restricted, and only then written.
 
 ### B-18 (Low)
 
@@ -226,7 +232,7 @@ Withheld until #113 is closed.
 - Real `git` against a remote (fetch, ls-remote, the 300 s behaviour). B-2 uses a stub fetcher.
 - An item for withheld finding B-22.
 - Windows device I/O for the superscript and colon names (B-6). I did not open a device.
-- An item for withheld finding B-17.
+- icacls ACL outcome on the token file (B-17 is reading only).
 - The full pytest suite. I did not run it, to keep the repo free of cache and coverage writes.
 - Concurrency under a live daemon: two processes on one data dir, and the CLI-to-daemon fallback (B-9) under real load.
 - Hermes adapter (`hermes/`), dashboard panel and inbox modules: outside this scope.
@@ -242,7 +248,7 @@ Withheld until #113 is closed.
 | File | Covers |
 |---|---|
 | p1_process.py | B-3 deadline and stdin |
-| p2_api.py | API request checks, B-20; one withheld finding |
+| p2_api.py | API request checks, B-7, B-20 |
 | p3_misc.py | B-4, RPC framing and deadline; one withheld finding |
 | p4_update.py | B-1 swap scenarios |
 | p5_fsnames.py | B-6 device names |

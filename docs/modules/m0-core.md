@@ -180,7 +180,9 @@ returns `proof`, the HMAC-SHA256 of `switchyard-api-v1:<challenge>` keyed with t
 proof before it sends the token, so a process that took over a dead daemon's port never receives it
 (`ApiUntrusted`). A failure to connect lets the CLI run an offline operation locally; a failure after the request
 was sent is `ApiOutcomeUnknown`: the daemon may have applied it, and nothing runs again. Status codes: 400 usage, 401 token, 403 Host/Origin/denied, 404 route,
-409 operation error, 411/413/415 framing, 500 unexpected (class name only). Socket timeout 10 s; request lines are
+409 operation error, 411/413/415 framing, 500 unexpected (class name only). Socket timeout 10 s per read, and the
+whole request must arrive within 10 s; at most 16 connections are handled at once, and further ones are closed at
+once. The token file is restricted before the token is written. Request lines are
 never logged; `Server: switchyard`. Routes `POST /v1/<noun>/<verb>` map 1:1 to CLI
 operations. Responses never echo request text into headers; a header writer rejects CR/LF. Client reads are
 capped at 1 MiB.
