@@ -127,7 +127,8 @@ def test_inactive_module_updates_without_starting(env: Any) -> None:
 def test_manual_rollback_restores_the_previous_version(env: Any) -> None:
     core, _, _ = env
     core.run("module", "update", {"id": "ext", "ref": NEW}, actor="t")
-    assert core.run("module", "rollback", {"id": "ext"}, actor="t") == {"id": "ext", "version": "0.1.0"}
+    result = core.run("module", "rollback", {"id": "ext"}, actor="t")
+    assert {k: result[k] for k in ("id", "version", "ok")} == {"id": "ext", "version": "0.1.0", "ok": True}
     assert _version(core) == "0.1.0"
     with pytest.raises(UpdateError, match="no previous version"):
         core.run("module", "rollback", {"id": "ext"}, actor="t")
@@ -531,3 +532,76 @@ def test_h1_b11_binary_and_case_variant_files_refused(env: Any, name: str) -> No
             core.run("module", "preview", {"id": "ext", "ref": NEW}, actor="t")
     finally:
         target.unlink()
+
+
+# 1.1 backlog batch 5: update and rollback integrity (H1 B-12 #104, B-13 #105) -------------------------------
+
+
+def _audited(core: Core, action: str) -> list[dict[str, Any]]:
+    return [r for r in core.run("audit", "tail", {"n": 20}, actor="t") if r["action"] == action]
+
+
+def test_h1_b12_an_older_version_needs_allow_downgrade(env: Any) -> None:
+    core, fetcher, tmp = env
+    core.run("module", "update", {"id": "ext", "ref": NEW}, actor="t")  # now 0.2.0
+    older = "6" * 40
+    fetcher.sources[(URL, older)] = _source(tmp / "v15", "x", version="0.1.5")
+    preview = core.run("module", "preview", {"id": "ext", "ref": older}, actor="t")
+    assert preview["downgrade"] is True
+    with pytest.raises(UpdateError, match="older"):
+        core.run("module", "update", {"id": "ext", "ref": older}, actor="t")
+    assert _version(core) == "0.2.0"
+    core.run("module", "update", {"id": "ext", "ref": older, "allow_downgrade": True}, actor="t")
+    assert _version(core) == "0.1.5"
+
+
+def test_h1_b12_prerelease_is_older_and_same_version_is_not(env: Any) -> None:
+    core, fetcher, tmp = env
+    core.run("module", "update", {"id": "ext", "ref": NEW}, actor="t")  # 0.2.0
+    rc, same = "7" * 40, "8" * 40
+    fetcher.sources[(URL, rc)] = _source(tmp / "rc", "x", version="0.2.0-rc1")
+    fetcher.sources[(URL, same)] = _source(tmp / "same", "x", version="0.2.0+build5")
+    assert core.run("module", "preview", {"id": "ext", "ref": rc}, actor="t")["downgrade"] is True
+    assert core.run("module", "preview", {"id": "ext", "ref": same}, actor="t")["downgrade"] is False
+    core.run("module", "update", {"id": "ext", "ref": same}, actor="t")
+
+
+def test_h1_b13_rollback_runs_the_health_check_and_reports_it(env: Any) -> None:
+    core, _, _ = env
+    core.run("module", "update", {"id": "ext", "ref": BAD}, actor="t")  # inactive: installs unhealthy 0.3.0
+    core.run("module", "update", {"id": "ext", "ref": NEW, "allow_downgrade": True}, actor="t")
+    core.run("module", "activate", {"id": "ext"}, actor="t")
+    result = core.run("module", "rollback", {"id": "ext"}, actor="t")
+    assert result["version"] == "0.3.0" and result["ok"] is False and "health" in result["detail"]
+    record = _audited(core, "module.rolled_back")
+    assert record[-1]["detail"]["health"] == "failed"
+
+
+def test_h1_b13_healthy_rollback_is_ok(env: Any) -> None:
+    core, _, _ = env
+    core.run("module", "activate", {"id": "ext"}, actor="t")
+    core.run("module", "update", {"id": "ext", "ref": NEW}, actor="t")
+    result = core.run("module", "rollback", {"id": "ext"}, actor="t")
+    assert result["ok"] is True and result["version"] == "0.1.0"
+    record = _audited(core, "module.rolled_back")
+    assert record[-1]["detail"]["health"] == "ok" and record[-1]["detail"]["digest"] == "verified"
+
+
+def test_h1_b13_a_previous_version_changed_on_disk_is_refused(env: Any) -> None:
+    core, _, _ = env
+    core.run("module", "update", {"id": "ext", "ref": NEW}, actor="t")
+    (previous,) = [p for p in (core.data_dir / "staging" / "ext").glob("previous-*") if p.is_dir()]
+    (previous / "module.py").write_text("# changed after it was set aside\n", encoding="utf-8")
+    with pytest.raises(UpdateError, match="changed"):
+        core.run("module", "rollback", {"id": "ext"}, actor="t")
+    assert _version(core) == "0.2.0"
+
+
+def test_h1_b13_previous_version_without_a_recorded_digest_still_rolls_back(env: Any) -> None:
+    core, _, _ = env
+    core.run("module", "update", {"id": "ext", "ref": NEW}, actor="t")
+    for sidecar in (core.data_dir / "staging" / "ext").glob("previous-*.digest"):
+        sidecar.unlink()  # set aside by 1.0.x, which recorded no digest
+    assert core.run("module", "rollback", {"id": "ext"}, actor="t")["version"] == "0.1.0"
+    record = _audited(core, "module.rolled_back")
+    assert record[-1]["detail"]["digest"] == "unrecorded"

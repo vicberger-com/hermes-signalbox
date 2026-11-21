@@ -47,9 +47,9 @@ CLI exit codes: 0 success; 1 operation error, or a result that reports failure (
 | `module preview` | `id`, `--ref` | Stage a commit without applying it: SBOM delta, patch notes and tree digest. |  |  |
 | `module remove` | `id`, `--keep-data` (optional) | Stop and forget a module; drops its grants, and its data unless keep_data is true. |  |  |
 | `module revoke` | `id`, `--capability` | Revoke a capability from a module. |  |  |
-| `module rollback` | `id`, `--accept-wider` (optional) | Restore the previous version of a git-installed module. |  |  |
+| `module rollback` | `id`, `--accept-wider` (optional) | Restore the previous version of a git-installed module; refused if its files changed since they were set aside; reports the health check (exit 1 when it fails). |  |  |
 | `module show` | `id` | Show one module, including its declared contributions and live panels. | yes | yes |
-| `module update` | `id`, `--ref`, `--digest` (optional), `--accept-wider` (optional) | Update a git-installed module to a pinned commit; rolls back if it fails. |  |  |
+| `module update` | `id`, `--ref`, `--digest` (optional), `--accept-wider` (optional), `--allow-downgrade` (optional) | Update a git-installed module to a pinned commit; rolls back if it fails. An older version needs `--allow-downgrade`. |  |  |
 | `report show` | `--kind` | Operator report: health, usage, security or changes (redacted; M9). | yes | yes |
 
 ## Hermes tools and command

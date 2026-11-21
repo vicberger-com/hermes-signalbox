@@ -237,7 +237,10 @@ null device, `protocol.file.allow=never` (tests may allow file URLs), `--depth 1
 and removes `.git`. The staged manifest must be valid and keep the module id and the pinned source URL. Then
 deactivate, swap by rename (previous kept as `previous-<version>-<time>`), `ModuleManager.reload` (re-checks trust),
 reactivate if it was running, health check; any failure restores the previous directory (`module.rolled_back`).
-`rollback(id)` restores the most recent previous version. Operations `module update {id, ref}` and
+An older manifest version needs `allow_downgrade` (preview reports `downgrade`). The previous directory's tree
+digest is recorded next to it (`previous-….digest`); `rollback(id)` restores the most recent previous version only
+if that digest still matches (a directory from 1.0.x without one is restored and audited `digest=unrecorded`),
+then runs the health check and returns `{id, version, ok, detail}`. Operations `module update {id, ref}` and
 `module rollback {id}` require the hosting process. Every outcome is audited (`module.update_rejected`,
 `module.updated`, `module.rolled_back`).
 
