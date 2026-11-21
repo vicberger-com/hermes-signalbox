@@ -13,6 +13,7 @@ control for reviewed T1 modules, not a containment boundary (DESIGN.md section 4
 from __future__ import annotations
 
 import copy
+import hashlib
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -157,6 +158,27 @@ class _Guarded:
         self._ctx._services.policy.require(self._ctx.module_id, self._capability)
 
 
+_AUDIT_KEY_CHARS = 64
+_AUDIT_VALUE_CHARS = 256
+_CUT = "[truncated]"
+
+
+def _audit_key(key: str) -> str:
+    """At most 64 characters; a longer name keeps a short digest of the whole name, so two names that share
+    their first 64 characters stay two fields (H1 A-27)."""
+    if len(key) <= _AUDIT_KEY_CHARS:
+        return key
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:8]
+    return f"{key[: _AUDIT_KEY_CHARS - 9]}~{digest}"
+
+
+def _audit_value(value: str) -> str:
+    """At most 256 characters; a cut value ends with ``[truncated]`` (H1 A-27)."""
+    if len(value) <= _AUDIT_VALUE_CHARS:
+        return value
+    return value[: _AUDIT_VALUE_CHARS - len(_CUT)] + _CUT
+
+
 class ModuleContext:
     """What a module sees. Built by the lifecycle manager, one per activation."""
 
@@ -239,7 +261,7 @@ class ModuleContext:
             )
         if self._services.audit is None:
             raise SwitchyardError("the audit log is not available in this host")
-        clean = {str(k)[:64]: str(v)[:256] for k, v in detail.items()}
+        clean = {_audit_key(str(k)): _audit_value(str(v)) for k, v in detail.items()}
         self._services.audit.append(actor=self.module_id, action=f"module.{self.module_id}.{event}",
                                     module=self.module_id, detail=clean)  # fmt: skip
 
