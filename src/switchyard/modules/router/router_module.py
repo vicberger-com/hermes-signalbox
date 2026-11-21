@@ -28,9 +28,11 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
 
 from switchyard.errors import SwitchyardError
+from switchyard.modkit import StateTables, int_setting
 
 from .engine import TIERS, Candidate, Need, candidates_from, need_for, rank, tier_for, unfit
 
@@ -54,11 +56,7 @@ def _check(pattern: re.Pattern[str], value: Any, what: str) -> str:
     return value
 
 
-def _int_setting(cfg: dict[str, Any], key: str, default: int, low: int, high: int) -> int:
-    value = cfg.get(key, default)
-    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
-        raise SwitchyardError(f"[modules.router] {key} must be an integer from {low} to {high}")
-    return value
+_int_setting = partial(int_setting, "router")
 
 
 def _unregistered(provider: str, model: str) -> Candidate:
@@ -68,7 +66,7 @@ def _unregistered(provider: str, model: str) -> Candidate:
                      tags=frozenset(), context=None)  # fmt: skip
 
 
-class RouterModule:
+class RouterModule(StateTables):
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self.ctx: Any = None
         self.clock = clock
@@ -153,13 +151,6 @@ class RouterModule:
         return True, f"routing {self.settings['consumer']} on {', '.join(self.settings['providers'])}"
 
     # storage helpers ----------------------------------------------------------------------------------
-
-    def _q(self, sql: str, params: tuple[Any, ...] = ()) -> list[tuple[Any, ...]]:
-        rows: list[tuple[Any, ...]] = self.ctx.state.execute(sql, params)
-        return rows
-
-    def _t(self, name: str) -> str:
-        return str(self.ctx.state.table(name))
 
     def _cooling(self) -> dict[str, str]:
         sql = f"SELECT resource, until, reason FROM {self._t('cooldowns')} WHERE until > ?"  # nosec B608

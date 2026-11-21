@@ -15,9 +15,7 @@ Settings, ``[modules.meter]``::
 from __future__ import annotations
 
 import math
-import os
 import re
-import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -26,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from switchyard.errors import SwitchyardError
+from switchyard.modkit import StateTables, default_models_dev_cache
 
 BUCKETS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "reasoning_tokens")
 _PRICE_KEYS = {
@@ -42,15 +41,6 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
 _SCOPE = re.compile(r"(all|provider:[a-z0-9][a-z0-9._-]{0,63}|[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199})\Z")
 _KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}\Z")
 _COLS = ("requests", *BUCKETS, "cost_micro", "unpriced", "usage_missing", "errors")
-
-
-def default_models_dev_cache() -> Path:
-    home = os.environ.get("HERMES_HOME")
-    if home:
-        return Path(home) / "models_dev_cache.json"
-    if sys.platform == "win32" and os.environ.get("LOCALAPPDATA"):
-        return Path(os.environ["LOCALAPPDATA"]) / "hermes" / "models_dev_cache.json"
-    return Path.home() / ".hermes" / "models_dev_cache.json"
 
 
 def _count(value: Any) -> tuple[int, bool]:
@@ -88,7 +78,7 @@ def parse_prices(doc: Any) -> dict[str, dict[str, float]]:
     return out
 
 
-class MeterModule:
+class MeterModule(StateTables):
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self.ctx: Any = None
         self.clock = clock
@@ -180,13 +170,6 @@ class MeterModule:
         return True, f"{len(self.prices)} model prices, {len(self._quota_rows())} quotas"
 
     # helpers ------------------------------------------------------------------------------------------
-
-    def _q(self, sql: str, params: tuple[Any, ...] = ()) -> list[tuple[Any, ...]]:
-        rows: list[tuple[Any, ...]] = self.ctx.state.execute(sql, params)
-        return rows
-
-    def _t(self, name: str) -> str:
-        return str(self.ctx.state.table(name))
 
     def _now(self) -> datetime:
         return datetime.fromtimestamp(self.clock(), UTC)

@@ -1,3 +1,6 @@
+> **Historical (moved here in H1 WP10, D-18).** This audit describes v0.13.0 before the R1 release. The gaps it
+> lists were closed for v1.0.0: see `docs/USER-GUIDE.md` and `docs/REFERENCE.md`. Kept as a record only.
+
 # Hermes Switchyard Docs-Coverage Audit (R1)
 
 **Gate:** "Every public function, tool, command, config key and event documented"

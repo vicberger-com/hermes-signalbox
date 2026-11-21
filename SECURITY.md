@@ -12,6 +12,17 @@ known limits: [docs/DESIGN.md](docs/DESIGN.md) section 4; review history: [docs/
 
 The latest 1.x minor release receives security fixes.
 
+## Status and deprecation policy
+
+Switchyard is **Beta** (H1 D-14): 1.x has one operator so far and no external review. Until that changes:
+
+- A change that breaks configuration, grants or behaviour is announced in the CHANGELOG under `Changed` with
+  the operator step it needs, and ships in a minor release, never a patch release.
+- A setting, operation or module action that is going away is marked deprecated in the CHANGELOG and the
+  reference at least one minor release before it is removed.
+- Security fixes may change behaviour in a patch release when the old behaviour is the vulnerability; the
+  CHANGELOG says so under `Security`.
+
 ## Baseline
 
 - Security is the first priority and overrides utility, speed and size in every design decision.

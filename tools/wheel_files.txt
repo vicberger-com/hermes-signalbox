@@ -35,6 +35,7 @@ switchyard/lifecycle.py
 switchyard/logs.py
 switchyard/manifest.py
 switchyard/migrations/0001_core.sql
+switchyard/modkit.py
 switchyard/modules/activation/README.md
 switchyard/modules/activation/activation_module.py
 switchyard/modules/activation/module.toml

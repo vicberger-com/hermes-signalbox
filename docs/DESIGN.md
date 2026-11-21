@@ -151,24 +151,24 @@ activate and deactivate without leaks, denied-capability behaviour, and one test
 
 ## 6. Hermes integration (verified names)
 
+What the plugin uses (H1 WP10: this list is exactly what `switchyard/hermes/` calls and what
+`plugin.yaml` declares; other Hermes mechanisms are not used).
+
 | Need | Hermes mechanism |
 |---|---|
-| Package and config | `plugin.yaml` with `manifest_version: 2`, `provides_hooks`, `config_schema` |
+| Package and config | `plugin.yaml` with `manifest_version: 2`, `provides_hooks`, `provides_middleware`, `config_schema`; `ctx.get_config` |
 | Tools, commands | `register_tool`, `register_command`, `register_cli_command` |
-| Per-turn routing and context trimming | hooks `pre_llm_call`, `pre_api_request`, `post_api_request`, `api_request_error`, `transform_api_error_classification` |
-| Tool output reduction | hooks `transform_tool_result`, `transform_terminal_output` |
-| Tool guard rails | hooks `pre_tool_call`, `post_tool_call`, `pre_approval_request` |
-| Session and sub-agent tracking | hooks `on_session_start`, `on_session_end`, `subagent_start`, `subagent_stop`, `on_skill_lifecycle`, `post_compaction` |
-| Sub-agent model assignment | `register_delegation_provider` |
-| Secrets into Hermes | `register_secret_source`, `register_redaction_patterns` |
-| Background supervisor | `register_idle_task`, Hermes cron (no-agent jobs for deterministic work) |
-| Skills shipped by modules | `register_skill` |
-| Compaction engines | `register_context_engine` |
-| Dashboard tab | dashboard plugin `manifest.json` (`tab`, `entry`, `api`) with a Python `plugin_api.py` |
-| Programmatic control | `register_rpc` |
+| Observers and gates (routing, metering, sub-agent tracking) | `register_hook` for `pre_llm_call`, `pre_api_request`, `post_api_request`, `api_request_error`, `post_llm_call`, `subagent_start`, `subagent_stop` |
+| Request rewriting (model only) | `register_middleware("llm_request", ...)` |
+| Tool output reduction | `register_hook` for `transform_tool_result`, `transform_terminal_output` |
+| Sub-agent model assignment | `register_delegation_provider` (when Hermes offers it) |
+| Secret redaction in Hermes output | `register_redaction_patterns` |
+| Background work | `register_idle_task` (daily audit verify); the core's own tick thread |
+| Dashboard tab | dashboard plugin `manifest.json` (`tab`, `entry`, `api`) with `plugin_api.py` (needs `hermes plugins install`) |
 
-Open items to verify in the relevant module's research step: the `model_switch` tool and per-task model
-overrides in `delegate_task` (named in the requirement document, not yet checked in source).
+Not used: `register_secret_source`, `register_skill`, `register_context_engine`, `register_rpc`, the tool guard
+hooks (`pre_tool_call`, `post_tool_call`, `pre_approval_request`) and the session hooks. A module that needs one
+adds it here in the same pull request.
 
 ## 7. Data and reporting
 

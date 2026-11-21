@@ -31,8 +31,8 @@ No network access: Hermes keeps the models.dev registry fresh in its own home; t
 
 ## Imports (reviewed diff)
 
-`import_preview {providers?, free_only?}` reads the configured models.dev cache (no path, so the model may
-run it); `import_file {path}` reads an operator-chosen catalog file and is human-only. Both store a pending
+`import_preview {providers?, free_only?}` reads the configured models.dev cache (no path). It is
+operator-only: it replaces the pending import, so it is not read-only and the model may not run it (H1 C-11); `import_file {path}` reads an operator-chosen catalog file and is human-only. Both store a pending
 diff (added, changed, removed) and return counts and sample ids only. One pending import per source (a new
 preview replaces the old one), at most 5 sources pending. `import_apply {import_id}` (human-only) applies it.
 New resources arrive `disabled`. An import replaces only catalog fields (kind, provider, name, cost class,
@@ -47,8 +47,8 @@ Own catalog format: `{"resources": [{"id", "kind", "provider", "name", "cost_cla
 
 | Kind | Name | Model may run |
 |---|---|---|
-| Action | `list {state, cost_class, tag, pool, provider, query, limit, offset}`, `show {id}`, `pools`, `resolve {consumer}` (first 1000), `import_preview {providers, free_only}` | yes |
-| Action | `set_state`, `set_priority`, `tag`, `untag`, `pool_create`, `pool_delete`, `pool_add`, `pool_remove`, `bind`, `unbind`, `import_file {path}`, `import_apply`, `import_discard` | no |
+| Action | `list {state, cost_class, tag, pool, provider, query, limit, offset}`, `show {id}`, `pools`, `resolve {consumer}` (first 1000) | yes |
+| Action | `import_preview {providers, free_only}`, `set_state`, `set_priority`, `tag`, `untag`, `pool_create`, `pool_delete`, `pool_add`, `pool_remove`, `bind`, `unbind`, `import_file {path}`, `import_apply`, `import_discard` | no |
 | Panel | `resources.status` (counts, pending imports) | |
 | Config | `[modules.resources]` `models_dev_cache` (default `<HERMES_HOME>/models_dev_cache.json`), `max_catalog_mb` (16) | |
 

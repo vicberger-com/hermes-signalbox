@@ -23,9 +23,11 @@ from __future__ import annotations
 import re
 import threading
 from collections.abc import Sequence
+from functools import partial
 from typing import Any
 
 from switchyard.errors import SwitchyardError
+from switchyard.modkit import int_setting
 
 _DIGITS = re.compile(r"\d+")
 # Only progress-shaped lines collapse when their numbers differ; other lines collapse only when identical,
@@ -39,11 +41,7 @@ WRITE_TOOLS = frozenset({"write_file", "patch", "edit_file", "apply_patch", "str
 _TOOL = re.compile(r"[A-Za-z0-9_.:-]{1,64}\Z")
 
 
-def _int_setting(cfg: dict[str, Any], key: str, default: int, low: int, high: int) -> int:
-    value = cfg.get(key, default)
-    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
-        raise SwitchyardError(f"[modules.trimmer] {key} must be an integer from {low} to {high}")
-    return value
+_int_setting = partial(int_setting, "trimmer")
 
 
 def plan(lines: Sequence[str], max_lines: int, head: int, tail: int) -> list[list[int]]:

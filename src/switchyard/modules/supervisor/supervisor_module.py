@@ -19,9 +19,11 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
 
 from switchyard.errors import SwitchyardError
+from switchyard.modkit import StateTables, int_setting
 
 SEVERITIES = ("info", "low", "medium", "high", "critical")
 KEEP_RUNS = 500
@@ -33,17 +35,13 @@ def _iso(ts: float) -> str:
     return datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _int_setting(cfg: dict[str, Any], key: str, default: int, low: int, high: int) -> int:
-    value = cfg.get(key, default)
-    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
-        raise SwitchyardError(f"[modules.supervisor] {key} must be an integer from {low} to {high}")
-    return value
+_int_setting = partial(int_setting, "supervisor")
 
 
 SAFETY = frozenset({"router", "meter", "resources", "secrets", "supervisor"})
 
 
-class SupervisorModule:
+class SupervisorModule(StateTables):
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self._was_active: set[str] = set()
         self.ctx: Any = None
@@ -115,13 +113,6 @@ class SupervisorModule:
         return True, summary
 
     # helpers ------------------------------------------------------------------------------------------
-
-    def _q(self, sql: str, params: tuple[Any, ...] = ()) -> list[tuple[Any, ...]]:
-        rows: list[tuple[Any, ...]] = self.ctx.state.execute(sql, params)
-        return rows
-
-    def _t(self, name: str) -> str:
-        return str(self.ctx.state.table(name))
 
     def _call(self, module_id: str, action: str) -> Any:
         """A read-only action of another module, or None when that module is not running."""

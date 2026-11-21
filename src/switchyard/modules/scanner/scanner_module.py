@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from switchyard.errors import SwitchyardError
+from switchyard.modkit import StateTables
 
 from .parsers import MAX_FINDINGS, MAX_OUTPUT, SCANNERS, SEVERITIES, ParseError, clean
 
@@ -39,7 +40,7 @@ def _int(cfg: dict[str, Any], key: str, default: int, low: int, high: int) -> in
     return value
 
 
-class ScannerModule:
+class ScannerModule(StateTables):
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self.ctx: Any = None
         self.clock = clock
@@ -125,13 +126,6 @@ class ScannerModule:
             "AND scanner = 'scanner'"
         )[0][0]
         return failed == 0, f"{failed} scanner failure(s)" if failed else "ok"
-
-    def _q(self, sql: str, params: tuple[Any, ...] = ()) -> list[tuple[Any, ...]]:
-        rows: list[tuple[Any, ...]] = self.ctx.state.execute(sql, params)
-        return rows
-
-    def _t(self, name: str) -> str:
-        return str(self.ctx.state.table(name))
 
     # scanning -----------------------------------------------------------------------------------------
 

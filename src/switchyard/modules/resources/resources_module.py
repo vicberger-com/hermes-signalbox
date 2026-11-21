@@ -5,11 +5,11 @@ Resources are catalog entries (models, endpoints, agents, tools) with a state (`
 per-pool priority; consumers (``main``, ``subagent:<name>``, ``function:<name>``) are bound to one pool.
 ``resolve`` returns a consumer's usable resources in order.
 
-Imports are reviewed: ``import_preview`` (configured models.dev cache, no path; the model may run it) and
-``import_file`` (operator-chosen path, human-only) store a diff; nothing changes until a human runs
-``import_apply``. One pending import per source. New resources arrive ``disabled``; an import replaces only
-catalog fields and catalog tags (a ``stale`` catalog tag marks rows the source no longer lists); state,
-priority and user tags never change.
+Imports are reviewed: ``import_preview`` (configured models.dev cache, no path; operator-only because it
+replaces the pending import) and ``import_file`` (operator-chosen path, human-only) store a diff; nothing
+changes until a human runs ``import_apply``. One pending import per source. New resources arrive
+``disabled``; an import replaces only catalog fields and catalog tags (a ``stale`` catalog tag marks rows the
+source no longer lists); state, priority and user tags never change.
 
 Settings, ``[modules.resources]``::
 
@@ -21,15 +21,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import secrets as _random
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from switchyard.errors import SwitchyardError
+from switchyard.modkit import StateTables, default_models_dev_cache
 
 from .catalog import ID, STATES, TAG, diff, from_file, from_models_dev
 
@@ -45,22 +44,13 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def default_models_dev_cache() -> Path:
-    home = os.environ.get("HERMES_HOME")
-    if home:
-        return Path(home) / "models_dev_cache.json"
-    if sys.platform == "win32" and os.environ.get("LOCALAPPDATA"):
-        return Path(os.environ["LOCALAPPDATA"]) / "hermes" / "models_dev_cache.json"
-    return Path.home() / ".hermes" / "models_dev_cache.json"
-
-
 def _check(pattern: re.Pattern[str], value: str, what: str) -> str:
     if not isinstance(value, str) or not pattern.match(value):
         raise SwitchyardError(f"invalid {what} {str(value)[:80]!r}")
     return value
 
 
-class ResourcesModule:
+class ResourcesModule(StateTables):
     def __init__(self) -> None:
         self.ctx: Any = None
         self.settings: dict[str, Any] = {}
@@ -160,13 +150,6 @@ class ResourcesModule:
         return True, f"{s['resources']} resources, {s['enabled']} enabled, {s['pools']} pools"
 
     # storage helpers ----------------------------------------------------------------------------------
-
-    def _t(self, name: str) -> str:
-        return str(self.ctx.state.table(name))
-
-    def _q(self, sql: str, params: tuple[Any, ...] = ()) -> list[tuple[Any, ...]]:
-        rows: list[tuple[Any, ...]] = self.ctx.state.execute(sql, params)
-        return rows
 
     def _row(self, row: tuple[Any, ...]) -> dict[str, Any]:
         keys = [c.strip() for c in _COLS.split(",")]
@@ -284,7 +267,8 @@ class ResourcesModule:
         }
 
     def import_preview(self, providers: str = "", free_only: bool = False) -> dict[str, Any]:
-        """Preview an import from the configured models.dev cache. Takes no path, so the model may run it."""
+        """Preview an import from the configured models.dev cache (no path). Operator-only: it replaces the
+        pending import (H1 C-11)."""
         doc = self.ctx.fs.read_json(self.settings["models_dev_cache"], max_bytes=self.settings["max_bytes"])
         wanted = {p.strip() for p in providers.split(",") if p.strip()}
         return self._stage("models.dev", from_models_dev(doc, providers=wanted, free_only=free_only))

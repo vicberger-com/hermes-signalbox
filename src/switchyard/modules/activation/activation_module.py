@@ -18,6 +18,7 @@ from collections.abc import Callable
 from typing import Any
 
 from switchyard.errors import SwitchyardError
+from switchyard.modkit import StateTables
 
 KEY = "skills.disabled"
 _NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
@@ -63,7 +64,7 @@ def expand(entries: list[str], skills: list[dict[str, str]]) -> set[str]:
     return names
 
 
-class ActivationModule:
+class ActivationModule(StateTables):
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self.ctx: Any = None
         self.clock = clock
@@ -119,13 +120,6 @@ class ActivationModule:
         return True, f"preset {active['preset']}"
 
     # helpers ------------------------------------------------------------------------------------------
-
-    def _q(self, sql: str, params: tuple[Any, ...] = ()) -> list[tuple[Any, ...]]:
-        rows: list[tuple[Any, ...]] = self.ctx.state.execute(sql, params)
-        return rows
-
-    def _t(self, name: str) -> str:
-        return str(self.ctx.state.table(name))
 
     def _skills(self) -> list[dict[str, str]]:
         skills: list[dict[str, str]] = self.ctx.hermes_config.skills()
