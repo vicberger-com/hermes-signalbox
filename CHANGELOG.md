@@ -62,6 +62,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   event subscriptions.
 - Module log redaction covers field names as well as values (H1 B-23 #112). Field names that redact to the same
   text keep a `#2`, `#3` suffix, so no field is dropped.
+- `net.outbound` resolves each host once, refuses link-local addresses (169.254.0.0/16, fe80::/10: cloud
+  metadata endpoints), and connects to the addresses it checked, so a later DNS answer cannot redirect the request
+  (H1 B-22, part 2 of #111). Loopback and private addresses stay allowed for local services.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,
