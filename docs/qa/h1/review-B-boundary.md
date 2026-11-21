@@ -34,7 +34,7 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-20 | Info | confirmed-by-probe | API | api.py:162-165 | PUT/PATCH/DELETE/OPTIONS reply 501 without the Host or Origin check |
 | B-21 | Info | confirmed-by-reading | scheduler | scheduler.py:140-146 | NaN and inf accepted for `every` and `min_interval_s`; such a trigger never fires |
 | B-22 | Info | - | - | - | withheld until fixed (#111) |
-| B-23 | Info | - | - | - | withheld until fixed (#112) |
+| B-23 | Info | confirmed-by-reading | logs | logs.py:30-37 | Redaction covers values only, not keys |
 | B-24 | Info | confirmed-by-probe | API | api.py (no handle_error) | Each dropped connection prints a full traceback to stderr |
 | B-25 | Info | - | - | - | withheld until fixed (#113) |
 
@@ -209,9 +209,11 @@ Withheld until #110 is closed.
 
 Withheld until #111 is closed.
 
-### B-23 (Info)
-
-Withheld until #112 is closed.
+### B-23 (Info), redaction covers values, not keys
+- **Location:** `logs.py:30-37` (`_redact_all` redacts strings and leaves dict keys as written).
+- **Impact:** a module that uses a secret as a field name writes it into the log. Keys are module-chosen. Low exposure.
+- **Fix:** redact keys too.
+- Fixed in 1.1 (#112): keys are redacted too; keys that redact alike keep a numeric suffix so no field is dropped.
 
 ### B-24 (Info), socketserver prints tracebacks for dropped connections
 - **Location:** `api.py` (no `handle_error` override).

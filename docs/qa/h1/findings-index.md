@@ -62,7 +62,7 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | B-20 | Info | api.py | H1 should | WP2 | see [review B](review-B-boundary.md) | fixed in #79 |
 | B-21 | Info | scheduler.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
 | B-22 | Info | net.py | Backlog 1.1 | - | private until fixed | backlog #111 |
-| B-23 | Info | logs.py | Backlog 1.1 | - | private until fixed | backlog #112 |
+| B-23 | Info | logs.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #140 (backlog #112) |
 | B-24 | Info | api.py | H1 should | WP2 | see [review B](review-B-boundary.md) | fixed in #79 |
 | B-25 | Info | host_t2.py, ops.py, updates.py | Backlog 1.1 | - | private until fixed | backlog #113 |
 | C-1 | High | router / bridge | H1 must | WP1 | see [review C](review-C-modules.md) | fixed in #78 |
