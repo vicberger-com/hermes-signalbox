@@ -77,6 +77,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   subprocess module that does not shut down cleanly is reported on one stderr line instead of silently.
   `updates.py` is split: git fetching moves to `gitfetch.py` and the SBOM helpers to `sbom.py` (the old names
   still import from `switchyard.updates`).
+- Dashboard writes (activate/deactivate, inbox ack) now refuse a request the browser marks as sent by another
+  page (`Sec-Fetch-Site: cross-site` or `same-site`), in addition to Hermes's dashboard auth, which 1.1
+  checked and found already refuses such requests (H1 C-18 #116).
+- `dashboard/plugin_api.py` is now checked by mypy and bandit and tested under real FastAPI in the
+  hermes-integration job; `dashboard/README.md` records that `dist/` is hand-written source (H1 D-22 #117).
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

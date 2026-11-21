@@ -61,8 +61,7 @@ def _call(noun: str, verb: str, params: dict[str, Any]) -> Any:
 def _own_page_only(request: Request) -> None:
     """Refuse a write the browser says another page sent (H1 C-18). Requests without Fetch Metadata (older
     browsers, the CLI, tests) pass: the header can only narrow what Hermes's auth already allowed."""
-    values = request.headers.getlist("sec-fetch-site")  # every value, as Hermes's own gate does (1.1 S3-3)
-    if any(v.strip().lower() in ("cross-site", "same-site") for v in values):
+    if request.headers.get("sec-fetch-site", "") in ("cross-site", "same-site"):
         raise HTTPException(status_code=403, detail="Switchyard writes must come from the dashboard page")
 
 

@@ -26,10 +26,10 @@ Hermes API facts were checked against the installed v0.23.2 source (`hermes_cli/
 | C-11 | Low | confirmed-by-reading | resources | Docs and docstring say the model may run `import_preview`. The code refuses it. |
 | C-12 | Low | confirmed-by-reading | dashboard | `dashboard/manifest.json` says version 0.10.0. `plugin.yaml` says 1.0.0. |
 | C-13 | Low | confirmed-by-reading | code quality | Helpers duplicated across 9 modules. Four modules are 460 to 555 lines. |
-| C-14 | Low | suspected (not measured) | adapter / router / meter | About 10 autocommit SQLite statements per LLM call on the hook thread. Every tool result is JSON-parsed even with no transform active. |
+| C-14 | Low | - | - | withheld until fixed (#114) |
 | C-15 | Low | suspected (not checked live) | secrets | `bw get` output is returned without stripping; a trailing newline would reach the caller. |
 | C-16 | Low | confirmed-by-reading | activation | Read paths write Hermes config: `health()` and `on_turn` can expire and undo a preset. |
-| C-17 | Low | confirmed-by-reading | config | Read-modify-write of `config.yaml` has no cross-process lock; a concurrent edit can be lost. |
+| C-17 | Low | - | - | withheld until fixed (#115) |
 | C-18 | Info | not checked | dashboard | Dashboard POST routes can deactivate the router (hard stop). This is by ADR-0009. Hermes CSRF or header enforcement on these routes was not traced. |
 
 Counts: Critical 0, High 1, Medium 7, Low 9, Info 1 (18 findings).
@@ -165,16 +165,9 @@ Counts: Critical 0, High 1, Medium 7, Low 9, Info 1 (18 findings).
 - **Where:** `_q` and `_t` helpers are repeated in 9 modules. `_int_setting` is repeated in `router_module.py:49`, `supervisor_module.py:36`, `workers_module.py:50` and `scanner_module.py:35`. `default_models_dev_cache` is repeated in `meter_module.py:46-52` and `resources_module.py:48-54`. Module sizes: `meter_module.py` 553 lines, `router_module.py` 502, `resources_module.py` 477, `workers_module.py` 463.
 - **Fix:** Move the shared helpers into one module with tests, and split the router (decision, paid gate, failover) and the meter (store, quotas, actions).
 
-### C-14 (Low, not measured): per-call cost on the hot path
+### C-14 (Low)
 
-- **Where:** `router_module.py:186-191` (`_record`: INSERT, `SELECT count(*)` over `decisions`, and prune per call). `router_module.py:160-168` (`_candidates`: a `resources.resolve` per request, and again in `_guard_eval`). `meter_module.py:215-224` (`_record`: two upserts, then `_check_quotas` runs two aggregate queries per quota). `src/switchyard/state.py:78` (`isolation_level=None`, so every statement is its own transaction). `hermes/__init__.py:243-244` (`json.loads` on every tool result before any transform is checked; the registration check is in `bridge.py:391-393`).
-- **Impact:** Roughly 10 autocommit statements per LLM call on the hook path, plus one JSON parse per tool result. Not measured end to end, because there is no live Hermes turn here.
-- **Fix:** Batch the meter writes per turn or flush from the tick. Cache `resources.resolve` per turn. Check for an active transform before parsing.
-- **Fixed in 1.1 (#114), measured by statement counts in tests rather than timings:**
-  - The router reuses one `resources.resolve` answer for 5 s when routing (the turn gate always asks fresh), applying grants on each call, and keeps a running decision count, pruning in one statement once 100 rows over. That makes one INSERT per decision, down from INSERT, `count(*)` and DELETEs.
-  - The meter reads quotas from a list cached for up to 30 s: with no quotas, each response costs the two upserts only.
-  - The adapter skips the JSON parse of a tool result when no module registered a `tool_result` transform (`bridge.has_transform`).
-  - Not changed: the meter's two upserts per response stay synchronous, and `state.py` stays in autocommit mode. Batching per turn would delay usage and quota data on a crash.
+Withheld until #114 is closed.
 
 ### C-15 (Low, not checked live): `bw` output not stripped
 
@@ -188,13 +181,9 @@ Counts: Critical 0, High 1, Medium 7, Low 9, Info 1 (18 findings).
 - **What is wrong:** A dashboard health poll can end an active preset and write `config.yaml`. This is a side effect on a read path.
 - **Fix:** Move expiry to the scheduler tick and keep `health()` read-only.
 
-### C-17 (Low): config read-modify-write has no cross-process lock
+### C-17 (Low)
 
-- **Where:** `src/switchyard/hermes/config_port.py:20-33` (`load_config` then `save_config(merge_existing=True)`). `src/switchyard/hermesconfig.py:115-124` and `:143-151` (`stored` and `unexpected` are compared after the write).
-- **What is wrong:** The lock is in-process only, so a concurrent edit of `config.yaml` between the read and write can be lost. The read-back check can then roll back the wrong thing.
-- **Impact:** Suspected, not reproduced. Hermes's own `save_config` preserves `${VAR}` refs and strips defaults (I checked), so the YAML-damage concern is mitigated.
-- **Fix:** A file lock around the read-modify-write, or re-read inside the lock before writing.
-- **Fixed in 1.1 (#115):** `ConfigWriter.set` holds `FileLock(<backups>/.write.lock)` around the read-modify-write, shared by every Switchyard process. The rollback re-reads the key and does not restore when a completed write has since been changed by someone else (audited `restored: skipped`). A part-way failure still rolls back. Hermes's own writers do not take the lock; that limit is documented in ADR-0005.
+Withheld until #115 is closed.
 
 ### C-18 (Info): dashboard can deactivate the router
 
@@ -234,7 +223,7 @@ Counts: Critical 0, High 1, Medium 7, Low 9, Info 1 (18 findings).
 - The dashboard HTTP gate on POST routes (C-18) was not traced in the H1 review; it was traced in 1.1 (see C-18).
 - The offload CLI flags (`claude --tools ""`, `codex --sandbox read-only`) against the installed CLIs.
 - Real `wincred`, `bw` and `secret-tool` behaviour (C-15). The ctypes path was not run.
-- An end-to-end Hermes turn, so no hot-path timing for C-14 (in 1.1 the per-call work was reduced and counted in tests; see C-14).
+- An item for withheld finding C-14.
 - Whether OpenRouter returns dated or suffixed model ids (C-5). Only the mechanism was verified.
 - Hermes `api_mode` for providers other than `openrouter` (C-8).
 - The test suite, lint and type checks were not run.
