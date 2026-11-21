@@ -21,6 +21,7 @@ src/switchyard/
   events.py          EventBus (typed, in-process, synchronous with error isolation)
   scheduler.py       Trigger, Scheduler (time / event / usage / capacity)
   lifecycle.py       ModuleManager (discover -> verify -> active <-> stopped; activation needs every required grant)
+  discovery.py       ModuleDirectory: discovery, verification, module records (ModuleManager's base; 1.1 A-30)
   host_t2.py         Subprocess host: parent side; host_t2_child.py child side; rpc.py framing
   secrets.py         SecretRef, SecretBackend protocol, SecretsBroker, MemoryBackend (tests only)
   hostinfo.py        HostProfile, profile() -> tiny | laptop | workstation | server

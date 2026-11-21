@@ -47,7 +47,7 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 | A-27 | Info | - | - | withheld until fixed (#94) |
 | A-28 | Info | confirmed-by-reading | state.py:229; m0-core.md §6 | Docs say CTEs are refused by the authorizer. Code allows `SQLITE_RECURSIVE`. Cost is still bounded by the work budget (P06b: 0.08 s) and the row cap. Docs need fixing. |
 | A-29 | Info | confirmed-by-reading | context.py:99-100, 217, 381-412, 387; audit.py:127 | Typing: public `ctx.state`, `ctx.secrets`, `ctx.notify`, `ctx.hermes_config` return `object`; `ContextServices.audit`/`bridge` are `Any`; a `# type: ignore` covers a regex match. Module authors get no static types. |
-| A-30 | Info | - | - | withheld until fixed (#96) |
+| A-30 | Info | confirmed-by-reading | context.py:258-309; capabilities.py:185-206; lifecycle.py (463 lines) | Duplication and cohesion: the bridge-None and hook-declared checks repeat three times in `context.py`; lock/lookup/deny is duplicated in `require_host`/`require_secret`; `ModuleManager` mixes discovery, import, transitions, health, persistence and records; `ModuleContext` (~25 members) includes Hermes-adapter methods. |
 | A-31 | Info | confirmed-by-reading | errors.py:8-38; secrets.py:47-52 | Error taxonomy: `SwitchyardError` is the catch-all for usage, state and policy-like errors; callers cannot separate them without string matching. |
 
 ### Details
@@ -229,7 +229,13 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 - Fix: return `ModuleSecrets`, `ModuleState`, etc., with Protocols for the optional ports.
 - Fixed in 1.1 (#95): the facade properties (`state`, `notify`, `secrets`, `net`, `schedule`, `fs`, `core`, `hermes_config`, `spawn`) return their facade classes; `ContextServices.audit` is an `AuditSink` and `bridge` a new `BridgePort` Protocol. The audit reader checks the match explicitly. mypy now checks module code against these APIs, which also removed two `type: ignore` comments in `host_t2.py`.
 
-**A-30 · Info**: withheld until #96 is closed.
+**A-30 · Info · confirmed-by-reading · context.py:258-309; capabilities.py:185-206; lifecycle.py**
+- `_bridge_check`, `hermes_transform` and `hermes_delegation` each repeat "bridge is None" and the hook-declared check. `require_host` and `require_secret` duplicate the lock/lookup/deny pattern. `ModuleManager` (463 lines) mixes discovery, import, transitions, health, persistence and audit records. `ModuleContext` has about 25 members, including Hermes-adapter methods, which makes it hard to test in isolation.
+- **Fixed in 1.1 (#96):**
+  - **Context:** the Hermes registrations share `ModuleContext._hermes_port` (open, capability, declared hook, bridge).
+  - **Policy engine:** `require_host`, `require_program` and `require_secret` share `PolicyEngine._registration` (capability, registration lookup, refusal when unregistered).
+  - **Module manager:** discovery, verification and the module records moved to `discovery.ModuleDirectory`, which `ModuleManager` extends. `lifecycle.py` went from 522 to under 400 lines.
+  - **Not changed:** `ModuleContext` keeps its members. They are the module API, so moving the Hermes-adapter methods would break modules.
 
 **A-31 · Info · confirmed-by-reading · errors.py; secrets.py:47-52**
 - `SwitchyardError` is the base for usage errors, unknown names, state errors, and "not declared" errors alike. Callers that need to tell "bad input" from "policy refusal" must match strings. A small subclass set (`UsageError`, `PolicyRefused`, `NotAvailable`) would fix this.

@@ -319,10 +319,12 @@ class ModuleContext:
             raise NotAvailable("cross-module calls are not available in this host")
         return self._services.call(self.module_id, module_id, action, dict(args or {}))
 
-    def _bridge_check(self, declared: str) -> BridgePort:
+    def _hermes_port(self, capability: str, declared: str | None, **detail: str) -> BridgePort:
+        """The shared checks of every Hermes registration (H1 A-30): the context is open, ``capability`` is
+        held, ``declared`` (when given) is listed in ``contributes.hooks``, and this host has a bridge."""
         self._open()
-        self._services.policy.require(self.module_id, "hermes.hooks", hook=declared)
-        if declared not in self._manifest.contributes["hooks"]:
+        self._services.policy.require(self.module_id, capability, **detail)
+        if declared is not None and declared not in self._manifest.contributes["hooks"]:
             raise SwitchyardError(
                 f"hook {declared!r} is not declared in contributes.hooks of {self.module_id!r}"
             )
@@ -336,13 +338,14 @@ class ModuleContext:
 
         if name not in OBSERVER_HOOKS:
             raise SwitchyardError(f"unsupported Hermes hook {name!r}; supported: {sorted(OBSERVER_HOOKS)}")
-        self._bridge_check(name).add_hook(self.module_id, name, fn)
+        self._hermes_port("hermes.hooks", name, hook=name).add_hook(self.module_id, name, fn)
 
     def hermes_gate(self, fn: Callable[[dict[str, Any]], str | None]) -> None:
         """Register a turn gate (ADR-0006): ``fn(metadata) -> reason | None`` runs before each Hermes turn; a
         reason blocks the turn with that message. Needs ``hermes.hooks`` and ``gate:pre_llm_call`` declared in
         ``contributes.hooks``."""
-        self._bridge_check("gate:pre_llm_call").add_gate(self.module_id, fn)
+        gate = "gate:pre_llm_call"
+        self._hermes_port("hermes.hooks", gate, hook=gate).add_gate(self.module_id, fn)
 
     def hermes_transform(self, kind: str, fn: Callable[[tuple[str, ...], dict[str, Any]], Any]) -> None:
         """Shorten Hermes output (ADR-0008): ``kind`` is ``terminal_output`` or ``tool_result``;
@@ -351,26 +354,15 @@ class ModuleContext:
         ``contributes.hooks``."""
         if kind not in ("terminal_output", "tool_result"):
             raise SwitchyardError(f"unsupported transform {kind!r}")
-        self._open()
-        self._services.policy.require(self.module_id, "hermes.output", transform=kind)
-        if f"transform:{kind}" not in self._manifest.contributes["hooks"]:
-            raise SwitchyardError(
-                f"hook 'transform:{kind}' is not declared in contributes.hooks of {self.module_id!r}"
-            )
-        if self._services.bridge is None:
-            raise NotAvailable("the Hermes bridge is not available in this host")
-        self._services.bridge.add_transform(self.module_id, kind, fn)
+        port = self._hermes_port("hermes.output", f"transform:{kind}", transform=kind)
+        port.add_transform(self.module_id, kind, fn)
 
     def hermes_delegation(self, route: Callable[[dict[str, Any]], Any], roles: Callable[[], Any]) -> None:
         """Route Hermes ``delegate_task`` tasks (ADR-0007). ``roles() -> [(name, description)]`` feeds the
         ``worker_role`` schema enum;
         ``route(meta) -> {"model", "provider"} | {"profile"} | {"refuse": code}``.
         Needs ``hermes.delegation``; one module at a time."""
-        self._open()
-        self._services.policy.require(self.module_id, "hermes.delegation")
-        if self._services.bridge is None:
-            raise NotAvailable("the Hermes bridge is not available in this host")
-        self._services.bridge.set_delegation(self.module_id, route, roles)
+        self._hermes_port("hermes.delegation", None).set_delegation(self.module_id, route, roles)
 
     def hermes_middleware(
         self,
@@ -388,7 +380,8 @@ class ModuleContext:
 
         if kind not in MIDDLEWARE_KINDS:
             raise SwitchyardError(f"unsupported middleware {kind!r}; supported: {sorted(MIDDLEWARE_KINDS)}")
-        self._bridge_check(f"middleware:{kind}").add_middleware(self.module_id, kind, fn, fallback)
+        hook = f"middleware:{kind}"
+        self._hermes_port("hermes.hooks", hook, hook=hook).add_middleware(self.module_id, kind, fn, fallback)
 
     def health_report(self, ok: bool, detail: str = "") -> None:
         """Push a health state between ``health()`` polls. ``detail`` must not contain secret values."""
