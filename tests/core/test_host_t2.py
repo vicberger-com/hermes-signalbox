@@ -489,10 +489,10 @@ def test_h1_b14_send_counts_against_the_call_deadline(tmp_path: Path) -> None:
 
     from switchyard.rpc import Channel, ProtocolError
 
-    sent: list[float] = []
+    sent: list[float | None] = []
 
     def slow_send(msg: Any) -> None:
-        sent.append(channel.remaining() or 0.0)
+        sent.append(channel.remaining())
         time.sleep(0.6)  # a slow write, within the old per-send budget
 
     def recv(timeout: float | None) -> Any:
@@ -503,5 +503,8 @@ def test_h1_b14_send_counts_against_the_call_deadline(tmp_path: Path) -> None:
     start = time.monotonic()
     with pytest.raises(ProtocolError, match="did not finish"):
         channel.request("health", {}, timeout=1.0)
-    assert time.monotonic() - start < 1.9  # was about 2.2 s: the deadline started after the first send
-    assert sent and sent[0] <= 1.0
+    # The call's deadline is already running when the first send starts (before H1 it began after the send,
+    # so a slow write did not count). Checked on the mechanism, not on wall-clock time, which CI jitter blurs.
+    assert sent and sent[0] is not None and 0.5 < sent[0] <= 1.0
+    assert all(later is not None and later < sent[0] for later in sent[1:])
+    assert time.monotonic() - start < 4.0  # hang guard only

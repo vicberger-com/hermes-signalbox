@@ -99,7 +99,7 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
       environment, and `switchyard version` prints the version in `pyproject.toml`.
 - [x] `pytest -rs` skip sets equal the per-OS allow-list on Linux, Windows and macOS.
 - [x] All gates in `docs/BUILD-PLAN.md` pass on Python 3.11, 3.12, 3.13 and 3.14.
-- [ ] A release cannot be published from a tag that is not on `main` or whose verify job failed (checked by
+- [x] A release cannot be published from a tag that is not on `main` or whose verify job failed (checked by
       reading the workflow and at the `v1.0.1` tag).
 - [x] `docs/DESIGN.md`, `docs/USER-GUIDE.md`, `docs/REFERENCE.md`, `docs/modules/m0-core.md` and the module
       READMEs match the code after every package (link check passes).
@@ -116,7 +116,13 @@ Close notes (2026-11-20):
 - Security review: three read-only reviewers (one per area: core trust; bridge and modules; updates, process,
   API and workflows) reported nothing. The maintainer then re-read the riskiest changes (unlocked update path,
   sent-model metadata, workflow expressions, audit locking) and found CR-1, fixed in the close PR.
-- The release item is ticked when `v1.0.1` is published through the `verify` job.
+- Release: the first `v1.0.1` run (44853119211) stopped at `verify` because `actions/checkout` rewrites a pushed
+  tag as lightweight, so the gate failed closed and nothing was published. The fix is #119. With the owner's
+  one-time approval (Q-SY-H1-2), the tag ruleset was disabled, `v1.0.1` was re-created on `4414dd8`, and the
+  ruleset was restored (active; deletion, update and non-fast-forward; no bypass; checked via the API).
+  Run 44856203019: `verify` and `release` succeeded, and
+  https://github.com/vicberger-com/hermes-switchyard/releases/tag/v1.0.1 carries the wheel, the sdist,
+  `sbom.cdx.json` and `SHA256SUMS`.
 
 ## 6. Dispositions (fill in as each package merges)
 
