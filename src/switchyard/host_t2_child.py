@@ -21,6 +21,10 @@ from switchyard.rpc import Channel, RemoteError, read_frame, write_frame
 
 PACKAGE_ROOT = "_switchyard_t2"
 _MAX_DETAIL = 200
+# The parent answers a child's request while it waits on a call of its own (activate, an action, an event).
+# A module thread that calls ctx while the parent is idle waits until the next call; this bounds that wait
+# (H1 B-15). Calls made from inside a parent call are answered at once.
+CHILD_CALL_TIMEOUT_S = 30.0
 
 
 class ParentPort(Protocol):
@@ -29,7 +33,7 @@ class ParentPort(Protocol):
 
 def _call(parent: ParentPort, method: str, params: dict[str, Any]) -> Any:
     try:
-        return parent.request(method, params)
+        return parent.request(method, params, CHILD_CALL_TIMEOUT_S)
     except RemoteError as exc:
         raise exc.as_local() from None
 
