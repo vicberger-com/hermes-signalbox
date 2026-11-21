@@ -47,8 +47,8 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | B-5 | Low | scheduler.py | Backlog 1.1 | - | private until fixed | backlog #98 |
 | B-6 | Low | fsread.py | Backlog 1.1 | - | private until fixed | backlog #99 |
 | B-7 | Low | api.py | Backlog 1.1 | - | private until fixed | backlog #100 |
-| B-8 | Low | api.py, cli.py | Backlog 1.1 | - | private until fixed | backlog #101 |
-| B-9 | Low | api.py, cli.py | Backlog 1.1 | - | private until fixed | backlog #102 |
+| B-8 | Low | api.py, cli.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #134 (backlog #101) |
+| B-9 | Low | api.py, cli.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #134 (backlog #102) |
 | B-10 | Low | process.py | Backlog 1.1 | - | private until fixed | backlog #103 |
 | B-11 | Low | updates.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
 | B-12 | Low | updates.py | Backlog 1.1 | - | private until fixed | backlog #104 |

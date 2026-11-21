@@ -16,27 +16,27 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-2 | Medium | confirmed-by-probe | core lock | core.py:255-258; updates.py:41, 193-195 | Network I/O (git, up to 300 s per call) runs under the one core lock; unrelated reads stall |
 | B-3 | Medium | confirmed-by-probe | process | process.py:126-131 | Deadline not enforced while writing stdin; raw BrokenPipeError escapes; no audit record |
 | B-4 | Low | confirmed-by-probe | logs | logs.py:59, 64-71 | Long event names make log lines invalid JSON |
-| B-5 | Low | confirmed-by-probe | scheduler | scheduler.py:236-246 | Cron trigger fires again after the wall clock steps back (and on DST fall-back) |
-| B-6 | Low | confirmed-by-probe (acceptance); device behaviour suspected | fs.read | fsread.py:38-49, 68-70 | Device-name screen misses superscript aliases (COM¹, LPT³) and trailing-colon names |
-| B-7 | Low | confirmed-by-probe | API | api.py:98-101, 244-260 | One thread per connection, no cap; 40 stalled sockets gave 42 threads |
+| B-5 | Low | - | - | - | withheld until fixed (#98) |
+| B-6 | Low | - | - | - | withheld until fixed (#99) |
+| B-7 | Low | - | - | - | withheld until fixed (#100) |
 | B-8 | Low | confirmed-by-reading | API client | api.py:301-334; cli.py:119-128 | Stale api.port/api.token trusted; the CLI sends the bearer token to whatever answers |
 | B-9 | Low | confirmed-by-reading | CLI/API | api.py:319-322; cli.py:119-128 | Transport error after the request was sent, then offline re-run of the operation (possible double execution) |
-| B-10 | Low | confirmed-by-reading | process | process.py:83-141 | `process.spawn` is a blanket grant: no program allow-list; env and cwd fully module-chosen |
+| B-10 | Low | - | - | - | withheld until fixed (#103) |
 | B-11 | Low | confirmed-by-reading | updates | updates.py:57, 294-299 | Refusal gate for unreviewed files misses compiled extensions (.pyd, .so) and is case-sensitive |
-| B-12 | Low | confirmed-by-reading | updates | updates.py:280-312, 342-347 | No version monotonicity: an older commit from the pinned URL installs without any flag |
-| B-13 | Low | confirmed-by-reading | rollback | updates.py:480-505 | Manual rollback reactivates without a health check and without an integrity or identity check |
+| B-12 | Low | - | - | - | withheld until fixed (#104) |
+| B-13 | Low | - | - | - | withheld until fixed (#105) |
 | B-14 | Low | confirmed-by-reading | RPC | rpc.py:162-167; host_t2.py:126-148 | Send time is outside the call deadline; a call can run about 2x the documented limit |
-| B-15 | Low | confirmed-by-reading | RPC/T2 | host_t2_child.py:29-33; host_t2.py:112-119 | Child requests are served only during a parent call; child-side calls have no timeout |
-| B-16 | Low | confirmed-by-reading | RPC | rpc.py:62; host_t2.py:98 | `write_frame` ignores the return value of a raw-pipe write (short-write risk; suspected) |
-| B-17 | Low | confirmed-by-reading | API | api.py:57-67 | Token written before the Windows ACL is restricted (window in a shared data dir) |
-| B-18 | Low | confirmed-by-reading | events | events.py:132-135; host_t2.py:236-251 | No subscription cap per module; each event fans out to synchronous RPC on the publisher's thread |
-| B-19 | Low | confirmed-by-reading | schedule | schedule.py:50-57, 69-73 | One worker pool per module, never released when the module is removed |
+| B-15 | Low | - | - | - | withheld until fixed (#106) |
+| B-16 | Low | - | - | - | withheld until fixed (#107) |
+| B-17 | Low | - | - | - | withheld until fixed (#108) |
+| B-18 | Low | - | - | - | withheld until fixed (#109) |
+| B-19 | Low | - | - | - | withheld until fixed (#110) |
 | B-20 | Info | confirmed-by-probe | API | api.py:162-165 | PUT/PATCH/DELETE/OPTIONS reply 501 without the Host or Origin check |
 | B-21 | Info | confirmed-by-reading | scheduler | scheduler.py:140-146 | NaN and inf accepted for `every` and `min_interval_s`; such a trigger never fires |
-| B-22 | Info | confirmed-by-reading | net | net.py:99; updates/net | Allow-list checks the name, not the resolved address; module headers may override Host |
-| B-23 | Info | confirmed-by-reading | logs | logs.py:30-37 | Redaction covers values only, not keys |
+| B-22 | Info | - | - | - | withheld until fixed (#111) |
+| B-23 | Info | - | - | - | withheld until fixed (#112) |
 | B-24 | Info | confirmed-by-probe | API | api.py (no handle_error) | Each dropped connection prints a full traceback to stderr |
-| B-25 | Info | confirmed-by-reading | ops/quality | ops.py:252-255; host_t2.py:208-209; updates.py (whole file) | Coding practice: message-text matching, silent `except ... pass`, updates.py mixes concerns |
+| B-25 | Info | - | - | - | withheld until fixed (#113) |
 
 Counts: Critical 0, High 0, Medium 3, Low 16, Info 6.
 
@@ -96,31 +96,17 @@ Overall: the loopback API and the frame layer are sound. The Host, Origin, token
 - **Fix:** truncate `event`, `module` and `stream` before serialising. Then re-serialise the whole record, or slice on a character boundary, not bytes.
 - **Suggested test:** write a 20 kB event and assert every line parses.
 
-### B-5 (Low), cron trigger re-fires after a wall-clock step back
-- **Location:** `scheduler.py:236-246`. `minute` comes from `self._now()` (wall clock), and the duplicate check is only against the last fired minute.
-- **Evidence:** probe p3, cron `5 * * * *`, clock 10:05 then 09:05: `fired at: ['2026-11-20T10:05:00', '2026-11-20T09:05:00']`. A repeat within the same minute did not fire, so only the step back is the trigger.
-- **Impact:** a job runs twice (NTP correction, manual clock change, DST fall-back). Low for these jobs, but duplicate side effects are real.
-- **Fix:** keep a set of recent fired minutes, or refuse a minute earlier than the last fired one.
-- **Suggested test:** the probe above, asserting one fire.
-- Fixed in 1.1 (#98): a cron minute at or before the last fired one, within 3 hours, does not fire; a larger step back starts afresh so jobs do not stop for days after a big correction.
+### B-5 (Low)
 
-### B-6 (Low), fs.read device-name screen incomplete
-- **Location:** `fsread.py:38-49` (`_RESERVED`), `fsread.py:68-70` (`part.split(".")[0].rstrip(" ").upper() in _RESERVED`).
-- **Evidence:** probe p5 (real superscript characters):
-  `ACCEPT 'COM¹'`, `ACCEPT 'COM²'`, `ACCEPT 'LPT³'`, `ACCEPT 'LPT¹.txt'`
-  Probe p3: `ACCEPT 'C:\\x\\NUL:'`, `ACCEPT 'C:\\x\\CON:'`, `ACCEPT 'C:\\x\\file.txt:hidden'`. `COM1` and `NUL.txt` are refused.
-- **Impact:** Windows documents the superscript forms as legacy device aliases. If they resolve to devices, a reader could block on a device or read one. I did not open a device to confirm, because a `stat` on the alias returned FileNotFound in both cases and that test is not conclusive. Alternate data streams are accepted by design (the grant is the decision); they are listed for completeness only.
-- **Fix:** normalise each component (strip trailing `.`/space, drop everything after the first `:`) and refuse any component that is a reserved name or has a superscript digit. Add the superscript set. Optionally refuse `:` in path components.
-- **Suggested test:** a parametrised test over the names above, asserting refusal.
-- Fixed in 1.1 (#99): each component is reduced to the name Windows matches (before any `:` and the first `.`, trailing spaces and dots dropped, superscript digits as digits) before the device-name check. Alternate data streams stay allowed.
+Withheld until #98 is closed.
 
-### B-7 (Low), API has no connection cap; one thread per socket
-- **Location:** `api.py:98-101` (`timeout = SOCKET_TIMEOUT_S`), `api.py:244-248` (`ThreadingHTTPServer`), `api.py:259-260` (`daemon_threads = True`).
-- **Evidence:** probe p2, 40 sockets sending a partial request and stalling: `threads before=2 during=42`. The health check still answered: `(200, ...) in 0.02s`.
-- **Impact:** any local process can exhaust threads. The 10 s limit is per read, so a slow drip keeps a thread indefinitely. This is local and same-user-scoped, hence Low.
-- **Fix:** bound concurrent handlers (a semaphore, or `ThreadPoolExecutor` with a queue cap) and add a total deadline for the request head.
-- **Suggested test:** open 100 stalled sockets and assert the server still serves a health check and the thread count stays bounded.
-- Fixed in 1.1 (#100): at most 16 handler threads (further connections closed at once) and a 10 s deadline for the whole request.
+### B-6 (Low)
+
+Withheld until #99 is closed.
+
+### B-7 (Low)
+
+Withheld until #100 is closed.
 
 ### B-8 (Low), stale API files trusted; bearer token sent to whatever answers
 - **Location:** `api.py:288-292` (files removed only on clean `shutdown`), `api.py:301-307` (`from_data_dir` reads port and token), `api.py:309-334` (`request` sends `Authorization: Bearer` to `127.0.0.1:<port>` and does not check the server's identity).
@@ -138,12 +124,9 @@ Overall: the loopback API and the frame layer are sound. The Host, Origin, token
 - **Suggested test:** a fake server that accepts and closes after the body; assert no local re-run.
 - Fixed in 1.1 (#102): only a failure to connect falls back to a local run; a failure after the request was sent is `ApiOutcomeUnknown` and nothing runs again.
 
-### B-10 (Low), `process.spawn` is a blanket grant
-- **Location:** `process.py:83-141`; no program rule in `capabilities.py` or `manifest.py` (grep found none). The program name is audited (`process.py:144-145`) but not checked. `env` and `cwd` are module-chosen (`process.py:101-116`).
-- **Impact:** a granted module can run any program on PATH or any absolute executable, under any `cwd`. The grant is the decision, as with fs.read, but nothing in the docs says `process.spawn` is unconstrained. The programs in docs/MODULES.md are the intended use only.
-- **Fix:** let the manifest declare `programs = [...]` and match on basename and resolved path; or document the blanket grant in the grant prompt.
-- **Suggested test:** a manifest with `programs = ["bw"]`, asserting that `run(["cmd.exe"])` is denied and audited.
-- **Fixed in 1.1 (#103):** a manifest may list `capabilities.programs` (bare names; requires `process.spawn`). With a list, `PolicyEngine.require_program` refuses an unlisted program or a path in `argv[0]`, and the denial is audited (`policy.denied` with the program name). Without a list the grant stays blanket, and `module show` reports `programs: any`. All three bundled spawning modules list theirs. An update that adds a program is a widening change in the preview.
+### B-10 (Low)
+
+Withheld until #103 is closed.
 
 ### B-11 (Low), refusal gate for unreviewed files is incomplete
 - **Location:** `updates.py:57` (`_UNREVIEWABLE = (".pyc", ".pyo", ".pth")`), `updates.py:294` (`p.suffix in _UNREVIEWABLE`).
@@ -152,18 +135,13 @@ Overall: the loopback API and the frame layer are sound. The Host, Origin, token
 - **Fix:** refuse `.pyd`, `.so`, `.dylib`, `.dll` and `.pyw`, compare suffixes case-insensitively, and flag any new binary as widening.
 - **Suggested test:** stage a tree with a `.pyd` and assert refusal.
 
-### B-12 (Low), no version monotonicity on update
-- **Location:** `updates.py:280-312` (`_stage` does not compare versions), `updates.py:342-347` (widening compares declared permissions only).
-- **Impact:** any commit on the pinned URL installs, including an older one with a known bug. The operator sees the sbom delta but nothing marks a downgrade. The repository owner is trusted by design, so this is a control gap, not an exploit.
-- **Fix:** refuse a lower version unless `accept_wider` is set, and flag it in the preview.
-- **Suggested test:** update from 0.2.0 to 0.1.0 and assert it needs the flag.
-- Fixed in 1.1 (#104): an older version needs `allow_downgrade`; preview shows `downgrade`.
+### B-12 (Low)
 
-### B-13 (Low), manual rollback reactivates without a health check
-- **Location:** `updates.py:480-505`, especially `updates.py:496-500` (`_restore` then sidecar update) and `updates.py:485-489` (only the previous manifest is validated).
-- **Impact:** a rolled-back version can be left in a failed state with no automatic check. The sidecar is read as text and only checked against the SHA pattern. The previous directory is not checked against any recorded digest. This is same-user territory, so Low.
-- **Fix:** run the health check after rollback and record the outcome. Store the expected tree digest in the sidecar and verify it.
-- Fixed in 1.1 (#105): rollback verifies the tree digest recorded when the version was set aside, then runs and reports the health check.
+Withheld until #104 is closed.
+
+### B-13 (Low)
+
+Withheld until #105 is closed.
 
 ### B-14 (Low), RPC call deadline excludes the send
 - **Location:** `rpc.py:162-167` (deadline starts after `_send` at line 164); `host_t2.py:139-146` (send can take up to `self._timeout` before the caller waits). Dispatched replies in the wait loop (`rpc.py:175-177`) also send outside the check.
@@ -171,37 +149,25 @@ Overall: the loopback API and the frame layer are sound. The Host, Origin, token
 - **Fix:** compute the deadline before the send and pass the remaining time to the writer.
 - **Suggested test:** a child that stops reading and a call with `timeout=1`, asserting completion within about 1.2 s.
 
-### B-15 (Low), child requests served only during a parent call
-- **Location:** `host_t2_child.py:29-33` (`parent.request(method, params)` with no timeout); `host_t2.py:112-119` (reader queues frames and kills the child at 64 frames).
-- **What is wrong:** requests from the child while the parent is idle are queued and answered only at the next call. A background thread in a module blocks with no timeout. More than 64 unsolicited frames kill the child.
-- **Impact:** functional. Module background threads (logging, emit) stall silently. Documented? Not in m0-core.md.
-- **Fix:** have the parent serve inbound requests on a dedicated reader, or document the limit and give the child a call timeout.
-- **Suggested test:** a child that starts a thread calling `ctx.log` and assert the log arrives while the parent is idle.
-- Fixed in 1.1 (#106) by the second option: child calls time out after 30 s, and the limit is documented in m0-core (T2 subprocess host). A dedicated parent reader was not added.
+### B-15 (Low)
 
-### B-16 (Low), frame writer ignores short writes (suspected)
-- **Location:** `rpc.py:62` (`stream.write(...)` result not checked); `host_t2.py:98` (`bufsize=0`, so the stream is a raw `FileIO`).
-- **Impact:** if a raw write is partial, the peer sees a corrupt frame. On blocking pipes this normally does not happen, and I did not test it. Suspected only.
-- **Fix:** loop until all bytes are written, or wrap the stream in a `BufferedWriter`.
-- Fixed in 1.1 (#107): the writer loops until the whole frame is written; a test with a 3-byte-per-write stream confirmed the corrupt frame before the fix.
+Withheld until #106 is closed.
 
-### B-17 (Low), token written before the Windows ACL is applied
-- **Location:** `api.py:57-67` (`os.write` at line 61, `_restrict_windows_acl` at line 67).
-- **Impact:** for the default user-only profile directory this does not matter. For `SWITCHYARD_DATA_DIR` on a shared folder, the token is readable briefly. If icacls fails, the file is removed (fail closed), but the bytes were already on disk.
-- **Fix:** create the file with the ACL applied first (for example, create an empty file, restrict it, then write).
-- Fixed in 1.1 (#108): the file is created empty, restricted, and only then written.
+### B-16 (Low)
 
-### B-18 (Low), no subscription cap; fan-out on the publisher's thread
-- **Location:** `events.py:132-135` (`subscribe` appends with no limit); `host_t2.py:236-251` (each T2 subscription is a synchronous `_call` per event).
-- **Impact:** a module can subscribe many times, and each event then costs one RPC round trip per subscription. The delivery runs on whichever thread published, including the scheduler tick. Bounded by the 10 s deadline, so Low.
-- **Fix:** cap subscriptions per module (for example 64), and consider asynchronous delivery for T2 subscribers.
-- Fixed in 1.1 (#109): at most 64 subscriptions per module. Delivery to T2 subscribers stays synchronous.
+Withheld until #107 is closed.
 
-### B-19 (Low), schedule worker pools are never released per module
-- **Location:** `schedule.py:50-57` (one `ThreadPoolExecutor` per module, created on first use), `schedule.py:69-73` (`close` only at core close).
-- **Impact:** a removed module leaves an idle worker thread until the process exits. Minor leak in long-lived daemons.
-- **Fix:** shut down and drop the pool in `remove_owner`.
-- Fixed in 1.1 (#110): `Scheduler.remove_owner` notifies the schedule broker, which shuts the module's worker down; a later job starts a fresh one.
+### B-17 (Low)
+
+Withheld until #108 is closed.
+
+### B-18 (Low)
+
+Withheld until #109 is closed.
+
+### B-19 (Low)
+
+Withheld until #110 is closed.
 
 ### B-20 (Info), unsupported methods skip Host and Origin checks
 - **Location:** `api.py:162-165` (`_unsupported` does not call `_origin_ok`).
@@ -214,30 +180,22 @@ Overall: the loopback API and the frame layer are sound. The Host, Origin, token
 - **Impact:** such a trigger never fires, silently. Not probed.
 - **Fix:** require `math.isfinite`.
 
-### B-22 (Info), allow-list checks the name, not the resolved address
-- **Location:** `net.py:96-97` (host from the URL, matched by `require_host`), `net.py:99` (module headers passed through, so `Host` can be overridden).
-- **Impact:** an allow-listed name that resolves to a loopback or link-local address (for example 169.254.169.254) is reachable. The manifest author chose the name, so this is Info. Not probed (no DNS control).
-- **Fix:** optionally resolve and refuse private ranges unless the manifest allows them, and drop `Host` from module headers.
-- Fixed in 1.1 (#111), in two parts: a module-set `Host` header is dropped (#136); the host is resolved once, link-local answers are refused, and the connection goes to the checked addresses (operator decision Q-SY-1.1-2). Loopback and private addresses stay allowed.
+### B-22 (Info)
 
-### B-23 (Info), redaction covers values, not keys
-- **Location:** `logs.py:30-37` (`_redact_all` redacts strings and leaves dict keys as written).
-- **Impact:** a module that uses a secret as a field name writes it into the log. Keys are module-chosen. Low exposure.
-- **Fix:** redact keys too.
-- Fixed in 1.1 (#112): keys are redacted too; keys that redact alike keep a numeric suffix so no field is dropped.
+Withheld until #111 is closed.
+
+### B-23 (Info)
+
+Withheld until #112 is closed.
 
 ### B-24 (Info), socketserver prints tracebacks for dropped connections
 - **Location:** `api.py` (no `handle_error` override).
 - **Evidence:** probe p2 printed 40 `ConnectionAbortedError` tracebacks to stderr. No request data appeared in them.
 - **Fix:** override `handle_error` to log the class name only.
 
-### B-25 (Info), coding practice
-- `ops.py:252-255`: `TypeError` is classified by matching message text (`"missing" in str(exc)`). Fragile across Python versions.
-- `host_t2.py:208-209`: `except (SwitchyardError, subprocess.TimeoutExpired): pass` in `deactivate` discards errors silently.
-- `updates.py` (505 lines): fetch, SBOM, channels, check cache and the swap are in one class. `_restore` duplicates the swap logic. Splitting `GitFetcher` and `sbom` into their own modules would help.
-- `host_t2_child.py:197`, `_Lazy`: a workaround to break a construction cycle. Acceptable, but a constructor argument would be clearer.
+### B-25 (Info)
 
----
+Withheld until #113 is closed.
 
 ## Done well
 
@@ -255,13 +213,13 @@ Overall: the loopback API and the frame layer are sound. The Host, Origin, token
 ## Not checked
 
 - Real `git` against a remote (fetch, ls-remote, the 300 s behaviour). B-2 uses a stub fetcher.
-- DNS rebinding for the net broker (no DNS control; B-22 is reading only).
-- Windows device I/O for the superscript and colon names (B-6). I did not open a device.
-- icacls ACL outcome on the token file (B-17 is reading only).
+- An item for withheld finding B-22.
+- An item for withheld finding B-6.
+- An item for withheld finding B-17.
 - The full pytest suite. I did not run it, to keep the repo free of cache and coverage writes.
 - Concurrency under a live daemon: two processes on one data dir, and the CLI-to-daemon fallback (B-9) under real load.
 - Hermes adapter (`hermes/`), dashboard panel and inbox modules: outside this scope.
-- Slowloris beyond 40 sockets, and a flood of child frames (the 64-frame kill, B-15).
+- An item for withheld finding B-15.
 
 ## Issues encountered
 
@@ -273,53 +231,10 @@ Overall: the loopback API and the frame layer are sound. The Host, Origin, token
 | File | Covers |
 |---|---|
 | p1_process.py | B-3 deadline and stdin |
-| p2_api.py | API request checks, B-7, B-20 |
-| p3_misc.py | B-4, B-5, RPC framing and deadline, fs names |
+| p2_api.py | API request checks, B-20; one withheld finding |
+| p3_misc.py | B-4, RPC framing and deadline; one withheld finding |
 | p4_update.py | B-1 swap scenarios |
-| p5_fsnames.py | B-6 device names |
-| p6_net.py | net redirects and allow-list |
-| p7_lock.py | B-2 lock |
-| p8_t2.py | T2 environment and deadline |
-- Fixed in 1.1 (#113): a missing action argument is found by binding to the handler's signature; an unclean T2 shutdown is reported on stderr and kept as `shutdown_error`; `gitfetch.py` and `sbom.py` are split out of `updates.py`; `ChildHost.attach` replaces `_Lazy`. `_restore` still mirrors the swap.
-
-## Done well
-
-- **API request checks.** `api.py:152-160` (Host must be `127.0.0.1:<port>` or `localhost:<port>`; any Origin refused), `api.py:180` (`hmac.compare_digest`), `api.py:194-196` (size checked before read), `api.py:183-185` (JSON content type). Probe p2: DNS-rebinding Host 403, `Origin: null` 403, no token 401, text/plain 415, 70 000 bytes 413, query string 404, good request 200.
-- **Token and headers.** `api.py:257` (`secrets.token_urlsafe(32)`), `api.py:51-54` (`safe_header` rejects CR/LF), `api.py:104-105` (request lines never logged), `api.py:113-121` (`nosniff`, `no-store`).
-- **Frame layer.** `rpc.py:88-89` (size checked before the body is read; probe: `frame too large (2000000 bytes ...) | body consumed: False`), `rpc.py:178-179` (response id must match), `rpc.py:164-172` (one deadline per call; probe stopped at `0.50s`), `rpc.py:56` (`allow_nan=False`; probe rejected NaN).
-- **Child environment and kill-on-timeout.** `host_t2.py:53-56` (environment allow-list; probe: the planted secret was absent from the child env), `host_t2.py:91-100` (fixed argv, no shell), `host_t2.py:107-124` (flood handling), `host_t2.py:139-148` (send deadline). Probe p8: a hanging `activate` raised `T2Timeout after 2.2s` and the child exited.
-- **Network broker.** `net.py:43-45` and `net.py:65` (no redirects, no env proxies), `net.py:94-97` (scheme, credentials and host checks), `policy/capabilities.py:182-194` (exact or bare host). Probe p6: a 302 was returned, not followed (second server 0 hits); `localhost`, `127.0.0.1`, `[::1]`, `0.0.0.0`, decimal IP, `file:` and credentialed URLs were all refused.
-- **fs.read path syntax.** `fsread.py:56-74` (drive letter required; UNC, `\\?\` and drive-relative paths refused, probe-confirmed), `fsread.py:120-125` (`fstat` on the open handle), `fsread.py:130-132` (bounded read), audit records path and byte count, never content.
-- **Update pipeline.** `updates.py:157-159` (ref must be 40 lower-case hex), `updates.py:188-190` (`GIT_CEILING_DIRECTORIES`, `core.hooksPath` to null, `protocol.file.allow=never`), `updates.py:215` (`HEAD == ref`), `updates.py:291-299` (symlinks refused), `updates.py:340-347` (digest-bound update, widening gate). Manifest `version` regex excludes `/` and `\`, so the `previous-<version>` directory name cannot traverse (`manifest`/`module.schema.json`).
-- **Event bus and notifications.** `events.py:166-178` (each handler gets a copy; exceptions audited by class name only), `events.py:33,106` (size caps), `notify.py:46-51` (redact before truncating, as the comment says).
-- **Operation boundary.** `ops.py:31-45` (`MODEL_OPS` allow-list), `core.py:251-253` (enforced in `Core.run`), `api.py:236-241` (dashboard profile limited to named operations).
-- **Tooling.** `mypy --strict` passes on the 17 in-scope modules (Success: no issues found in 17 source files). `ruff check` passes. `bandit -ll` printed no findings, only configuration warnings. No `shell=True`, `eval`, `exec`, `pickle` or bare `except:` in scope (grep).
-
-## Not checked
-
-- Real `git` against a remote (fetch, ls-remote, the 300 s behaviour). B-2 uses a stub fetcher.
-- DNS rebinding for the net broker (no DNS control; B-22 is reading only).
-- Windows device I/O for the superscript and colon names (B-6). I did not open a device.
-- icacls ACL outcome on the token file (B-17 is reading only).
-- The full pytest suite. I did not run it, to keep the repo free of cache and coverage writes.
-- Concurrency under a live daemon: two processes on one data dir, and the CLI-to-daemon fallback (B-9) under real load.
-- Hermes adapter (`hermes/`), dashboard panel and inbox modules: outside this scope.
-- Slowloris beyond 40 sockets, and a flood of child frames (the 64-frame kill, B-15).
-
-## Issues encountered
-
-- `.coverage` (modified 10:21) and `.git/FETCH_HEAD` (10:17) changed during this session. I ran no git and no pytest, and none of my probes write `.coverage`, so another process touched them. I did not investigate. Flagging for the operator.
-- Two probe scripts had a mistake in their first run (a raw-string superscript test and a wrong entry-class name). I fixed and re-ran them; the results above are from the corrected runs.
-
-## Probe index (scratch)
-
-| File | Covers |
-|---|---|
-| p1_process.py | B-3 deadline and stdin |
-| p2_api.py | API request checks, B-7, B-20 |
-| p3_misc.py | B-4, B-5, RPC framing and deadline, fs names |
-| p4_update.py | B-1 swap scenarios |
-| p5_fsnames.py | B-6 device names |
+| p5_fsnames.py | withheld (B-6) |
 | p6_net.py | net redirects and allow-list |
 | p7_lock.py | B-2 lock |
 | p8_t2.py | T2 environment and deadline |

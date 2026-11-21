@@ -5,7 +5,9 @@ Server: ``ThreadingHTTPServer`` bound to ``127.0.0.1`` only. Every request is ch
 1. ``Host`` must be ``127.0.0.1:<port>`` or ``localhost:<port>`` (defeats DNS rebinding);
 2. any ``Origin`` header is refused (the CLI is the only client; browsers send one cross-origin), and no
    CORS header is ever sent;
-3. ``GET /v1/health`` is answered without a token; everything else is ``POST /v1/<noun>/<verb>``;
+3. ``GET /v1/health`` is answered without a token; everything else is ``POST /v1/<noun>/<verb>``. A health
+   request with a ``X-Switchyard-Challenge`` header (32-128 hex characters) gets ``proof``, the HMAC-SHA256 of
+   the challenge keyed with the token: the client checks it before it sends the token (H1 B-8);
 4. ``Authorization: Bearer <token>`` compared with ``hmac.compare_digest``; the token is random per start and
    written to ``<data_dir>/api.token`` with user-only permissions;
 5. ``Content-Type: application/json``, no ``Transfer-Encoding``, ``Content-Length`` <= ``MAX_BODY_BYTES``
@@ -16,11 +18,15 @@ Responses use fixed headers only; ``safe_header`` rejects CR/LF (CPython's ``sen
 slow clients holding threads.
 
 Client: reads ``api.port`` and ``api.token``, talks to ``127.0.0.1`` only, and reads at most
-``MAX_RESPONSE_BYTES`` (an unbounded read trusts ``Content-Length``; CVE-2025-13836 class).
+``MAX_RESPONSE_BYTES`` (an unbounded read trusts ``Content-Length``; CVE-2025-13836 class). It sends the token
+only after the listener proved it holds it (``ApiUntrusted`` otherwise). A failure before the operation was
+sent is ``ApiUnavailable`` (the CLI may run it locally); a failure after it is ``ApiOutcomeUnknown`` (the
+daemon may have applied it; nothing runs again, H1 B-9).
 """
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import http.client
 import json
@@ -43,11 +49,29 @@ CLIENT_TIMEOUT_S = 60.0
 CONNECT_TIMEOUT_S = 0.5  # loopback: a refused or dead port must not cost seconds (H1 D-9)
 LOOPBACK = "127.0.0.1"
 _ROUTE = re.compile(r"/v1/([a-z]+)/([a-z_]+)\Z")
+CHALLENGE_HEADER = "X-Switchyard-Challenge"
+_CHALLENGE = re.compile(r"[0-9a-f]{32,128}\Z")
+_PROOF_CONTEXT = "switchyard-api-v1:"
 _STATUS_ERRORS: dict[int, type[SwitchyardError]] = {400: UsageError, 403: CapabilityDenied}
 
 
 class ApiUnavailable(SwitchyardError):
     """No running daemon could be reached."""
+
+
+class ApiUntrusted(SwitchyardError):
+    """The listener on the daemon's port could not prove it holds the token (H1 B-8); the token was not
+    sent."""
+
+
+class ApiOutcomeUnknown(SwitchyardError):
+    """The request was sent but no answer came back: the daemon may have applied it (H1 B-9)."""
+
+
+def token_proof(token: str, challenge: str) -> str:
+    return hmac.new(
+        token.encode("utf-8"), (_PROOF_CONTEXT + challenge).encode("ascii"), hashlib.sha256
+    ).hexdigest()
 
 
 class ApiRestricted(CapabilityDenied):
@@ -175,7 +199,13 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._origin_ok():
             return
         if self.path == "/v1/health":
-            self._reply(200, {"ok": True})
+            challenge = self.headers.get(CHALLENGE_HEADER)
+            if challenge is None:
+                self._reply(200, {"ok": True})
+            elif _CHALLENGE.match(challenge):
+                self._reply(200, {"ok": True, "proof": self.control.proof(challenge)})
+            else:
+                self._fail(400, "bad_request", "challenge must be 32-128 lowercase hex characters")
         else:
             self._fail(404, "not_found")
 
@@ -297,6 +327,9 @@ class ControlServer:
             return "api" if (params.get("id"), params.get("action")) in DASHBOARD_ACTIONS else "hermes"
         return "api"
 
+    def proof(self, challenge: str) -> str:
+        return token_proof(self.token, challenge)
+
     def _files(self) -> tuple[Path, Path]:
         return self.core.data_dir / "api.port", self.core.data_dir / "api.token"
 
@@ -352,22 +385,60 @@ class ApiClient:
             raise ApiUnavailable(f"no running daemon for {data_dir}") from exc
         return cls(port, token)
 
-    def request(self, noun: str, verb: str, params: dict[str, Any]) -> Any:
-        body = json.dumps(params).encode("utf-8")
+    def _connect(self) -> http.client.HTTPConnection:
         conn = http.client.HTTPConnection(LOOPBACK, self.port, timeout=CONNECT_TIMEOUT_S)
         try:
             conn.connect()
-            if conn.sock is not None:
-                conn.sock.settimeout(CLIENT_TIMEOUT_S)
+        except OSError as exc:  # nothing was sent: safe to fall back
+            conn.close()
+            raise ApiUnavailable(
+                f"daemon on port {self.port} is not reachable: {type(exc).__name__}"
+            ) from None
+        if conn.sock is not None:
+            conn.sock.settimeout(CLIENT_TIMEOUT_S)
+        return conn
+
+    def _verify_daemon(self) -> None:
+        """Ask the listener to prove it holds the token before the token is sent (H1 B-8)."""
+        challenge = secrets.token_hex(32)
+        conn = self._connect()
+        try:
+            headers = {"Host": f"{LOOPBACK}:{self.port}", CHALLENGE_HEADER: challenge}
+            conn.request("GET", "/v1/health", headers=headers)
+            resp = conn.getresponse()
+            raw = resp.read(4096 + 1)
+        except OSError as exc:  # only the challenge was sent; the operation was not
+            raise ApiUnavailable(
+                f"daemon on port {self.port} is not reachable: {type(exc).__name__}"
+            ) from None
+        finally:
+            conn.close()
+        try:
+            proof = json.loads(raw).get("proof") if len(raw) <= 4096 else None
+        except (ValueError, AttributeError):
+            proof = None
+        if not isinstance(proof, str) or not hmac.compare_digest(proof, token_proof(self._token, challenge)):
+            raise ApiUntrusted(
+                f"the listener on port {self.port} is not this data directory's Switchyard daemon; "
+                "token not sent (restart the daemon with 'switchyard api serve')"
+            )
+
+    def request(self, noun: str, verb: str, params: dict[str, Any]) -> Any:
+        body = json.dumps(params).encode("utf-8")
+        self._verify_daemon()
+        conn = self._connect()
+        try:
             conn.request("POST", f"/v1/{noun}/{verb}", body=body, headers={
                 "Host": f"{LOOPBACK}:{self.port}", "Authorization": f"Bearer {self._token}",
                 "Content-Type": "application/json",
             })  # fmt: skip
             resp = conn.getresponse()
             raw = resp.read(MAX_RESPONSE_BYTES + 1)
-        except (ConnectionError, TimeoutError, OSError) as exc:
-            raise ApiUnavailable(
-                f"daemon on port {self.port} is not reachable: {type(exc).__name__}"
+        except (OSError, http.client.HTTPException) as exc:
+            # Sent (at least in part), no answer: the daemon may have applied it. Never re-run (H1 B-9).
+            raise ApiOutcomeUnknown(
+                f"'{noun} {verb}' was sent to the daemon but no answer came back "
+                f"({type(exc).__name__}); it may have been applied: check before retrying"
             ) from None
         finally:
             conn.close()
