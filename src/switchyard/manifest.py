@@ -33,6 +33,60 @@ from typing import Any
 
 from switchyard.errors import ManifestError
 
+# Programs a manifest may not list in capabilities.programs (1.1 acceptance S1-7), compared by program_key.
+SHELLS_AND_INTERPRETERS = frozenset(
+    {
+        "cmd",
+        "command",
+        "powershell",
+        "powershell_ise",
+        "pwsh",
+        "sh",
+        "bash",
+        "zsh",
+        "dash",
+        "ksh",
+        "fish",
+        "csh",
+        "tcsh",
+        "busybox",
+        "wsl",
+        "python",
+        "python3",
+        "pythonw",
+        "py",
+        "pyw",
+        "node",
+        "nodejs",
+        "deno",
+        "bun",
+        "perl",
+        "ruby",
+        "php",
+        "lua",
+        "tclsh",
+        "java",
+        "javaw",
+        "osascript",
+        "env",
+        "xargs",
+        "sudo",
+        "doas",
+        "runas",
+        "su",
+        "cscript",
+        "wscript",
+        "mshta",
+        "rundll32",
+        "regsvr32",
+        "msiexec",
+        "wmic",
+        "conhost",
+        "start",
+        "forfiles",
+    }
+)
+
 MANIFEST_NAME = "module.toml"
 MAX_MANIFEST_BYTES = 64 * 1024
 CONTRIBUTION_KINDS: tuple[str, ...] = (
@@ -133,8 +187,20 @@ def cross_field(doc: Mapping[str, Any]) -> list[str]:
             )  # a backend provider needs the grant, not a name list (ADR-0002)
         if (cap in requested) != listed:
             errors.append(f"$.capabilities: {cap!r} must be requested exactly when {field!r} is non-empty")
-    if caps.get("programs") and "process.spawn" not in requested:  # H1 B-10
+    programs = caps.get("programs")
+    if programs and "process.spawn" not in requested:  # H1 B-10
         errors.append("$.capabilities: 'programs' needs 'process.spawn' in 'request'")
+    if isinstance(programs, list):  # 1.1 acceptance S1-7: listing one of these lets the module run any code
+        from switchyard.capabilities import program_key
+
+        voiding = sorted(
+            {p for p in programs if isinstance(p, str) and program_key(p) in SHELLS_AND_INTERPRETERS}
+        )
+        if voiding:
+            errors.append(
+                f"$.capabilities.programs: {', '.join(map(repr, voiding))} is a shell or interpreter; "
+                "listing it would let the module run any code"
+            )
     spec = module.get("requires_core")
     if isinstance(spec, str):  # H1 A-20: enforced at discovery, so it must be readable
         try:
@@ -273,8 +339,8 @@ class Manifest:
     update_ref: str | None
     optional: frozenset[str] = frozenset()  # requested, but not needed to start (auto activation)
     update_channel: str = "main"  # branch whose head scheduled checks compare with (ADR-0011)
-    # Programs process.spawn may run (bare names); empty means any program (H1 B-10).
-    programs: tuple[str, ...] = ()
+    # Programs process.spawn may run (bare names). None: no list, any program (H1 B-10); empty: none (S1-4).
+    programs: tuple[str, ...] | None = None
 
 
 def _entry_file(directory: Path, entry_module: str) -> Path:
@@ -351,7 +417,7 @@ def load_manifest(path: Path) -> Manifest:
         optional=frozenset(caps.get("optional", ())),
         net_hosts=tuple(caps.get("net_hosts", ())),
         secrets=tuple(caps.get("secrets", ())),
-        programs=tuple(caps.get("programs", ())),
+        programs=tuple(caps["programs"]) if "programs" in caps else None,
         contributes=MappingProxyType({k: tuple(contributes.get(k, ())) for k in CONTRIBUTION_KINDS}),
         activation=life["activation"],
         idle_stop_seconds=life.get("idle_stop_seconds", 0),
