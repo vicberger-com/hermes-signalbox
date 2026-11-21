@@ -107,6 +107,8 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - Less work per model call (H1 C-14 #114). The router reuses a registry answer for up to 5 seconds and records
   a decision with one statement; the meter does no quota work when no quotas are set (quotas added from
   another process apply within 30 seconds); tool results are no longer parsed when no module trims them.
+- The module context is typed (H1 A-29 #95): `ctx.state`, `ctx.secrets`, `ctx.notify`, `ctx.net`, `ctx.fs` and
+  the other facades return their classes instead of `object`, so mypy checks module code against them.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

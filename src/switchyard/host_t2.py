@@ -283,10 +283,10 @@ class T2Module:
         store = ctx.state
         if op == "create_table":
             name, columns, primary_key = args
-            store.create_table(name, [tuple(c) for c in columns], primary_key=primary_key)  # type: ignore[attr-defined]
+            store.create_table(name, [(str(c[0]), str(c[1])) for c in columns], primary_key=primary_key)
             return None
         if op == "execute":
             sql, sql_params = args
-            rows = store.execute(sql, tuple(sql_params))  # type: ignore[attr-defined]
+            rows = store.execute(sql, tuple(sql_params))
             return [list(r) for r in rows]
         return getattr(store, op)(*args)

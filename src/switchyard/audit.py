@@ -135,7 +135,10 @@ class AuditLog:
         if not files:
             return 0, GENESIS, 1
         last = files[-1]
-        file_no = int(_FILE_RE.match(last.name).group(1))  # type: ignore[union-attr]
+        match = _FILE_RE.match(last.name)
+        if match is None:  # cannot happen: _files lists only names _FILE_RE matched (H1 A-29)
+            raise AuditError(f"unexpected audit file name {last.name!r}")
+        file_no = int(match.group(1))
         size = last.stat().st_size
         if size == 0:
             if len(files) == 1:
