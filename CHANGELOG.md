@@ -65,6 +65,8 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - `net.outbound` resolves each host once, refuses link-local addresses (169.254.0.0/16, fe80::/10: cloud
   metadata endpoints), and connects to the addresses it checked, so a later DNS answer cannot redirect the request
   (H1 B-22, part 2 of #111). Loopback and private addresses stay allowed for local services.
+- `config.toml` and `module.toml` are size-checked while being read: at most the limit plus one byte is read, so
+  an oversize file is refused without loading it whole (H1 A-16 #89).
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,
