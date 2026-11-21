@@ -9,10 +9,12 @@
   ],
   "linux": [
     "tests/core/test_api.py::test_token_file_acl_is_user_only_on_windows",
+    "tests/core/test_h1_core_trust.py::test_h1_a3_junction_package_does_not_run",
     "tests/modules/test_secrets.py::test_wincred_round_trip_on_windows"
   ],
   "darwin": [
     "tests/core/test_api.py::test_token_file_acl_is_user_only_on_windows",
+    "tests/core/test_h1_core_trust.py::test_h1_a3_junction_package_does_not_run",
     "tests/modules/test_secrets.py::test_wincred_round_trip_on_windows"
   ]
 }

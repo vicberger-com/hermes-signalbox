@@ -20,6 +20,7 @@ file must exist inside the module directory after resolving symlinks.
 from __future__ import annotations
 
 import json
+import os
 import re
 import tomllib
 from collections.abc import Mapping
@@ -142,6 +143,15 @@ def cross_field(doc: Mapping[str, Any]) -> list[str]:
         errors.append("$.module.id: must not contain '__'")
     if module.get("id") in RESERVED_IDS:  # event sources and actors the core uses (M9 review)
         errors.append(f"$.module.id: {module.get('id')!r} is reserved")
+    from switchyard.capabilities import CAPABILITIES  # local: capabilities imports this module
+
+    policies = _section(doc, "contributes").get("policies")
+    for rule in policies if isinstance(policies, list) else []:  # H1 A-19: same grammar as parse_policies
+        verb, _, cap = str(rule).partition(":")
+        if verb != "deny" or cap not in CAPABILITIES:
+            errors.append(
+                f"$.contributes.policies: unsupported policy {rule!r} (M0 accepts 'deny:<capability>')"
+            )
     return errors
 
 
@@ -207,12 +217,37 @@ def _entry_file(directory: Path, entry_module: str) -> Path:
     if any(not p for p in parts):
         raise ValueError(f"entry {entry_module!r} has an empty dotted part")
     base = directory.joinpath(*parts)
+    # H1 A-3: Python imports a package directory before a same-named .py file, so with both present the
+    # file that runs would not be the file checked here (a junction or symlink could point it anywhere).
+    if base.with_suffix(".py").exists() and (base.is_dir() or base.is_symlink() or _is_junction(base)):
+        raise ValueError(f"entry module {entry_module!r}: both {base.name}.py and {base.name}/ exist")
     for candidate in (base.with_suffix(".py"), base / "__init__.py"):
         if candidate.is_file():
             if not candidate.resolve().is_relative_to(directory.resolve()):
                 raise ValueError(f"entry module {entry_module!r} resolves outside the module directory")
             return candidate
     raise ValueError(f"entry module {entry_module!r} not found in the module directory")
+
+
+def _is_junction(path: Path) -> bool:
+    is_junction = getattr(os.path, "isjunction", None)  # Python 3.12+
+    if is_junction is not None:
+        return bool(is_junction(path))
+    try:
+        return bool(getattr(path.lstat(), "st_file_attributes", 0) & 0x400)  # reparse point (Windows)
+    except OSError:
+        return False
+
+
+def loaded_inside(module: Any, directory: Path) -> bool:
+    """True when an imported module's file resolves inside ``directory`` (H1 A-3, checked after import)."""
+    file = getattr(module, "__file__", None)
+    if not file:
+        return False
+    try:
+        return Path(file).resolve().is_relative_to(Path(directory).resolve())
+    except OSError:
+        return False
 
 
 def load_manifest(path: Path) -> Manifest:

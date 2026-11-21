@@ -12,6 +12,15 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   never charge or record. Cool-downs are never shortened by a later error. Every request shape is sized.
 
 ### Changed
+- Core trust (H1 WP6). An explicit `--data-dir` / `Core(data_dir=...)` now wins over `SWITCHYARD_DATA_DIR` (A-1),
+  and the module contract no longer reads it. An entry `X.py` beside a directory `X/` is rejected, and module code
+  is checked after import to come from inside its directory (A-3). `run_contract` has a `trust` check: in-process
+  modules outside the bundled modules fail unless `bundled=True` (A-4). A stored grant the manifest no longer
+  requests is removed (`policy.revoked`, reason `no longer requested`) and must be granted again if a later
+  version asks (A-6). Operation results (health detail, panels, actions) pass through the secret redactor (A-7).
+  Backend errors reach callers as their class name only, audited as `secret.backend_error` (A-18). The manifest
+  validator checks the `policies` grammar (A-19). Smaller: A-15, A-21, A-22; `bw` drops one trailing newline (C-15).
+  **Operator step:** a third-party in-process module must move to `isolation = "subprocess"` to pass the contract.
 - Activation (H1 A-5, C-6, decision D8): a module starts only when every required capability is granted;
   otherwise activation is refused (`policy.denied`, exit 3 in the CLI) before any module code runs, and the
   module is not marked failed. The model may start only modules in `auto` mode. **Operator step:** grant every

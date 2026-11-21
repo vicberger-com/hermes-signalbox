@@ -262,7 +262,8 @@ class Core:
         with self._lock:
             if self._closed:
                 raise SwitchyardError("core is closed")
-            return operation.fn(self, clean, actor)
+            # H1 A-7: a result (health detail, panel, action, ...) never carries a secret value out
+            return self.redactor.redact_obj(operation.fn(self, clean, actor))
 
     def tick(self) -> None:
         """Periodic work: time triggers, idle stop, capacity metrics for capacity triggers."""

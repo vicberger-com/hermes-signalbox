@@ -433,11 +433,18 @@ class ModuleContext:
         if self._closed:
             return
         self._closed = True
-        self._services.panels.remove_all(self.module_id)
-        self._services.bus.unsubscribe_all(self.module_id)
-        if self._services.actions is not None:
-            self._services.actions.remove_all(self.module_id)
-        if self._services.secret_backends is not None:
-            self._services.secret_backends.remove_backends(self.module_id)
-        if self._services.bridge is not None:
-            self._services.bridge.remove_all(self.module_id)
+        s, mid = self._services, self.module_id
+        optional = (
+            getattr(s.actions, "remove_all", None),
+            getattr(s.secret_backends, "remove_backends", None),
+            getattr(s.bridge, "remove_all", None),
+        )
+        steps = [s.panels.remove_all, s.bus.unsubscribe_all, *(f for f in optional if f is not None)]
+        first: BaseException | None = None
+        for step in steps:  # H1 A-22: one failing step does not leave a secret backend or hook registered
+            try:
+                step(mid)
+            except Exception as exc:
+                first = first or exc
+        if first is not None:
+            raise first

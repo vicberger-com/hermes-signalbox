@@ -208,12 +208,23 @@ class SecretsBroker:
 
     def _resolve(self, module_id: str, name: str) -> tuple[str, str]:
         for backend in self._backends:
-            if not backend.available():
-                continue
             try:
+                if not backend.available():
+                    continue
                 return backend.get(name), backend.name
             except KeyError:
                 continue
+            except SwitchyardError:
+                raise  # our own messages (SecretLocked, ...) carry no value
+            except Exception as exc:  # H1 A-18: a backend's message may hold the value; keep the class
+                kind = type(exc).__name__
+                detail = {"secret": name, "backend": str(backend.name), "error": kind}
+                self._audit.append(
+                    actor="core", action="secret.backend_error", module=module_id, detail=detail
+                )
+                raise SecretUnavailable(
+                    f"secret {name!r}: backend {backend.name!r} failed ({kind})"
+                ) from None
         self._audit.append(
             actor="core", action="secret.unavailable", module=module_id, detail={"secret": name}
         )

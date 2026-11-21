@@ -105,15 +105,16 @@ def test_unknown_policy_rejected(make_manifest: ManifestFactory, audit: Recordin
         engine.register(make_manifest(policies=[policy]))
 
 
-def test_stale_grant_ignored_after_manifest_drops_request(
+def test_stale_grant_removed_when_manifest_drops_request(
     make_manifest: ManifestFactory, audit: RecordingAudit
 ) -> None:
     engine, store = _engine(audit)
     engine.register(make_manifest(request=["ui.panel", "schedule"]))
     engine.grant("demo", "schedule", actor="user")
     engine.register(make_manifest(request=["ui.panel"]))  # updated manifest no longer requests it
-    assert store.load("demo") == frozenset({"schedule"})
-    assert engine.granted("demo") == frozenset()
+    assert store.load("demo") == frozenset()  # H1 A-6: removed, not just hidden
+    engine.register(make_manifest(request=["ui.panel", "schedule"]))
+    assert engine.granted("demo") == frozenset()  # asking again needs a new grant
 
 
 def test_unregister_drops_grants(make_manifest: ManifestFactory, audit: RecordingAudit) -> None:

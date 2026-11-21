@@ -42,7 +42,7 @@ from switchyard.context import (
 from switchyard.errors import CapabilityDenied, ManifestError, SwitchyardError
 from switchyard.events import EventBus
 from switchyard.host_t2 import T2Module
-from switchyard.manifest import MANIFEST_NAME, Manifest, load_manifest
+from switchyard.manifest import MANIFEST_NAME, Manifest, load_manifest, loaded_inside
 from switchyard.scheduler import Scheduler
 from switchyard.state import StateStore
 
@@ -287,6 +287,9 @@ class ModuleManager:
         package.__path__ = [str(manifest.directory)]
         sys.modules[package.__name__] = package
         module = importlib.import_module(f"{package.__name__}.{manifest.entry_module}")
+        if not loaded_inside(module, manifest.directory):  # H1 A-3: what ran must be what was checked
+            self._unload(manifest.id)
+            raise SwitchyardError(f"module {manifest.id!r}: entry code was loaded from outside its directory")
         cls = getattr(module, manifest.entry_class)
         missing = [m for m in REQUIRED_METHODS if not callable(getattr(cls, m, None))]
         if missing:

@@ -13,10 +13,11 @@ from switchyard.errors import ConfigError
 from switchyard.paths import SUBDIRS, default_data_dir, ensure_data_dir, resolve_data_dir
 
 
-def test_env_override_wins(tmp_path: Path) -> None:
+def test_env_override_beats_hermes_but_not_an_explicit_dir(tmp_path: Path) -> None:
     env = {"SWITCHYARD_DATA_DIR": str(tmp_path / "env")}
+    assert resolve_data_dir(env=env, hermes_dir=tmp_path / "hermes") == tmp_path / "env"
     got = resolve_data_dir(env=env, configured=tmp_path / "cfg", hermes_dir=tmp_path / "hermes")
-    assert got == tmp_path / "env"
+    assert got == tmp_path / "cfg"  # H1 A-1
 
 
 def test_configured_beats_hermes_and_default(tmp_path: Path) -> None:

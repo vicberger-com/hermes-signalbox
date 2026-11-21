@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import itertools
+import os
 import sys
 import types
 from collections.abc import Callable, Sequence
@@ -152,6 +153,10 @@ class ChildHost:
         package.__path__ = [directory]
         sys.modules[package.__name__] = package
         module = importlib.import_module(f"{package.__name__}.{params['entry_module']}")
+        file = getattr(module, "__file__", None) or ""
+        home = os.path.realpath(directory)
+        if not file or os.path.commonpath([os.path.realpath(file), home]) != home:  # H1 A-3, after import
+            raise SwitchyardError("entry code was loaded from outside the module directory")
         self._instance = getattr(module, str(params["entry_class"]))()
         self._module_id = module_id
 
