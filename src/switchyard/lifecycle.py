@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import enum
+import hashlib
 import importlib
 import sys
 import threading
@@ -50,6 +51,7 @@ PACKAGE_ROOT = "_switchyard_modules"
 MODES = frozenset({"manual", "auto", "disabled"})
 REQUIRED_METHODS = ("activate", "deactivate", "health")
 _MAX_REASON = 900
+_VERIFIED_KEY = "module.verified."  # meta key prefix: last audited verification (1.1 #125)
 _MAX_HEALTH_DETAIL = 200
 
 
@@ -242,8 +244,32 @@ class ModuleManager:
             entry = _Entry(manifest=manifest, mode=mode)
             self._entries[manifest.id] = entry
             self._persist(entry)
-        self._record("module.verified", manifest.id, CORE_ACTOR)
+        # 1.1 #125: every process that opens the data directory runs discovery. The audit gets a record when
+        # the verified manifest is new or changed; an unchanged one is only announced on the in-process bus.
+        fingerprint = self._verification_fingerprint(manifest.id, directory)
+        if fingerprint is not None:
+            self._record("module.verified", manifest.id, CORE_ACTOR)
+            self._store_fingerprint(manifest.id, fingerprint)  # only after the record is written
+        else:
+            self._bus.publish("core", "module.verified", {"module": manifest.id})
         return manifest.id
+
+    def _verification_fingerprint(self, module_id: str, directory: Path) -> str | None:
+        """(directory, manifest digest) when it differs from the last audited verification, else None.
+        Without a store every verification is new."""
+        digest = hashlib.sha256((directory / MANIFEST_NAME).read_bytes()).hexdigest()
+        fingerprint = f"{directory.resolve()}|{digest}"
+        if self._store is None:
+            return fingerprint
+        rows = self._store.core_query("SELECT value FROM meta WHERE key = ?", (_VERIFIED_KEY + module_id,))
+        return None if rows and rows[0][0] == fingerprint else fingerprint
+
+    def _store_fingerprint(self, module_id: str, fingerprint: str) -> None:
+        if self._store is not None:
+            self._store.core_execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                (_VERIFIED_KEY + module_id, fingerprint),
+            )
 
     def reload(self, module_id: str) -> None:
         """Re-read a stopped module's manifest from its directory (after an update swapped the directory)."""
@@ -476,5 +502,6 @@ class ModuleManager:
                 if not keep_data:
                     self._store.module(module_id).drop_all()
                 self._store.core_execute("DELETE FROM modules WHERE id = ?", (module_id,))
+                self._store.core_execute("DELETE FROM meta WHERE key = ?", (_VERIFIED_KEY + module_id,))
             del self._entries[module_id]
         self._record("module.removed", module_id, actor, keep_data=str(keep_data).lower())
