@@ -16,7 +16,7 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-2 | Medium | confirmed-by-probe | core lock | core.py:255-258; updates.py:41, 193-195 | Network I/O (git, up to 300 s per call) runs under the one core lock; unrelated reads stall |
 | B-3 | Medium | confirmed-by-probe | process | process.py:126-131 | Deadline not enforced while writing stdin; raw BrokenPipeError escapes; no audit record |
 | B-4 | Low | confirmed-by-probe | logs | logs.py:59, 64-71 | Long event names make log lines invalid JSON |
-| B-5 | Low | - | - | - | withheld until fixed (#98) |
+| B-5 | Low | confirmed-by-probe | scheduler | scheduler.py:236-246 | Cron trigger fires again after the wall clock steps back (and on DST fall-back) |
 | B-6 | Low | confirmed-by-probe (acceptance); device behaviour suspected | fs.read | fsread.py:38-49, 68-70 | Device-name screen misses superscript aliases (COM¹, LPT³) and trailing-colon names |
 | B-7 | Low | confirmed-by-probe | API | api.py:98-101, 244-260 | One thread per connection, no cap; 40 stalled sockets gave 42 threads |
 | B-8 | Low | confirmed-by-reading | API client | api.py:301-334; cli.py:119-128 | Stale api.port/api.token trusted; the CLI sends the bearer token to whatever answers |
@@ -30,7 +30,7 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-16 | Low | confirmed-by-reading | RPC | rpc.py:62; host_t2.py:98 | `write_frame` ignores the return value of a raw-pipe write (short-write risk; suspected) |
 | B-17 | Low | confirmed-by-reading | API | api.py:57-67 | Token written before the Windows ACL is restricted (window in a shared data dir) |
 | B-18 | Low | confirmed-by-reading | events | events.py:132-135; host_t2.py:236-251 | No subscription cap per module; each event fans out to synchronous RPC on the publisher's thread |
-| B-19 | Low | - | - | - | withheld until fixed (#110) |
+| B-19 | Low | confirmed-by-reading | schedule | schedule.py:50-57, 69-73 | One worker pool per module, never released when the module is removed |
 | B-20 | Info | confirmed-by-probe | API | api.py:162-165 | PUT/PATCH/DELETE/OPTIONS reply 501 without the Host or Origin check |
 | B-21 | Info | confirmed-by-reading | scheduler | scheduler.py:140-146 | NaN and inf accepted for `every` and `min_interval_s`; such a trigger never fires |
 | B-22 | Info | confirmed-by-reading | net | net.py:99; updates/net | Allow-list checks the name, not the resolved address; module headers may override Host |
@@ -96,9 +96,13 @@ Overall: the loopback API and the frame layer are sound. The Host, Origin, token
 - **Fix:** truncate `event`, `module` and `stream` before serialising. Then re-serialise the whole record, or slice on a character boundary, not bytes.
 - **Suggested test:** write a 20 kB event and assert every line parses.
 
-### B-5 (Low)
-
-Withheld until #98 is closed.
+### B-5 (Low), cron trigger re-fires after a wall-clock step back
+- **Location:** `scheduler.py:236-246`. `minute` comes from `self._now()` (wall clock), and the duplicate check is only against the last fired minute.
+- **Evidence:** probe p3, cron `5 * * * *`, clock 10:05 then 09:05: `fired at: ['2026-11-20T10:05:00', '2026-11-20T09:05:00']`. A repeat within the same minute did not fire, so only the step back is the trigger.
+- **Impact:** a job runs twice (NTP correction, manual clock change, DST fall-back). Low for these jobs, but duplicate side effects are real.
+- **Fix:** keep a set of recent fired minutes, or refuse a minute earlier than the last fired one.
+- **Suggested test:** the probe above, asserting one fire.
+- Fixed in 1.1 (#98): a cron minute at or before the last fired one, within 3 hours, does not fire; a larger step back starts afresh so jobs do not stop for days after a big correction.
 
 ### B-6 (Low), fs.read device-name screen incomplete
 - **Location:** `fsread.py:38-49` (`_RESERVED`), `fsread.py:68-70` (`part.split(".")[0].rstrip(" ").upper() in _RESERVED`).
@@ -190,9 +194,11 @@ Withheld until #103 is closed.
 - **Fix:** cap subscriptions per module (for example 64), and consider asynchronous delivery for T2 subscribers.
 - Fixed in 1.1 (#109): at most 64 subscriptions per module. Delivery to T2 subscribers stays synchronous.
 
-### B-19 (Low)
-
-Withheld until #110 is closed.
+### B-19 (Low), schedule worker pools are never released per module
+- **Location:** `schedule.py:50-57` (one `ThreadPoolExecutor` per module, created on first use), `schedule.py:69-73` (`close` only at core close).
+- **Impact:** a removed module leaves an idle worker thread until the process exits. Minor leak in long-lived daemons.
+- **Fix:** shut down and drop the pool in `remove_owner`.
+- Fixed in 1.1 (#110): `Scheduler.remove_owner` notifies the schedule broker, which shuts the module's worker down; a later job starts a fresh one.
 
 ### B-20 (Info), unsupported methods skip Host and Origin checks
 - **Location:** `api.py:162-165` (`_unsupported` does not call `_origin_ok`).
@@ -261,7 +267,7 @@ Withheld until #113 is closed.
 |---|---|
 | p1_process.py | B-3 deadline and stdin |
 | p2_api.py | API request checks, B-7, B-20 |
-| p3_misc.py | B-4, RPC framing and deadline; one withheld finding |
+| p3_misc.py | B-4, B-5, RPC framing and deadline, fs names |
 | p4_update.py | B-1 swap scenarios |
 | p5_fsnames.py | B-6 device names |
 | p6_net.py | net redirects and allow-list |
