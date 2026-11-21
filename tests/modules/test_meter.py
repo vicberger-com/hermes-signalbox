@@ -175,7 +175,8 @@ def test_hostile_usage_values(core: Core) -> None:
     response(core, "bad model id", usage())  # ignored
     response(core, "paid/big", usage(), provider=None)  # ignored
     big = next(m for m in mt(core, "summary")["models"] if m["model"] == "paid/big")
-    assert big["tokens"] == 0 and big["usage_missing"] == 1 and big["requests"] == 1
+    # 1.5 cache-write tokens round to 2 (H1 C-10); every other hostile value counts 0 and flags the row
+    assert big["tokens"] == 2 and big["usage_missing"] == 1 and big["requests"] == 1
 
 
 def test_threshold_fires_once_per_period(core: Core, clock: Clock) -> None:
@@ -431,3 +432,25 @@ def test_r1_quota_always_exhausts_and_cost_needs_prices(core: Core, tmp_path: Pa
     mt(core, "prices_reload")
     with pytest.raises(SwitchyardError, match="no model prices"):
         mt(core, "quota_add", name="usd", scope="all", metric="cost_usd", period="day", limit="1")
+
+
+# H1 WP8 -----------------------------------------------------------------------------------------------
+
+
+def test_h1_c5_routed_model_is_charged_not_the_served_alias(core: Core) -> None:
+    for rid in ("req", "r2"):  # the request goes out with paid/big (the bridge remembers it per request id)
+        core.bridge.dispatch_llm_request({"model": "paid/big"}, {"provider": OR, "api_request_id": rid})
+    response(core, "paid/big-2024-08-06", usage(1000, 0), sent_model="spoofed/by-hermes-kwargs")
+    response(core, "", usage(1000, 0), api_request_id="r2")  # no served model
+    rows = {m["model"]: m for m in mt(core, "summary", days=1)["models"]}
+    assert rows["paid/big"]["requests"] == 2 and rows["paid/big"]["unpriced"] == 0
+    assert "configured/default" not in rows and "paid/big-2024-08-06" not in rows
+
+
+def test_h1_c10_integral_float_counts_are_kept() -> None:
+    from switchyard.modules.meter.meter_module import _count
+
+    assert _count(12.0) == (12, False)
+    assert _count(12.4) == (12, False)
+    assert _count(float("nan")) == (0, True)
+    assert _count(-1.0) == (0, True)

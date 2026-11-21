@@ -144,14 +144,20 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 | A-21 | Fixed | #83 | Contract reads the grant store (`PolicyEngine.stored_grants`) |
 | A-22 | Fixed | #83 | `ModuleContext.close` runs every cleanup step and re-raises the first error |
 | C-15 | Fixed | #83 | One trailing newline stripped from `bw get` |
-| B-1 | Fixed | WP7 | Swap wrapped: a failed rename restores the previous directory, restarts it and audits `module.rolled_back`; `_restart` treats any exception as failure |
-| B-2 | Fixed | WP7 | `Operation.locked=False` for update, preview, check_updates; the swap runs under the core lock via `swap_guard`; per-module update lock; `ls-remote` 60 s |
-| B-3 | Fixed | WP7 | stdin written on a thread inside the same deadline; 1 MB input cap; kill and audit on every failure path |
-| B-11 | Fixed | WP7 | `.pyd .so .dylib .dll .pyw` refused, suffix compared case-insensitively |
-| B-14 | Fixed | WP7 | `Channel.request` sets the deadline before the send; the T2 writer waits at most the call's remaining time |
-| B-21 | Fixed | WP7 | `_number` requires `math.isfinite` |
-| D-11 | Fixed | WP7 | Regression tests for the T2 flood kill and the stalled-writer kill |
-| D-27 | Fixed | WP7 | Vacuous assertion replaced by a status check |
+| B-1 | Fixed | #84 | Swap wrapped: a failed rename restores the previous directory, restarts it and audits `module.rolled_back`; `_restart` treats any exception as failure |
+| B-2 | Fixed | #84 | `Operation.locked=False` for update, preview, check_updates; the swap runs under the core lock via `swap_guard`; per-module update lock; `ls-remote` 60 s |
+| B-3 | Fixed | #84 | stdin written on a thread inside the same deadline; 1 MB input cap; kill and audit on every failure path |
+| B-11 | Fixed | #84 | `.pyd .so .dylib .dll .pyw` refused, suffix compared case-insensitively |
+| B-14 | Fixed | #84 | `Channel.request` sets the deadline before the send; the T2 writer waits at most the call's remaining time |
+| B-21 | Fixed | #84 | `_number` requires `math.isfinite` |
+| D-11 | Fixed | #84 | Regression tests for the T2 flood kill and the stalled-writer kill |
+| D-27 | Fixed | #84 | Vacuous assertion replaced by a status check |
+| C-2 | Fixed | WP8 | Breaker per module (3 timeouts: 60 s pause, audited once); 4 in-flight calls max; observers share one deadline |
+| C-3 | Fixed | WP8 | `trim.normalise` / `must_keep` take a deadline (0.5 s per step); past it the transform fails open, audited `core.transform_skipped` |
+| C-5 | Fixed | WP8 | Bridge remembers the model sent per `api_request_id` and passes `sent_model` to `post_api_request` / `api_request_error` observers; meter uses it first |
+| C-9 | Fixed | WP8 | `core.adapter_error` once per hook and class, warning logged; gate dispatch separated from observer dispatch |
+| C-10 | Fixed | WP8 | Finite float counts are rounded |
+| C-16 | Fixed | WP8 | `health()` is read-only; expiry at the next turn or apply/restore |
 | D-25 | Fixed | #80 | `hatchling>=1.27,<2` in `[build-system]` |
 | D-2 | Fixed | #81 | `find_runnable` tries each `PATH` candidate with `--version`; `[tools] git` override; `config show` names it; git tests run on this workstation |
 | D-15 | Fixed | #81 | Test forces an absolute working-directory hit on every OS; shared `_outside_cwd` check also guards `program_candidates` |

@@ -321,3 +321,24 @@ def test_h1_d20_model_tool_description_matches_its_actions() -> None:
     names = {w.strip() for w in listed.group(1).replace(" and ", ", ").split(",") if w.strip()}
     assert names == set(MODEL_TOOL_ACTIONS)
     assert "deactivate" not in text
+
+
+def test_h1_c9_adapter_errors_are_audited_once_and_fail_open(
+    ctx: FakeCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import switchyard.hermes as sh
+
+    register(ctx)
+    assert sh._current is not None
+    core = sh._current.core
+
+    def broken(kwargs: Any) -> str | None:
+        raise RuntimeError("gate bug")
+
+    monkeypatch.setattr(core.bridge, "dispatch_gate", broken)
+    hook = ctx.hooks["pre_llm_call"]
+    assert hook(turn_id="t1") is None and hook(turn_id="t2") is None  # the turn proceeds
+    errors = [
+        r for r in core.run("audit", "tail", {"n": 50}, actor="t") if r["action"] == "core.adapter_error"
+    ]
+    assert len(errors) == 1 and errors[0]["detail"] == {"hook": "pre_llm_call", "error": "RuntimeError"}

@@ -169,6 +169,13 @@ def metadata_only(kwargs: Mapping[str, Any]) -> dict[str, Any]:
 MIDDLEWARE_KINDS = frozenset({"llm_request"})
 
 
+MAX_INFLIGHT = 4  # calls per module pool still running; more are skipped, not queued (H1 C-2)
+BREAKER_TIMEOUTS = 3  # timeouts in a row that pause a module's bridge calls (H1 C-2)
+BREAKER_PAUSE_S = 60.0
+TRANSFORM_SCAN_BUDGET_S = 0.5  # core-side normalise and must-keep scan per step (H1 C-3)
+_SENT_HOOKS = frozenset({"post_api_request", "api_request_error"})
+
+
 class HermesBridge:
     def __init__(self, audit: AuditSink, timeout: float = 2.0) -> None:
         self._audit = audit
@@ -182,6 +189,11 @@ class HermesBridge:
         self._delegation: tuple[str, Callable[..., Any], Callable[[], Any]] | None = None
         self._failures: dict[str, int] = {}
         self._paused: dict[str, float] = {}
+        self._inflight: dict[str, int] = {}
+        self._timeouts: dict[str, int] = {}
+        self._hooks_paused: dict[str, float] = {}
+        # api request id -> the model the request went out with (H1 C-5), handed to post_api_request observers
+        self._sent_models: collections.OrderedDict[str, str] = collections.OrderedDict()
         # goal digest -> list of pending (consumer, free_only) routes; child session -> (consumer, free_only)
         self._routed_goals: collections.OrderedDict[str, list[tuple[str, bool]]] = collections.OrderedDict()
         self._delegated: collections.OrderedDict[str, tuple[str, bool]] = collections.OrderedDict()
@@ -269,6 +281,108 @@ class HermesBridge:
             detail={"hook": what, "error": type(exc).__name__},
         )
 
+    def inflight(self, module_id: str) -> int:
+        """Calls of ``module_id`` still running on its pool (bounded by ``MAX_INFLIGHT``)."""
+        with self._lock:
+            return self._inflight.get(module_id, 0)
+
+    def _hooks_paused_now(self, module_id: str) -> bool:
+        with self._lock:
+            return time.monotonic() < self._hooks_paused.get(module_id, 0.0)
+
+    def _submit(
+        self,
+        module_id: str,
+        fn: Callable[..., Any],
+        args: tuple[Any, ...],
+        *,
+        pool: str | None,
+        breaker: bool,
+    ) -> concurrent.futures.Future[Any] | None:
+        """Start a call, or ``None`` when the module is paused or its pool is saturated (H1 C-2): a hung
+        module costs nothing per call once paused, and never builds an unbounded queue."""
+        key = pool or module_id
+        if breaker and self._hooks_paused_now(module_id):
+            return None
+        with self._lock:
+            if self._inflight.get(key, 0) >= MAX_INFLIGHT:
+                saturated = True
+            else:
+                saturated = False
+                self._inflight[key] = self._inflight.get(key, 0) + 1
+        if saturated:
+            if breaker:
+                self._note_timeout(module_id)
+            return None
+        try:
+            future = self._pool(key).submit(fn, *args)
+        except BaseException:
+            self._done(key)
+            raise
+        future.add_done_callback(lambda _f: self._done(key))
+        return future
+
+    def _done(self, key: str) -> None:
+        with self._lock:
+            left = self._inflight.get(key, 0) - 1
+            if left > 0:
+                self._inflight[key] = left
+            else:
+                self._inflight.pop(key, None)
+
+    def _note_timeout(self, module_id: str) -> None:
+        """``BREAKER_TIMEOUTS`` timeouts in a row pause the module's bridge calls for ``BREAKER_PAUSE_S``
+        (audited once per pause)."""
+        with self._lock:
+            count = self._timeouts.get(module_id, 0) + 1
+            self._timeouts[module_id] = count
+            if count < BREAKER_TIMEOUTS:
+                return
+            self._timeouts.pop(module_id, None)
+            self._hooks_paused[module_id] = time.monotonic() + BREAKER_PAUSE_S
+        self._audit.append(actor=CORE_ACTOR, action="module.hooks_paused", module=module_id,
+                           detail={"seconds": str(int(BREAKER_PAUSE_S))})  # fmt: skip
+
+    def _collect(
+        self,
+        module_id: str,
+        what: str,
+        future: concurrent.futures.Future[Any] | None,
+        timeout: float,
+        *,
+        claim: _Claim | None = None,
+        breaker: bool = True,
+    ) -> tuple[bool, Any]:
+        """Wait for a started call. With ``claim``: at the deadline the call is abandoned unless it has
+        already claimed its result, in which case the bridge waits one more ``timeout`` for it (the module
+        is committing)."""
+        if future is None:
+            return False, None
+        try:
+            try:
+                result = future.result(timeout=max(timeout, 0.0))
+            except concurrent.futures.TimeoutError:
+                if claim is None or claim.abandon():
+                    raise
+                result = future.result(timeout=self.timeout)
+        except concurrent.futures.TimeoutError:
+            self._audit.append(
+                actor=CORE_ACTOR,
+                action="module.hook_timeout",
+                module=module_id,
+                detail={"hook": what, "seconds": str(self.timeout)},
+            )
+            if breaker:
+                self._note_timeout(module_id)
+            return False, None
+        except Exception as exc:  # a module must never break a Hermes turn
+            self._failed(module_id, what, exc)
+            return False, None
+        if breaker:
+            with self._lock:
+                self._timeouts.pop(module_id, None)
+        return True, result
+
     def _run(
         self,
         module_id: str,
@@ -277,29 +391,15 @@ class HermesBridge:
         *args: Any,
         claim: _Claim | None = None,
         pool: str | None = None,
+        breaker: bool = True,
     ) -> tuple[bool, Any]:
-        """Call ``fn`` on a worker thread, waiting at most ``timeout`` seconds. Returns ``(ok, result)``.
-
-        With ``claim``: at the deadline the call is abandoned unless it has already claimed its result, in
-        which case the bridge waits one more ``timeout`` for it (the module is committing)."""
+        """Call ``fn`` on a worker thread, waiting at most ``timeout`` seconds. Returns ``(ok, result)``."""
         try:
-            future = self._pool(pool or module_id).submit(fn, *args)
-            try:
-                return True, future.result(timeout=self.timeout)
-            except concurrent.futures.TimeoutError:
-                if claim is None or claim.abandon():
-                    raise
-                return True, future.result(timeout=self.timeout)
-        except concurrent.futures.TimeoutError:
-            self._audit.append(
-                actor=CORE_ACTOR,
-                action="module.hook_timeout",
-                module=module_id,
-                detail={"hook": what, "seconds": str(self.timeout)},
-            )
-        except Exception as exc:  # a module must never break a Hermes turn
+            future = self._submit(module_id, fn, args, pool=pool, breaker=breaker)
+        except Exception as exc:  # bridge closed
             self._failed(module_id, what, exc)
-        return False, None
+            return False, None
+        return self._collect(module_id, what, future, self.timeout, claim=claim, breaker=breaker)
 
     def delegation_roles(self) -> list[tuple[str, str]]:
         """Worker roles for the ``delegate_task`` schema: sorted, validated names, one-line descriptions."""
@@ -402,8 +502,26 @@ class HermesBridge:
             self._track_children(name, kwargs)
         with self._lock:
             entries = list(self._hooks.get(name, ()))
+            sent = (
+                self._sent_models.pop(str(kwargs.get("api_request_id") or ""), None)
+                if name in _SENT_HOOKS
+                else None
+            )
+        meta = metadata_only(kwargs)
+        if sent is not None:
+            meta["sent_model"] = sent  # written by the core, from the request it saw go out (H1 C-5)
+        # H1 C-2: observers run side by side against one shared deadline, not one timeout each in a row
+        deadline = time.monotonic() + self.timeout
+        started = []
         for module_id, fn in entries:
-            self._run(module_id, name, fn, metadata_only(kwargs))
+            try:
+                started.append(
+                    (module_id, self._submit(module_id, fn, (dict(meta),), pool=None, breaker=True))
+                )
+            except Exception as exc:  # bridge closed
+                self._failed(module_id, name, exc)
+        for module_id, future in started:
+            self._collect(module_id, name, future, deadline - time.monotonic())
 
     def add_transform(self, module_id: str, kind: str, fn: Callable[..., Any]) -> None:
         with self._lock:
@@ -420,7 +538,11 @@ class HermesBridge:
         if not entries or not isinstance(text, str) or len(text) > trim.MAX_INPUT_CHARS:
             return None
         info = metadata_only(meta)
-        current = trim.normalise(text)
+        try:
+            current = trim.normalise(text, deadline=time.monotonic() + TRANSFORM_SCAN_BUDGET_S)
+        except trim.BudgetExceeded:
+            self._scan_skipped(kind)
+            return None
         trimmed = False
         for module_id, fn in entries:
             if self._transform_paused(module_id):
@@ -430,12 +552,20 @@ class HermesBridge:
             self._transform_result(module_id, ok)
             if not ok or ranges is None or not isinstance(ranges, list | tuple):
                 continue
-            rebuilt = trim.rebuild(lines, ranges)
+            try:
+                rebuilt = trim.rebuild(lines, ranges, deadline=time.monotonic() + TRANSFORM_SCAN_BUDGET_S)
+            except trim.BudgetExceeded:  # H1 C-3: hostile text must not stall the turn; keep it as it is
+                self._scan_skipped(kind)
+                return None
             if rebuilt is None:
                 continue
             current, trimmed = rebuilt, True
         # normalisation alone is not a reason to change output (M8 review)
         return current if trimmed and current != text else None
+
+    def _scan_skipped(self, kind: str) -> None:
+        self._audit.append(actor=CORE_ACTOR, action="core.transform_skipped", module="",
+                           detail={"kind": kind, "reason": "scan budget"})  # fmt: skip
 
     def _transform_paused(self, module_id: str) -> bool:
         with self._lock:
@@ -498,6 +628,8 @@ class HermesBridge:
         """Run ``llm_request`` middleware in registration order. Returns the new request, or ``None`` if no
         module changed it. Modules get deep copies; only the ``model`` they return is ever adopted, and a
         result whose other fields differ from the input is rejected and audited."""
+        request_id = str(context.get("api_request_id") or "")
+        self._remember_sent(request_id, request.get("model"))
         with self._lock:
             entries = list(self._middleware.get("llm_request", ()))
         if not entries:
@@ -538,7 +670,7 @@ class HermesBridge:
                 # route cannot starve it. Same rules as the middleware result.
                 ok, result = self._run(
                     module_id, "middleware:llm_request:fallback", fallback, fallback_given, dict(ctx),
-                    pool=f"{module_id}#fallback",
+                    pool=f"{module_id}#fallback", breaker=False,
                 )  # fmt: skip
             if not ok or result is None:
                 continue
@@ -551,9 +683,19 @@ class HermesBridge:
                 )
                 continue
             model = result["model"]
+        self._remember_sent(request_id, model)
         if model == request.get("model"):
             return None
         return {**request, "model": model}
+
+    def _remember_sent(self, request_id: str, model: object) -> None:
+        if not request_id or not isinstance(model, str):
+            return
+        with self._lock:
+            self._sent_models[request_id] = model[:200]
+            self._sent_models.move_to_end(request_id)
+            while len(self._sent_models) > 2_000:  # backstop: entries leave on post_api_request
+                self._sent_models.popitem(last=False)
 
     @staticmethod
     def _model_only(before: Mapping[str, Any], after: Any) -> bool:

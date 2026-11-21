@@ -10,6 +10,7 @@ and carriage-return progress redraws are collapsed to their last state.
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Iterable
 
 MAX_INPUT_CHARS = 4_000_000
@@ -38,11 +39,28 @@ MUST_KEEP = re.compile(
 )
 
 
+class BudgetExceeded(Exception):
+    """The scan ran past its deadline (H1 C-3). The caller keeps the text unchanged (fail open)."""
+
+
+def _check(deadline: float | None) -> None:
+    if deadline is not None and time.monotonic() > deadline:
+        raise BudgetExceeded
+
+
 def _keep_line(line: str) -> bool:
     return len(line) > LONG_LINE or MUST_KEEP.search(line) is not None
 
 
-def normalise(text: str) -> str:
+def _any_keep(parts: list[str], deadline: float | None) -> bool:
+    for part in parts:
+        _check(deadline)
+        if _keep_line(part):
+            return True
+    return False
+
+
+def normalise(text: str, *, deadline: float | None = None) -> str:
     """Strip ANSI sequences and collapse carriage-return redraws to their last non-empty state. A line whose
     overwritten parts contained a must-keep match is kept whole (CRs shown as spaces), so collapsing never
     hides an error (M8 review)."""
@@ -56,20 +74,23 @@ def normalise(text: str) -> str:
         if "\r" not in line:
             out.append(line)
             continue
+        _check(deadline)
         parts = [p for p in line.split("\r") if p]
         if not parts:
             out.append("")
-        elif any(_keep_line(p) for p in parts[:-1]):
+        elif _any_keep(parts[:-1], deadline):
             out.append(" ".join(parts))
         else:
             out.append(parts[-1])
     return "\n".join(out)
 
 
-def must_keep(lines: list[str]) -> set[int] | None:
-    """Indices of lines that must survive; ``None`` when there are too many to promise that (fail open)."""
+def must_keep(lines: list[str], *, deadline: float | None = None) -> set[int] | None:
+    """Indices of lines that must survive; ``None`` when there are too many to promise that (fail open).
+    Raises ``BudgetExceeded`` past ``deadline`` (each line is bounded by ``LONG_LINE``; the text is not)."""
     out: set[int] = set()
     for i, line in enumerate(lines):
+        _check(deadline)
         if _keep_line(line):
             out.add(i)
             if len(out) > MAX_KEEP_EXTRA:
@@ -77,7 +98,7 @@ def must_keep(lines: list[str]) -> set[int] | None:
     return out
 
 
-def rebuild(lines: list[str], ranges: Iterable[object]) -> str | None:
+def rebuild(lines: list[str], ranges: Iterable[object], *, deadline: float | None = None) -> str | None:
     """Keep ``ranges`` (``[start, end)`` line indices) plus must-keep lines. ``None`` when the ranges are
     invalid, too many lines must be kept, or nothing would be removed. Work is O(R log R + N)."""
     spans: list[tuple[int, int]] = []
@@ -93,7 +114,7 @@ def rebuild(lines: list[str], ranges: Iterable[object]) -> str | None:
         start, end = max(0, item[0]), min(len(lines), item[1])
         if start < end:
             spans.append((start, end))
-    forced = must_keep(lines)
+    forced = must_keep(lines, deadline=deadline)
     if forced is None:
         return None
     keep = bytearray(len(lines))

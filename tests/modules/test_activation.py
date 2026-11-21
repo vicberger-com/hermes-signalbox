@@ -208,6 +208,14 @@ def test_ttl_restores_previous_state(core: Core, port: FakeHermesConfig, clock: 
     )
     act(core, "apply", name="research", ttl_minutes=1)
     clock.now += 120
+    before = list(port.values["skills.disabled"])
+    # H1 C-16: health is read-only; an expired preset ends at the next turn, not on a dashboard poll
+    assert (
+        core.manager._entry("activation").instance.health()[1]
+        == "preset research (expired; ends at the next turn)"
+    )
+    assert port.values["skills.disabled"] == before
+    core.bridge.dispatch_hook("pre_llm_call", {"turn_id": "t3"})
     assert core.manager._entry("activation").instance.health()[1] == "no preset active"
 
 

@@ -27,6 +27,7 @@ import argparse
 import atexit
 import contextlib
 import json
+import logging
 import os
 import re
 import shlex
@@ -43,6 +44,8 @@ from switchyard.hermes.config_port import HermesConfigAdapter
 from switchyard.hermes.delegation import make_provider
 from switchyard.ops import MODEL_ACTOR, OPERATIONS, UsageError
 from switchyard.secrets import DEFAULT_PATTERNS
+
+_log = logging.getLogger("switchyard")
 
 ACTOR = MODEL_ACTOR  # model-initiated tool calls
 USER_ACTOR = "hermes-user"  # the /switchyard slash command, typed by the user
@@ -194,6 +197,19 @@ class HermesAdapter:
             self.core.audit.append(actor="core", action="core.not_hosting", module="",
                                    detail={"pid": str(os.getpid())})  # fmt: skip
 
+    def _adapter_error(self, hook: str, exc: BaseException) -> None:
+        """An error in the adapter's own dispatch fails open, so it is recorded: once per hook and error class
+        per process in the audit log, and as a warning (H1 C-9)."""
+        kind = type(exc).__name__
+        seen: set[tuple[str, str]] = self.__dict__.setdefault("_adapter_errors", set())
+        if (hook, kind) in seen:
+            return
+        seen.add((hook, kind))
+        _log.warning("switchyard adapter error in %s: %s", hook, kind)
+        with contextlib.suppress(Exception):
+            self.core.audit.append(actor="core", action="core.adapter_error", module="",
+                                   detail={"hook": hook, "error": kind})  # fmt: skip
+
     def _forwarder(self, name: str) -> Any:
         def forward(**kwargs: Any) -> Any:
             try:
@@ -201,13 +217,16 @@ class HermesAdapter:
                     self._note_not_hosting()
                     return None
                 self.core.bridge.dispatch_hook(name, kwargs)
-                if name == "pre_llm_call":  # ADR-0006: a module gate may block the turn
-                    reason = self.core.bridge.dispatch_gate(kwargs)
-                    if reason:
-                        return {"action": "block", "message": reason}
             except Exception as exc:  # never break a Hermes turn
-                del exc
-            return None
+                self._adapter_error(name, exc)
+            if name != "pre_llm_call":
+                return None
+            try:  # ADR-0006: a module gate may block the turn; runs even if the observers failed
+                reason = self.core.bridge.dispatch_gate(kwargs)
+            except Exception as exc:
+                self._adapter_error(name, exc)
+                return None
+            return {"action": "block", "message": reason} if reason else None
 
         forward.__name__ = f"switchyard_{name}"
         return forward
@@ -224,7 +243,8 @@ class HermesAdapter:
                 "tool_name": "terminal",
             }
             return self.core.bridge.dispatch_transform("terminal_output", kwargs.get("output"), meta)
-        except Exception:  # never break a tool call
+        except Exception as exc:  # never break a tool call
+            self._adapter_error("transform_terminal_output", exc)
             return None
 
     def _transform_tool(self, **kwargs: Any) -> str | None:
@@ -259,7 +279,8 @@ class HermesAdapter:
                 return None
             data[key] = new
             return json.dumps(data, ensure_ascii=False)
-        except Exception:
+        except Exception as exc:
+            self._adapter_error("transform_tool_result", exc)
             return None
 
     def _llm_request(self, request: dict[str, Any], **context: Any) -> dict[str, Any] | None:
@@ -268,7 +289,8 @@ class HermesAdapter:
             if not self.core.hosting or not isinstance(request, dict):
                 return None
             changed = self.core.bridge.dispatch_llm_request(request, context)
-        except Exception:
+        except Exception as exc:
+            self._adapter_error("llm_request", exc)
             return None
         return {"request": changed} if changed is not None else None
 

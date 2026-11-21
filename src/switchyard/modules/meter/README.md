@@ -5,7 +5,8 @@ Counts every Hermes API response and checks opt-in quotas. Q&A: [docs/qa/05-m4-p
 ## What is counted
 
 From `post_api_request` (metadata only, ADR-0004 decision 6), per UTC day and hour, provider and model (the
-model actually sent, else the served one): requests, and the token buckets exactly as Hermes reports them
+model actually sent, which the bridge records per API request after routing (H1 C-5), else the served one):
+requests, and the token buckets as Hermes reports them (float counts rounded)
 (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `reasoning_tokens`). "Tokens" in
 quotas and summaries is input + output + cache read + cache write (reasoning is part of output).
 
