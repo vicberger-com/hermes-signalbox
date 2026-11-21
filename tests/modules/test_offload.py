@@ -241,3 +241,105 @@ def test_failures_settings_and_rights(core: Core, tmp_path: Path, server: int) -
             off(c, "run", connector="n8n", payload=json.dumps({"task": "x"}))
     finally:
         c.close()
+
+
+def test_h1_1_cleanup_failure_after_a_successful_run_does_not_fail_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#126: on Windows a Claude Code child that outlives the CLI holds the empty working directory, so
+    removing it raised PermissionError and failed a run whose program had exited 0."""
+    import shutil
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    script = bin_dir / "claude_fake.py"
+    script.write_text("import sys\nprint('ok:' + sys.stdin.read().strip())\n", encoding="utf-8")
+    if os.name == "nt":
+        (bin_dir / "claude.cmd").write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="utf-8")
+    else:
+        shim = f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n'
+        (bin_dir / "claude").write_text(shim, encoding="utf-8")
+        (bin_dir / "claude").chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ.get("PATH", ""))
+    real_rmtree = shutil.rmtree
+    held: list[str] = []
+
+    def held_open(path: Any, *args: Any, **kwargs: Any) -> None:
+        if "switchyard-offload-" in str(path):
+            held.append(str(path))
+            raise PermissionError(13, "The process cannot access the file", str(path))
+        real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", held_open)
+    c = start(tmp_path / "d5", 'allow = ["claude-code"]')
+    try:
+        out = off(c, "run", connector="claude-code", payload=json.dumps({"prompt": "hi"}))
+        assert out["result"].strip() == "ok:hi"
+        assert len(held) == 1 + len(_offload_mod().CLEANUP_RETRY_DELAYS)  # tried, retried, then given up
+        logs = (tmp_path / "d5" / "logs").rglob("*.jsonl")
+        text = "".join(p.read_text(encoding="utf-8") for p in logs)
+        assert "workdir_cleanup_failed" in text and "PermissionError" in text  # the failed step is recorded
+    finally:
+        c.close()
+        monkeypatch.undo()
+        for path in held:
+            real_rmtree(path, ignore_errors=True)
+
+
+def _offload_mod() -> Any:
+    from switchyard.modules.offload import offload_module  # type: ignore[import-not-found,unused-ignore]
+
+    return offload_module
+
+
+@pytest.fixture(autouse=True)
+def _restore_retry_delays() -> Iterator[None]:
+    saved = _offload_mod().CLEANUP_RETRY_DELAYS
+    yield
+    _offload_mod().CLEANUP_RETRY_DELAYS = saved
+
+
+def test_h1_1_a_briefly_held_workdir_is_removed_on_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shutil
+
+    mod = _offload_mod()
+    mod.CLEANUP_RETRY_DELAYS = (0.0, 0.0)
+    real_rmtree = shutil.rmtree
+    calls: list[str] = []
+
+    def held_once(path: Any, *args: Any, **kwargs: Any) -> None:
+        calls.append(str(path))
+        if len(calls) == 1:
+            raise PermissionError(13, "held", str(path))
+        real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", held_once)
+    work = tmp_path / "w"
+    work.mkdir()
+    logged: list[str] = []
+    fake = type("M", (), {"ctx": type("C", (), {"log": lambda self, *a, **k: logged.append(a[1])})()})()
+    mod.OffloadModule._remove_workdir(fake, str(work), "claude-code")
+    assert not work.exists() and len(calls) == 2 and logged == []
+
+
+def test_h1_1_stale_empty_workdirs_are_swept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    mod = _offload_mod()
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    old_empty = tmp_path / f"{mod.WORKDIR_PREFIX}old"
+    old_full = tmp_path / f"{mod.WORKDIR_PREFIX}full"
+    fresh = tmp_path / f"{mod.WORKDIR_PREFIX}fresh"
+    other = tmp_path / "unrelated-old"
+    for d in (old_empty, old_full, fresh, other):
+        d.mkdir()
+    (old_full / "keep.txt").write_text("x", encoding="utf-8")
+    now = 10_000_000.0
+    for d in (old_empty, old_full, other):
+        os.utime(d, (now - 3600, now - 3600))
+    os.utime(fresh, (now - 5, now - 5))
+    mod.OffloadModule._sweep_stale_workdirs(now)
+    assert not old_empty.exists()
+    assert old_full.exists() and fresh.exists() and other.exists()

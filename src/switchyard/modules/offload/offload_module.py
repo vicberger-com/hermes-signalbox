@@ -17,16 +17,23 @@ Settings, ``[modules.offload]``::
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import tempfile
 import threading
+import time
 import urllib.parse
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from switchyard.errors import SwitchyardError
 
 MAX_FIELD = 32_000
 MAX_RESULT = 20_000
+WORKDIR_PREFIX = "switchyard-offload-"
+CLEANUP_RETRY_DELAYS = (0.1, 0.2, 0.4, 0.8)  # 1.1 #126: a CLI helper can hold the work dir for a moment
+STALE_WORKDIR_S = 600
 LOOPBACK = ("127.0.0.1", "localhost")
 
 
@@ -236,10 +243,46 @@ class OffloadModule:
         prompt = data.get("prompt")
         if not isinstance(prompt, str) or not prompt.strip():
             raise SwitchyardError("prompt must be non-empty text")
-        with tempfile.TemporaryDirectory(prefix="switchyard-offload-") as empty:
+        self._sweep_stale_workdirs()
+        empty = tempfile.mkdtemp(prefix=WORKDIR_PREFIX)
+        try:
             done = self.ctx.spawn.run(
                 ARGV[spec.target], input=prompt, timeout=timeout, max_output=MAX_RESULT * 4, cwd=empty
             )
+        finally:
+            self._remove_workdir(empty, spec.name)
         if done.returncode != 0:
             raise SwitchyardError(f"{spec.name} exited with {done.returncode}")
         return done.stdout[:MAX_RESULT]
+
+    def _remove_workdir(self, path: str, connector: str) -> None:
+        """Remove the empty working directory of a process run (1.1 #126). On Windows a child the CLI left
+        running (Claude Code starts helpers) can still hold it; that must not fail a run whose program exited,
+        so the failure is logged with the step and error class and the directory is left for the OS to clean.
+        """
+        error: OSError | None = None
+        for delay in (*CLEANUP_RETRY_DELAYS, None):
+            try:
+                shutil.rmtree(path)
+                return
+            except FileNotFoundError:
+                return
+            except OSError as exc:
+                error = exc
+            if delay is not None:
+                time.sleep(delay)
+        self.ctx.log("offload", "workdir_cleanup_failed", connector=connector, error=type(error).__name__,
+                     path=path)  # fmt: skip
+
+    @staticmethod
+    def _sweep_stale_workdirs(now: float | None = None) -> None:
+        """Remove empty working directories a held earlier run left behind. ``os.rmdir`` only removes empty
+        directories, and only ones older than ``STALE_WORKDIR_S`` are tried, so a running offload is safe."""
+        base = Path(tempfile.gettempdir())
+        cutoff = (time.time() if now is None else now) - STALE_WORKDIR_S
+        for entry in base.glob(f"{WORKDIR_PREFIX}*"):
+            try:
+                if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                    os.rmdir(entry)
+            except OSError:
+                continue

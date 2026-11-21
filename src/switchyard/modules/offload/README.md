@@ -18,6 +18,11 @@ files your account can read, so treat allowing `codex` as allowing it to read lo
 The audit log records the connector and field names, never values; the webhook path (a credential) is never
 shown.
 
+Process connectors run in a new empty temporary directory. On Windows a helper the CLI leaves running can hold
+it for a moment; removal is retried for up to 1.5 s, and if it still fails the run still succeeds and the
+`offload` log stream records `workdir_cleanup_failed` (connector, error class, path). Empty leftovers older than
+10 minutes are removed on the next run.
+
 ## Control surface
 
 | Kind | Name | Model may run |

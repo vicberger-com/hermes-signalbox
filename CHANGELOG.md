@@ -23,6 +23,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   written when a module's verified manifest is new or changed (by directory and manifest digest, kept in the
   state database); an unchanged module is only announced on the in-process event bus. On a fresh profile,
   most audit records were these (276 of the first 303). Rejections are still recorded every time.
+- The Claude Code offload connector no longer fails a run whose program succeeded (#126). On Windows, a helper
+  that Claude Code leaves running briefly holds the empty working directory, so removing it raised
+  `PermissionError`; in live checks this happened on every run once the cleanup was traced. Removal is now
+  retried for up to 1.5 s; if it still fails, the run succeeds and the offload log records
+  `workdir_cleanup_failed` with the error class. Empty leftovers older than 10 minutes are removed on the next run.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,
