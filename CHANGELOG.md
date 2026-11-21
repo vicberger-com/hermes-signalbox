@@ -125,6 +125,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   over IPv6, Azure WireServer, Alibaba Cloud, and 169.254.169.254 carried inside an IPv6 address (6to4, NAT64,
   SIIT, IPv4-compatible). Name resolution now has a deadline, so a stalled resolver cannot hold a request past
   its timeout.
+- Storage quotas hold when data reuses free space (1.1 acceptance security review): the check now follows the
+  database's used pages instead of its file size, so a module can no longer write past its quota into pages
+  another module freed. A module query may return at most 16 MiB of data (`MAX_RESULT_BYTES`), read row by
+  row, instead of up to 10 000 rows of any size.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,
