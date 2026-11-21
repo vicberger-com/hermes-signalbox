@@ -241,7 +241,9 @@ reactivate if it was running, health check; any failure restores the previous di
 Published on the event bus by the core: the lifecycle's `module.*` records (`module.verified`, `module.activated`,
 `module.deactivated`, `module.failed`, `module.removed`, ... as audited), `module.rejected` (`path`, `reason`),
 `trigger.fired` (`trigger`, `owner`), `trigger.skipped` (`trigger`, `owner`, `reason`) and `core.notify`.
-`policy.denied` and `audit.verify_failed` are audit records only, not events (H1 A-26).
+`policy.denied` and `audit.verify_failed` are audit records only, not events (H1 A-26). `module.verified` is
+published on every discovery but audited only when the module's directory or manifest digest changed since the
+last audited verification (1.1, #125).
 
 ## 5. Acceptance tests
 

@@ -448,3 +448,50 @@ def test_failure_while_active_runs_module_cleanup(env: Env) -> None:
     assert env.audit.actions().count("module.failed") == 1
     cleanup = [r for r in env.audit.records if r["action"] == "module.deactivate_failed"]
     assert cleanup[-1]["detail"] == {"error": "OSError"}
+
+
+# 1.1 #125: verification is audited when its result changes, not on every process start -----------------
+
+
+def _verified(audit: RecordingAudit) -> list[dict[str, Any]]:
+    return [r for r in audit.records if r["action"] == "module.verified"]
+
+
+def _started(tmp_path: Path, audit: RecordingAudit, store: StateStore) -> Env:
+    env = Env(tmp_path, audit, store=store)
+    env.manager.discover([env.trusted])
+    return env
+
+
+def test_h1_1_restart_with_unchanged_modules_is_not_audited_again(
+    tmp_path: Path, audit: RecordingAudit
+) -> None:
+    store = StateStore(tmp_path / "state.db", backup_dir=tmp_path / "backup")
+    store.migrate()
+    write_module(tmp_path / "trusted", "alpha")
+    first = _started(tmp_path, audit, store)
+    assert len(_verified(audit)) == 1
+    second = _started(tmp_path, audit, store)  # a second process start on the same data directory
+    assert len(_verified(audit)) == 1
+    assert second.event_types() == ["module.verified"]  # in-process subscribers still hear about it
+    assert first.manager.info("alpha").state is ModuleStatus.VERIFIED
+
+
+def test_h1_1_changed_manifest_is_audited_again(tmp_path: Path, audit: RecordingAudit) -> None:
+    store = StateStore(tmp_path / "state.db", backup_dir=tmp_path / "backup")
+    store.migrate()
+    d = write_module(tmp_path / "trusted", "alpha")
+    _started(tmp_path, audit, store)
+    manifest = d / "module.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace('summary = "test"', 'summary = "new"'), "utf-8"
+    )
+    _started(tmp_path, audit, store)
+    assert len(_verified(audit)) == 2
+
+
+def test_h1_1_without_a_store_every_verification_is_audited(env: Env) -> None:
+    write_module(env.trusted, "alpha")
+    env.manager.discover([env.trusted])
+    env.manager.discover([env.trusted])
+    assert len(_verified(env.audit)) == 2

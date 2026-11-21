@@ -19,12 +19,14 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   per caller, target and action, with a `calls` count, instead of one record per call. Operator, chat and model
   actions are still recorded every time. Appending to the audit log no longer re-reads the log's tail when
   this process wrote the last record (checked by file name and size; another writer still forces a re-read).
+- Each process start no longer writes a `module.verified` audit record for every module (#125). A record is
+  written when a module's verified manifest is new or changed (by directory and manifest digest, kept in the
+  state database); an unchanged module is only announced on the in-process event bus. On a fresh profile,
+  most audit records were these (276 of the first 303). Rejections are still recorded every time.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,
   and a new section 10 on running the standalone daemon as a service (Task Scheduler, systemd, launchd).
-
-### Documentation
 - Phase H2 results (first real install and real turns; re-verified on Hermes v0.23.3) in
   `docs/qa/15-h1-prework.md`. The user guide covers Hermes Desktop, where the gateway hosts the modules,
   the shared-runtime install, and `--no-allow-tool-override`. The resources and offload READMEs state that
