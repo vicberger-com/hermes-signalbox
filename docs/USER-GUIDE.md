@@ -177,8 +177,14 @@ install behind it is used). To choose one, set `[tools] git = "<absolute path>"`
 `switchyard config show` prints the git in use.
 
 An update that adds capabilities, hosts, secrets or contributions, or weakens isolation, is refused unless you
-pass `--accept-wider`. A failed health check rolls the update back. The `updates` module checks on a schedule
-and alerts; it never installs.
+pass `--accept-wider`. An update to an older version (by the manifest's version number; a pre-release counts as
+older than its release) is refused unless you pass `--allow-downgrade`; `module preview` shows `downgrade: true`.
+A failed health check rolls the update back.
+
+`module rollback` restores the version that the last update replaced. It refuses when that version's files were
+changed after it was set aside, and it runs the health check afterwards: an unhealthy result is printed and the
+command exits 1, so check the module before relying on it. The `updates` module checks on a schedule and alerts;
+it never installs.
 
 ## 8. Audit log
 

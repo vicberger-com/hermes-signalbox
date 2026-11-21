@@ -17,6 +17,8 @@ Status: accepted, 2026-11-20. Phase: M12. Q&A: [13-m12-prework.md](../qa/13-m12-
 
 5. Staged trees with symlinks, `__pycache__`, `.pyc`, `.pyo` or `.pth` files are refused; added contributions
    and entry changes count as widening; rollback is checked for widening too; 3 previous versions are kept.
+7. (1.1) An older version needs `allow_downgrade`. Rollback verifies the previous directory against the tree
+   digest recorded when it was set aside, and runs and reports the health check.
 6. git never discovers a repository above its working directory (`GIT_CEILING_DIRECTORIES`; `ls-remote` in an
    empty directory). Checks run one at a time; `core.read` callers get a cached result.
 

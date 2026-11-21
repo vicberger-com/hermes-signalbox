@@ -23,8 +23,8 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-9 | Low | confirmed-by-reading | CLI/API | api.py:319-322; cli.py:119-128 | Transport error after the request was sent, then offline re-run of the operation (possible double execution) |
 | B-10 | Low | - | - | - | withheld until fixed (#103) |
 | B-11 | Low | confirmed-by-reading | updates | updates.py:57, 294-299 | Refusal gate for unreviewed files misses compiled extensions (.pyd, .so) and is case-sensitive |
-| B-12 | Low | - | - | - | withheld until fixed (#104) |
-| B-13 | Low | - | - | - | withheld until fixed (#105) |
+| B-12 | Low | confirmed-by-reading | updates | updates.py:280-312, 342-347 | No version monotonicity: an older commit from the pinned URL installs without any flag |
+| B-13 | Low | confirmed-by-reading | rollback | updates.py:480-505 | Manual rollback reactivates without a health check and without an integrity or identity check |
 | B-14 | Low | confirmed-by-reading | RPC | rpc.py:162-167; host_t2.py:126-148 | Send time is outside the call deadline; a call can run about 2x the documented limit |
 | B-15 | Low | - | - | - | withheld until fixed (#106) |
 | B-16 | Low | - | - | - | withheld until fixed (#107) |
@@ -141,13 +141,18 @@ Withheld until #103 is closed.
 - **Fix:** refuse `.pyd`, `.so`, `.dylib`, `.dll` and `.pyw`, compare suffixes case-insensitively, and flag any new binary as widening.
 - **Suggested test:** stage a tree with a `.pyd` and assert refusal.
 
-### B-12 (Low)
+### B-12 (Low), no version monotonicity on update
+- **Location:** `updates.py:280-312` (`_stage` does not compare versions), `updates.py:342-347` (widening compares declared permissions only).
+- **Impact:** any commit on the pinned URL installs, including an older one with a known bug. The operator sees the sbom delta but nothing marks a downgrade. The repository owner is trusted by design, so this is a control gap, not an exploit.
+- **Fix:** refuse a lower version unless `accept_wider` is set, and flag it in the preview.
+- **Suggested test:** update from 0.2.0 to 0.1.0 and assert it needs the flag.
+- Fixed in 1.1 (#104): an older version needs `allow_downgrade`; preview shows `downgrade`.
 
-Withheld until #104 is closed.
-
-### B-13 (Low)
-
-Withheld until #105 is closed.
+### B-13 (Low), manual rollback reactivates without a health check
+- **Location:** `updates.py:480-505`, especially `updates.py:496-500` (`_restore` then sidecar update) and `updates.py:485-489` (only the previous manifest is validated).
+- **Impact:** a rolled-back version can be left in a failed state with no automatic check. The sidecar is read as text and only checked against the SHA pattern. The previous directory is not checked against any recorded digest. This is same-user territory, so Low.
+- **Fix:** run the health check after rollback and record the outcome. Store the expected tree digest in the sidecar and verify it.
+- Fixed in 1.1 (#105): rollback verifies the tree digest recorded when the version was set aside, then runs and reports the health check.
 
 ### B-14 (Low), RPC call deadline excludes the send
 - **Location:** `rpc.py:162-167` (deadline starts after `_send` at line 164); `host_t2.py:139-146` (send can take up to `self._timeout` before the caller waits). Dispatched replies in the wait loop (`rpc.py:175-177`) also send outside the check.

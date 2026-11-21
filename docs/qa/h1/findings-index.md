@@ -51,8 +51,8 @@ must items of the same work package), **Backlog 1.1** (one issue each, not fixed
 | B-9 | Low | api.py, cli.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #134 (backlog #102) |
 | B-10 | Low | process.py | Backlog 1.1 | - | private until fixed | backlog #103 |
 | B-11 | Low | updates.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
-| B-12 | Low | updates.py | Backlog 1.1 | - | private until fixed | backlog #104 |
-| B-13 | Low | updates.py | Backlog 1.1 | - | private until fixed | backlog #105 |
+| B-12 | Low | updates.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #137 (backlog #104) |
+| B-13 | Low | updates.py | Backlog 1.1 | 1.1 | see [review B](review-B-boundary.md) | fixed in #137 (backlog #105) |
 | B-14 | Low | host_t2.py, rpc.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
 | B-15 | Low | host_t2.py, host_t2_child.py | Backlog 1.1 | - | private until fixed | backlog #106 |
 | B-16 | Low | host_t2.py, rpc.py | Backlog 1.1 | - | private until fixed | backlog #107 |

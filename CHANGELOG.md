@@ -47,6 +47,12 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   and names with a colon (`NUL:`, `CON:stream`). Alternate data streams on ordinary files stay allowed.
 - `net.outbound` drops a module-supplied `Host` header (any case), so a request always goes to the host the
   allow-list checked (H1 B-22, part 1 of #111).
+- Update and rollback integrity (H1 B-12 #104, B-13 #105). `module update` refuses a version older than the
+  installed one unless `--allow-downgrade` is passed (a pre-release counts as older than its release), and
+  `module preview` reports `downgrade`. When an update sets the old version aside, its file digest is recorded;
+  `module rollback` refuses if those files changed since, and runs the health check afterwards. **Changed
+  result:** `module rollback` now returns `{id, version, ok, detail}` and exits 1 when the restored version is
+  unhealthy.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

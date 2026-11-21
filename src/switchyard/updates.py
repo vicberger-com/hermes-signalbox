@@ -83,6 +83,28 @@ def inventory(root: Path) -> dict[str, str]:
     return out
 
 
+_SEMVER = re.compile(r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?\Z")
+
+
+def version_key(version: str) -> tuple[Any, ...] | None:
+    """Sort key for a manifest version (semver precedence: a pre-release sorts before its release, build
+    metadata is ignored); ``None`` when the text is not of that form."""
+    m = _SEMVER.match(version)
+    if m is None:
+        return None
+    major, minor, patch, pre = m.groups()
+    if pre is None:
+        return (int(major), int(minor), int(patch), 1, ())
+    ids = tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in pre.split("."))
+    return (int(major), int(minor), int(patch), 0, ids)
+
+
+def is_downgrade(old: str, new: str) -> bool:
+    """True when ``new`` is an older version than ``old`` (H1 B-12). Unparseable versions never count."""
+    a, b = version_key(old), version_key(new)
+    return a is not None and b is not None and b < a
+
+
 def tree_digest(inv: dict[str, str]) -> str:
     h = hashlib.sha256()
     for name in sorted(inv):
@@ -367,20 +389,29 @@ class UpdateController:
             "id": module_id,
             "from": old.version,
             "to": new.version,
+            "downgrade": is_downgrade(old.version, new.version),
             "ref": ref,
             "delta": delta,
             "notes": notes,
         }
 
     def update(
-        self, module_id: str, ref: str, *, actor: str, digest: str | None = None, accept_wider: bool = False
+        self,
+        module_id: str,
+        ref: str,
+        *,
+        actor: str,
+        digest: str | None = None,
+        accept_wider: bool = False,
+        allow_downgrade: bool = False,
     ) -> UpdateResult:
         with self._module_lock(module_id):
-            return self._update(module_id, ref, actor, digest, accept_wider)
+            return self._update(module_id, ref, actor, digest, accept_wider, allow_downgrade)
 
     def _update(
-        self, module_id: str, ref: str, actor: str, digest: str | None, accept_wider: bool
-    ) -> UpdateResult:
+        self, module_id: str, ref: str, actor: str, digest: str | None, accept_wider: bool,
+        allow_downgrade: bool = False,
+    ) -> UpdateResult:  # fmt: skip
         current, stage, old, new = self._stage(module_id, ref, actor)
         stage_root = stage.parent
         try:
@@ -392,6 +423,11 @@ class UpdateController:
                     "update widens what the module may do ("
                     + "; ".join(delta["widens"])[:300]
                     + "); review with module preview and pass accept_wider"
+                )
+            if is_downgrade(old.version, new.version) and not allow_downgrade:
+                raise UpdateError(
+                    f"{new.version} is older than the installed {old.version}; "
+                    "pass allow_downgrade to install it"
                 )
             notes = patch_notes(stage, new.version)
         except UpdateError as exc:
@@ -428,6 +464,8 @@ class UpdateController:
         try:
             if prior_ref:
                 Path(f"{previous}.ref").write_text(prior_ref, encoding="utf-8")
+            # What a later rollback restores must be what was set aside here (H1 B-13).
+            Path(f"{previous}.digest").write_text(tree_digest(inventory(previous)), encoding="utf-8")
             stage.rename(current)
         except BaseException as exc:
             # H1 B-1: the live directory is gone or half-replaced. Put the previous version back as it was.
@@ -536,6 +574,7 @@ class UpdateController:
             current.rename(failed)
         previous.rename(current)
         Path(f"{previous}.ref").unlink(missing_ok=True)
+        Path(f"{previous}.digest").unlink(missing_ok=True)
         self._manager.reload(module_id)
         if was_active:
             self._manager.activate(module_id, actor=CORE_ACTOR)
@@ -565,12 +604,16 @@ class UpdateController:
         for old in self._previous(stage_root)[:-KEEP_PREVIOUS]:
             shutil.rmtree(old, onerror=_force_remove)
             Path(f"{old}.ref").unlink(missing_ok=True)
+            Path(f"{old}.digest").unlink(missing_ok=True)
 
-    def rollback(self, module_id: str, *, actor: str, accept_wider: bool = False) -> str:
+    def rollback(self, module_id: str, *, actor: str, accept_wider: bool = False) -> dict[str, Any]:
+        """Restore the most recent previous version. Refused when its files changed since they were set aside;
+        afterwards the health check runs (if the module was active) and its outcome is returned and audited
+        (H1 B-13): ``{"id", "version", "ok", "detail"}``."""
         with self._module_lock(module_id), self._swap_guard():
             return self._rollback(module_id, actor, accept_wider)
 
-    def _rollback(self, module_id: str, actor: str, accept_wider: bool) -> str:
+    def _rollback(self, module_id: str, actor: str, accept_wider: bool) -> dict[str, Any]:
         current = self._installed(module_id)
         stage_root = self._staging / module_id
         candidates = self._previous(stage_root)
@@ -584,15 +627,35 @@ class UpdateController:
         if delta["widens"] and not accept_wider:
             widens = "; ".join(delta["widens"])[:300]
             raise UpdateError(f"rolling back widens what the module may do ({widens}); pass accept_wider")
+        digest_file = Path(f"{previous}.digest")
+        if digest_file.is_file():
+            if digest_file.read_text(encoding="utf-8").strip() != delta["digest"]:
+                reason = "the previous version's files changed after it was set aside; refused"
+                self._record("module.rollback_rejected", module_id, actor, reason=reason)
+                raise UpdateError(reason)
+            digest_state = "verified"
+        else:
+            digest_state = "unrecorded"  # set aside by 1.0.x
         sidecar = Path(f"{previous}.ref")
         prior = sidecar.read_text(encoding="utf-8").strip() if sidecar.is_file() else ""
         was_active = self._manager.info(module_id).status is ModuleStatus.ACTIVE
         self._restore(module_id, current, previous, stage_root / f"replaced-{time.time_ns()}", was_active)
         sidecar.unlink(missing_ok=True)
+        digest_file.unlink(missing_ok=True)
         if _SHA.match(prior):
             self._set_installed_ref(module_id, prior)
         else:
             self._ref_file(module_id).unlink(missing_ok=True)
         version = self._manager.manifest(module_id).version
-        self._record("module.rolled_back", module_id, actor, version=version, reason="manual")
-        return version
+        ok, detail = True, "not active; health not checked"
+        if was_active:
+            try:
+                active = self._manager.info(module_id).status is ModuleStatus.ACTIVE
+                ok, health_detail = self._manager.health(module_id) if active else (False, "did not start")
+            except Exception as exc:  # a failing check is a result here, not a crash
+                ok, health_detail = False, type(exc).__name__
+            detail = "health check passed" if ok else f"health check failed: {health_detail}"[:300]
+        health = "ok" if ok else ("failed" if was_active else "not_checked")
+        self._record("module.rolled_back", module_id, actor, version=version, reason="manual",
+                     health=health, digest=digest_state)  # fmt: skip
+        return {"id": module_id, "version": version, "ok": ok, "detail": detail}
