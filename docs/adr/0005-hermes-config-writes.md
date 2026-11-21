@@ -25,6 +25,12 @@ write can break Hermes.
    (`hermes.config.write`); the value is read back; if the write raised or Hermes stored a name that was not
    asked for, the old value is restored and `hermes.config.rollback` is audited. Names Hermes declines to store
    (essential skills) are reported as `refused`, not treated as failure.
+   Since 1.1 (H1 C-17) the whole read-modify-write holds a file lock (`hermes-config-backups/.write.lock`) that
+   every Switchyard process takes, so the daemon, the CLI and a Hermes-hosted core cannot interleave; a writer
+   that cannot get it within 10 s fails with `NotAvailable`. Hermes's own writes do not take the lock, so a
+   rollback first re-reads the key: if a completed write was overtaken by another writer, the old value is not
+   restored (`restored: skipped` in the audit record, and the error says so); a write that failed part-way is
+   always rolled back.
 4. **Reversal.** `revert(backup)` writes the backup's old value through the same path (so it has its own
    backup).
 

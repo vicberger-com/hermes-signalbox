@@ -98,6 +98,9 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   until core 2.0: a module still on the pre-1.0 template's `">=0.1,<1"` loads with an audited
   `module.requires_core_outdated` warning and a note in `module show`; change it to `">=1.0,<2"`. The bundled
   modules and the module template now say `">=1.0,<2"`. An unreadable `requires_core` is a manifest error.
+- Hermes config writes (the activation module's `skills.disabled`) now hold a lock shared by every Switchyard
+  process, and a rollback no longer overwrites a change someone else made after Switchyard's write; the error
+  and the `hermes.config.rollback` record say `skipped` in that case (H1 C-17 #115).
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,
