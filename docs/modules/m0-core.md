@@ -189,7 +189,10 @@ redirect it once. `AnchoredAudit` writes the audit head to `meta['audit.head']` 
 running so it can report). Trusted and module roots default to the package's `switchyard/modules` (trusted) plus
 `<data_dir>/modules` (untrusted, so subprocess only). `Core.run(noun, verb, params, actor)` dispatches through
 `switchyard.ops.OPERATIONS`; each `Operation` has typed parameters (`UsageError` on unknown, missing or mistyped
-values), a description, and an `offline` flag for operations that are safe without a running daemon.
+values), a description, an `offline` flag for operations that are safe without a running daemon, and a
+`locked` flag. Operations run under the core lock except `module update|preview|check_updates` (H1 B-2): their git
+work runs without it, and only the directory swap takes it (one update per module at a time). Every result passes
+through the secret redactor (H1 A-7).
 `Core.tick()` drives time triggers, idle stop and capacity metrics. Operations: `module list|show|grant|revoke|mode|
 activate|deactivate|health|panel|remove`, `audit verify|tail`, `host profile`, `config show`.
 

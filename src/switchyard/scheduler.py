@@ -19,6 +19,7 @@ task does. Clocks are injected for testability.
 
 from __future__ import annotations
 
+import math
 import re
 import threading
 import time
@@ -129,7 +130,8 @@ class _State:
 
 
 def _number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    """A real, finite number: NaN or infinity would make a trigger silently never fire (H1 B-21)."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _validate(t: Trigger) -> None:

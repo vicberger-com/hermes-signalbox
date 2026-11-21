@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import functools
 import json
-import os
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -20,6 +19,7 @@ from switchyard.host_t2 import T2Module, child_environment
 from switchyard.host_t2_child import ChildHost
 from switchyard.lifecycle import ModuleManager, ModuleStatus
 from switchyard.logs import JsonlLogSink
+from switchyard.manifest import load_manifest
 from switchyard.rpc import RemoteError
 from switchyard.state import StateStore
 
@@ -373,7 +373,9 @@ def test_parent_rejects_bad_child_requests(env: Env) -> None:
     env.add("evil", code)
     env.manager.activate("evil", actor="user")
     assert env.manager.info("evil").error == "SwitchyardError"
-    assert os.name  # parent survived
+    assert (
+        env.manager.info("evil").status is ModuleStatus.FAILED
+    )  # H1 D-27: the parent recorded it and lives on
     with pytest.raises(StateError):
         env.store.module("evil").execute("SELECT * FROM grants")
 
@@ -422,3 +424,84 @@ def test_parent_validates_child_requests(
         mod._dispatch(method, params)
     mod._dispatch("ctx.health_report", {"ok": True, "detail": "x" * 500})
     assert mod._ctx.calls == ["health_report"]  # type: ignore[attr-defined]
+
+
+# H1 D-11: the flood kill and the stalled-writer kill run in the suite -------------------------------------
+
+
+class _Proc:
+    def __init__(self, stdin: Any = None) -> None:
+        self.stdin = stdin
+        self.killed = 0
+
+    def kill(self) -> None:
+        self.killed += 1
+
+
+def test_h1_d11_flooding_child_is_killed(tmp_path: Path) -> None:
+    import io
+
+    from switchyard.host_t2 import MAX_PENDING_FRAMES, T2Module
+    from switchyard.rpc import write_frame
+
+    frames = io.BytesIO()
+    for n in range(MAX_PENDING_FRAMES + 5):
+        write_frame(frames, {"jsonrpc": "2.0", "method": "ctx.log", "params": {"n": n}})
+    frames.seek(0)
+    d = write_module(tmp_path, "flood", isolation="subprocess")
+    mod = T2Module(load_manifest(d), timeout=0.2)
+    mod._proc = _Proc()  # type: ignore[assignment]
+    mod._reader(frames)  # nobody reads the inbox: the queue fills
+    assert mod._flooded and mod._proc.killed == 1  # type: ignore[union-attr]
+
+
+def test_h1_d11_child_that_stops_reading_is_killed(tmp_path: Path) -> None:
+    import threading
+    import time
+
+    from switchyard.host_t2 import T2Module
+    from switchyard.rpc import ProtocolError
+
+    class Stuck:
+        def __init__(self) -> None:
+            self.gate = threading.Event()
+
+        def write(self, data: bytes) -> int:
+            self.gate.wait(10)  # the child never drains its stdin
+            return len(data)
+
+        def flush(self) -> None:
+            pass
+
+    d = write_module(tmp_path, "stuck", isolation="subprocess")
+    mod = T2Module(load_manifest(d), timeout=0.3)
+    stuck = Stuck()
+    mod._proc = _Proc(stdin=stuck)  # type: ignore[assignment]
+    start = time.monotonic()
+    with pytest.raises(ProtocolError, match="stopped reading"):
+        mod._send({"jsonrpc": "2.0", "id": 1, "method": "health", "params": {}})
+    stuck.gate.set()
+    assert mod._proc.killed == 1 and time.monotonic() - start < 2  # type: ignore[union-attr]
+
+
+def test_h1_b14_send_counts_against_the_call_deadline(tmp_path: Path) -> None:
+    import time
+
+    from switchyard.rpc import Channel, ProtocolError
+
+    sent: list[float] = []
+
+    def slow_send(msg: Any) -> None:
+        sent.append(channel.remaining() or 0.0)
+        time.sleep(0.6)  # a slow write, within the old per-send budget
+
+    def recv(timeout: float | None) -> Any:
+        time.sleep(timeout or 0)
+        return {"jsonrpc": "2.0", "method": "ctx.log", "params": {}, "id": 99}
+
+    channel = Channel(slow_send, recv, lambda m, p: None)
+    start = time.monotonic()
+    with pytest.raises(ProtocolError, match="did not finish"):
+        channel.request("health", {}, timeout=1.0)
+    assert time.monotonic() - start < 1.9  # was about 2.2 s: the deadline started after the first send
+    assert sent and sent[0] <= 1.0

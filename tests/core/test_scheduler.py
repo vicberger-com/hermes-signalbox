@@ -263,3 +263,21 @@ def test_remove_and_remove_owner(audit: RecordingAudit) -> None:
         sched.fire("b1")
     with pytest.raises(SwitchyardError, match="unknown trigger"):
         sched.stats("b1")
+
+
+@pytest.mark.parametrize(
+    ("kind", "spec"),
+    [
+        ("time", {"every": float("nan")}),
+        ("time", {"every": float("inf")}),
+        ("usage", {"metric": "m", "above": float("nan")}),
+        ("capacity", {"metric": "m", "below": float("-inf")}),
+    ],
+)
+def test_h1_b21_non_finite_numbers_are_refused(kind: str, spec: dict[str, Any]) -> None:
+    sched = Scheduler(EventBus(RecordingAudit()), RecordingAudit())
+    with pytest.raises(SwitchyardError):
+        sched.add(Trigger(id="t1", owner="demo", kind=kind, spec=spec, callback=lambda p: None))
+    with pytest.raises(SwitchyardError):
+        sched.add(Trigger(id="t2", owner="demo", kind="time", spec={"every": 5}, callback=lambda p: None,
+                          min_interval_s=float("nan")))  # fmt: skip

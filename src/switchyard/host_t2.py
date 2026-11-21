@@ -136,11 +136,16 @@ class T2Module:
             except BaseException as exc:  # reported to the caller below
                 failure.append(exc)
 
+        budget = self._timeout
+        channel = self._channel
+        left = channel.remaining() if channel is not None else None
+        if left is not None:  # the send counts against the call's own deadline (H1 B-14)
+            budget = max(min(budget, left), 0.05)
         with self._write_lock:
             # A child that stops reading its stdin must not block the parent forever (R1 follow-up).
             writer = threading.Thread(target=write, daemon=True)
             writer.start()
-            writer.join(self._timeout)
+            writer.join(budget)
             if writer.is_alive():
                 proc.kill()
                 raise ProtocolError(f"module {self._manifest.id!r} stopped reading its input")

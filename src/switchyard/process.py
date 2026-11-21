@@ -9,12 +9,15 @@ values.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import signal
 import subprocess  # nosec B404
 import sys
 import tempfile
+import threading
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -30,6 +33,7 @@ DEFAULT_TIMEOUT_S = 30.0
 MAX_TIMEOUT_S = 600.0
 DEFAULT_MAX_OUTPUT = 10_000_000
 MAX_OUTPUT_BYTES = 50_000_000
+MAX_INPUT_BYTES = 1_000_000  # H1 B-3
 
 
 def _read_capped(handle: Any, limit: int) -> tuple[str, bool]:
@@ -120,6 +124,18 @@ def find_runnable(
     return None
 
 
+def _feed(stdin: Any, data: bytes) -> None:
+    """Write a child's input and close the pipe. A child that exits or closes its end early is not an error
+    here; its exit code says what happened."""
+    try:
+        stdin.write(data)
+    except OSError:
+        pass
+    finally:
+        with contextlib.suppress(OSError):
+            stdin.close()
+
+
 class ProcessBroker:
     def __init__(self, policy: PolicyEngine, audit: AuditSink) -> None:
         self._policy = policy
@@ -138,6 +154,9 @@ class ProcessBroker:
     ) -> subprocess.CompletedProcess[str]:
         if not argv or not all(isinstance(a, str) for a in argv):
             raise SwitchyardError("argv must be a non-empty list of strings")
+        data = input.encode("utf-8") if input is not None else None
+        if data is not None and len(data) > MAX_INPUT_BYTES:
+            raise SwitchyardError(f"input is larger than {MAX_INPUT_BYTES} bytes")
         program = Path(argv[0]).name
         self._policy.require(module_id, "process.spawn", program=program)
         exe = find_program(argv[0])
@@ -167,17 +186,23 @@ class ProcessBroker:
             except OSError as exc:
                 self._record(module_id, program, type(exc).__name__)
                 raise SwitchyardError(f"{program} could not start: {type(exc).__name__}") from None
+            # H1 B-3: one deadline covers writing stdin and waiting; the write runs on a thread so a child
+            # that never reads cannot hold the caller, and every failure path kills the tree and is recorded.
+            budget = min(max(timeout, 0.1), MAX_TIMEOUT_S)
+            deadline = time.monotonic() + budget
+            stdin = proc.stdin
+            if data is not None and stdin is not None:
+                threading.Thread(target=_feed, args=(stdin, data), daemon=True).start()
             try:
-                if input is not None and proc.stdin is not None:
-                    try:
-                        proc.stdin.write(input.encode("utf-8"))
-                    finally:
-                        proc.stdin.close()
-                code = proc.wait(timeout=min(max(timeout, 0.1), MAX_TIMEOUT_S))
+                code = proc.wait(timeout=max(deadline - time.monotonic(), 0.01))
             except subprocess.TimeoutExpired:
                 _kill_tree(proc)
                 self._record(module_id, program, "timeout")
                 raise SwitchyardError(f"{program} timed out") from None
+            except BaseException as exc:
+                _kill_tree(proc)
+                self._record(module_id, program, type(exc).__name__)
+                raise
             stdout, truncated = _read_capped(out, limit)
             stderr, _ = _read_capped(err, min(limit, 1_000_000))
         self._record(module_id, program, str(code))

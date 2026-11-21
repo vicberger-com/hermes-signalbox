@@ -420,3 +420,87 @@ def test_rollback_restores_ref_and_prunes(env: Any) -> None:
     assert len([p for p in previous if p.is_dir()]) == 3
     core.run("module", "rollback", {"id": "ext"}, actor="t")
     assert _version(core) == "0.8.0" and core.updates.installed_ref("ext") == refs[-2]
+
+
+# H1 WP7: failure paths --------------------------------------------------------------------------------
+
+
+def test_h1_b1_failed_swap_puts_the_live_module_back(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    core, _, _ = env
+    core.run("module", "activate", {"id": "ext"}, actor="t")
+    real = Path.rename
+    calls: list[str] = []
+
+    def flaky(self: Path, target: Any) -> Any:
+        calls.append(self.name)
+        if self.name.startswith(
+            "stage-"
+        ):  # the second rename: stage -> live (a directory held open on Windows)
+            raise PermissionError(13, "simulated: directory in use")
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "rename", flaky)
+    with pytest.raises(UpdateError, match="PermissionError"):
+        core.run("module", "update", {"id": "ext", "ref": NEW}, actor="t")
+    monkeypatch.setattr(Path, "rename", real)
+    assert (core.data_dir / "modules" / "ext" / "module.toml").is_file()
+    assert _version(core) == "0.1.0"
+    assert core.run("module", "show", {"id": "ext"}, actor="t")["status"] == "active"
+    actions = [r["action"] for r in core.run("audit", "tail", {"n": 30}, actor="t")]
+    assert "module.rolled_back" in actions
+
+
+def test_h1_b1_activation_error_after_swap_rolls_back(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    core, _, _ = env
+    core.run("module", "activate", {"id": "ext"}, actor="t")
+    real = core.manager.activate
+    state = {"n": 0}
+
+    def boom(module_id: str, *, actor: str) -> None:
+        state["n"] += 1
+        if state["n"] == 1:  # the restart of the new version
+            raise RuntimeError("simulated post-swap failure")
+        real(module_id, actor=actor)
+
+    monkeypatch.setattr(core.manager, "activate", boom)
+    result = core.run("module", "update", {"id": "ext", "ref": NEW}, actor="t")
+    assert result["rolled_back"] is True and _version(core) == "0.1.0"
+    assert core.updates.installed_ref("ext") == OLD
+    assert core.run("module", "show", {"id": "ext"}, actor="t")["status"] == "active"
+
+
+def test_h1_b2_git_work_does_not_hold_the_core_lock(env: Any) -> None:
+    import threading
+    import time
+
+    core, fetcher, _ = env
+    release = threading.Event()
+    fetcher.heads[(URL, "main")] = NEW
+    slow_latest = fetcher.latest
+
+    def slow(url: str, channel: str) -> str:
+        release.wait(10)
+        return slow_latest(url, channel)
+
+    fetcher.latest = slow  # type: ignore[method-assign]
+    worker = threading.Thread(target=core.run, args=("module", "check_updates", {}), kwargs={"actor": "t"})
+    worker.start()
+    time.sleep(0.2)
+    start = time.monotonic()
+    core.run("module", "list", {}, actor="t")
+    waited = time.monotonic() - start
+    release.set()
+    worker.join(10)
+    assert waited < 0.5, waited
+
+
+@pytest.mark.parametrize("name", ["evil.pyd", "evil.so", "libx.dylib", "x.dll", "run.pyw", "X.PYC", "E.PTH"])
+def test_h1_b11_binary_and_case_variant_files_refused(env: Any, name: str) -> None:
+    core, fetcher, _ = env
+    target = fetcher.sources[(URL, NEW)] / name
+    target.write_bytes(b"payload")
+    try:
+        with pytest.raises(UpdateError, match="compiled"):
+            core.run("module", "preview", {"id": "ext", "ref": NEW}, actor="t")
+    finally:
+        target.unlink()

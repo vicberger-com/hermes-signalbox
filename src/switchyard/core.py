@@ -9,9 +9,10 @@ modules, not to the control plane that must report the problem).
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from types import TracebackType
 from typing import Any
@@ -213,11 +214,12 @@ class Core:
             call=self._module_call,
         )
         self.manager.discover(roots)
-        self.updates = UpdateController(
-            self.manager, self.audit, self.data_dir, fetcher or GitFetcher(configured=self.config.git)
-        )
         self._lock = threading.RLock()
         self._closed = False
+        self.updates = UpdateController(
+            self.manager, self.audit, self.data_dir, fetcher or GitFetcher(configured=self.config.git),
+            swap_guard=self._open_and_locked,
+        )  # fmt: skip
 
     def _module_call(self, caller: str, module_id: str, action: str, args: Mapping[str, Any]) -> Any:
         from switchyard.ops import run_action
@@ -259,11 +261,24 @@ class Core:
             self.audit.append(actor=actor, action="policy.denied", module="", detail={"op": f"{noun} {verb}"})
             raise CapabilityDenied(f"'{noun} {verb}' is for the operator only")
         clean = operation.validate(params)
+        if not operation.locked:  # H1 B-2: git work runs without the core lock (see UpdateController)
+            with self._lock:
+                if self._closed:
+                    raise SwitchyardError("core is closed")
+            return self.redactor.redact_obj(operation.fn(self, clean, actor))
         with self._lock:
             if self._closed:
                 raise SwitchyardError("core is closed")
             # H1 A-7: a result (health detail, panel, action, ...) never carries a secret value out
             return self.redactor.redact_obj(operation.fn(self, clean, actor))
+
+    @contextlib.contextmanager
+    def _open_and_locked(self) -> Iterator[None]:
+        """The core lock, refusing once the core is closed (the swap step of an update, H1 B-2)."""
+        with self._lock:
+            if self._closed:
+                raise SwitchyardError("core is closed")
+            yield
 
     def tick(self) -> None:
         """Periodic work: time triggers, idle stop, capacity metrics for capacity triggers."""

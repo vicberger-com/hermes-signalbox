@@ -17,6 +17,7 @@ update with the Switchyard release. ``UpdateController.update(id, ref)``:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -27,6 +28,8 @@ import tempfile
 import threading
 import time
 import unicodedata
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -39,6 +42,7 @@ from switchyard.process import find_runnable
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 GIT_TIMEOUT_S = 300
+LS_REMOTE_TIMEOUT_S = 60  # a check reads one ref; a hung remote should not hold it for minutes (H1 B-2)
 _GIT_ENV_ALLOW = ("PATH", "SYSTEMROOT", "TEMP", "TMP", "HOME", "USERPROFILE", "LANG")
 
 
@@ -53,8 +57,9 @@ MAX_FILE_BYTES = 50_000_000
 KEEP_PREVIOUS = 3
 CHECK_CACHE_SECONDS = 3600.0
 CHECK_MIN_SECONDS = 60.0
-# Compiled or path-hook files are not reviewed as source; Python would run them (M12 review).
-_UNREVIEWABLE = (".pyc", ".pyo", ".pth")
+# Files Python or the OS loader would run but nobody reviews as source (M12 review); extension modules and
+# native libraries included, suffixes compared case-insensitively (H1 B-11).
+_UNREVIEWABLE = (".pyc", ".pyo", ".pth", ".pyw", ".pyd", ".so", ".dylib", ".dll")
 MAX_NOTES = 4000
 _CHANNEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}\Z")
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
@@ -186,7 +191,7 @@ class GitFetcher:
             self._exe = resolved_git(self._git, self._configured)
         return self._exe
 
-    def _run(self, args: list[str], cwd: Path) -> str:
+    def _run(self, args: list[str], cwd: Path, timeout: float = GIT_TIMEOUT_S) -> str:
         exe = self.executable()
         if exe is None:
             where = "[tools] git" if self._configured else "PATH"
@@ -200,7 +205,7 @@ class GitFetcher:
         try:
             # Fixed argv; url and ref are validated above; no shell.
             done = subprocess.run(  # noqa: S603 # nosec B603
-                cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=GIT_TIMEOUT_S, check=False
+                cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, check=False
             )
         except (OSError, subprocess.SubprocessError) as exc:
             self._exe = None  # look again next time
@@ -234,7 +239,8 @@ class GitFetcher:
         if not _CHANNEL.match(channel) or ".." in channel:
             raise UpdateError("invalid channel name")
         with tempfile.TemporaryDirectory(prefix="switchyard-ls-") as empty:  # no repository config applies
-            out = self._run(["ls-remote", "--heads", "--", url, f"refs/heads/{channel}"], Path(empty))
+            out = self._run(["ls-remote", "--heads", "--", url, f"refs/heads/{channel}"], Path(empty),
+                            timeout=LS_REMOTE_TIMEOUT_S)  # fmt: skip
         for line in out.splitlines():
             sha, _, name = line.partition("\t")
             if name == f"refs/heads/{channel}" and _SHA.match(sha):
@@ -265,7 +271,20 @@ class UpdateResult:
 
 
 class UpdateController:
-    def __init__(self, manager: ModuleManager, audit: AuditSink, data_dir: Path, fetcher: Fetcher) -> None:
+    def __init__(
+        self,
+        manager: ModuleManager,
+        audit: AuditSink,
+        data_dir: Path,
+        fetcher: Fetcher,
+        *,
+        swap_guard: Callable[[], AbstractContextManager[Any]] | None = None,
+    ) -> None:
+        # H1 B-2: fetching and verifying run without the core lock; only the swap (and rollback, which has
+        # no network) takes ``swap_guard``, which the core supplies as "core lock held and core still open".
+        self._swap_guard = swap_guard or contextlib.nullcontext
+        self._module_locks: dict[str, threading.Lock] = {}
+        self._locks_guard = threading.Lock()
         self._manager = manager
         self._audit = audit
         self._modules_dir = (data_dir / "modules").resolve()
@@ -278,6 +297,11 @@ class UpdateController:
 
     def _record(self, action: str, module_id: str, actor: str, **detail: str) -> None:
         self._audit.append(actor=actor, action=action, module=module_id, detail=detail)
+
+    def _module_lock(self, module_id: str) -> threading.Lock:
+        """One update, preview or rollback per module at a time."""
+        with self._locks_guard:
+            return self._module_locks.setdefault(module_id, threading.Lock())
 
     def _installed(self, module_id: str) -> Path:
         manifest = self._manager.manifest(module_id)
@@ -302,7 +326,10 @@ class UpdateController:
             links = [p for p in stage.rglob("*") if p.is_symlink()]
             if links:
                 raise UpdateError(f"staged tree contains a symlink ({links[0].relative_to(stage)}); refused")
-            hidden = [p for p in stage.rglob("*") if "__pycache__" in p.parts or p.suffix in _UNREVIEWABLE]
+            hidden = [
+                p for p in stage.rglob("*")
+                if "__pycache__" in p.parts or p.suffix.lower() in _UNREVIEWABLE or ".so." in p.name.lower()
+            ]  # fmt: skip
             if hidden:
                 raise UpdateError(
                     "staged tree contains compiled or path files "
@@ -325,6 +352,10 @@ class UpdateController:
     def preview(self, module_id: str, ref: str, *, actor: str) -> dict[str, Any]:
         """Stage and verify ``ref`` without applying it: SBOM delta, patch notes and the tree digest to pass
         to ``update`` so exactly what was reviewed is what gets installed."""
+        with self._module_lock(module_id):
+            return self._preview(module_id, ref, actor)
+
+    def _preview(self, module_id: str, ref: str, actor: str) -> dict[str, Any]:
         current, stage, old, new = self._stage(module_id, ref, actor)
         try:
             delta = sbom_delta(current, stage, old, new)
@@ -344,6 +375,12 @@ class UpdateController:
     def update(
         self, module_id: str, ref: str, *, actor: str, digest: str | None = None, accept_wider: bool = False
     ) -> UpdateResult:
+        with self._module_lock(module_id):
+            return self._update(module_id, ref, actor, digest, accept_wider)
+
+    def _update(
+        self, module_id: str, ref: str, actor: str, digest: str | None, accept_wider: bool
+    ) -> UpdateResult:
         current, stage, old, new = self._stage(module_id, ref, actor)
         stage_root = stage.parent
         try:
@@ -362,15 +399,33 @@ class UpdateController:
             self._record("module.update_rejected", module_id, actor, ref=ref, reason=str(exc)[:300])
             raise
         (stage_root / f"sbom-{ref}.json").write_text(json.dumps(delta, indent=1), encoding="utf-8")
+        try:
+            with self._swap_guard():
+                return self._swap(module_id, ref, actor, current, stage, old, new, delta, notes)
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)  # gone after a successful swap; a leftover otherwise
 
+    def _swap(
+        self, module_id: str, ref: str, actor: str, current: Path, stage: Path, old: Manifest, new: Manifest,
+        delta: dict[str, Any], notes: str,
+    ) -> UpdateResult:  # fmt: skip
+        stage_root = stage.parent
         was_active = self._manager.info(module_id).status is ModuleStatus.ACTIVE
         previous = stage_root / f"previous-{old.version}-{time.strftime('%Y%m%dT%H%M%S')}-{time.time_ns()}"
         prior_ref = self.installed_ref(module_id)
         self._manager.deactivate(module_id, actor=actor, reason="update")
         current.rename(previous)
-        if prior_ref:
-            Path(f"{previous}.ref").write_text(prior_ref, encoding="utf-8")
-        stage.rename(current)
+        try:
+            if prior_ref:
+                Path(f"{previous}.ref").write_text(prior_ref, encoding="utf-8")
+            stage.rename(current)
+        except BaseException as exc:
+            # H1 B-1: the live directory is gone or half-replaced. Put the previous version back as it was.
+            self._undo_swap(module_id, current, previous, stage_root / f"failed-{ref}", was_active)
+            self._record("module.rolled_back", module_id, CORE_ACTOR, ref=ref, version=old.version,
+                         reason=f"swap failed: {type(exc).__name__}")  # fmt: skip
+            raise UpdateError(f"update of {module_id!r} could not swap directories ({type(exc).__name__}); "
+                              "the previous version is back") from None  # fmt: skip
         if self._restart(module_id, was_active):
             self._set_installed_ref(module_id, ref)
             self._prune(stage_root)
@@ -450,17 +505,30 @@ class UpdateController:
         return out
 
     def _restart(self, module_id: str, was_active: bool) -> bool:
+        """Start the new version; any exception counts as a failed restart (H1 B-1)."""
         try:
             self._manager.reload(module_id)
+            if not was_active:
+                return True
+            self._manager.activate(module_id, actor=CORE_ACTOR)
+            if self._manager.info(module_id).status is not ModuleStatus.ACTIVE:
+                return False
+            ok, _ = self._manager.health(module_id)
+            return ok
         except Exception:
             return False
-        if not was_active:
-            return True
-        self._manager.activate(module_id, actor=CORE_ACTOR)
-        if self._manager.info(module_id).status is not ModuleStatus.ACTIVE:
-            return False
-        ok, _ = self._manager.health(module_id)
-        return ok
+
+    def _undo_swap(
+        self, module_id: str, current: Path, previous: Path, failed: Path, was_active: bool
+    ) -> None:
+        if current.exists():  # the stage was moved in, then something after it failed
+            shutil.rmtree(failed, ignore_errors=True)
+            current.rename(failed)
+        previous.rename(current)
+        Path(f"{previous}.ref").unlink(missing_ok=True)
+        self._manager.reload(module_id)
+        if was_active:
+            self._manager.activate(module_id, actor=CORE_ACTOR)
 
     def _restore(self, module_id: str, current: Path, previous: Path, failed: Path, was_active: bool) -> None:
         self._manager.deactivate(module_id, actor=CORE_ACTOR, reason="rollback")
@@ -489,6 +557,10 @@ class UpdateController:
             Path(f"{old}.ref").unlink(missing_ok=True)
 
     def rollback(self, module_id: str, *, actor: str, accept_wider: bool = False) -> str:
+        with self._module_lock(module_id), self._swap_guard():
+            return self._rollback(module_id, actor, accept_wider)
+
+    def _rollback(self, module_id: str, actor: str, accept_wider: bool) -> str:
         current = self._installed(module_id)
         stage_root = self._staging / module_id
         candidates = self._previous(stage_root)
