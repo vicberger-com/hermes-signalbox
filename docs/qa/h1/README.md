@@ -7,6 +7,9 @@ operations), each with probes run in a scratch directory against commit `a141ec0
 | File | Content |
 |---|---|
 | [findings-index.md](findings-index.md) | Every finding: ID, severity, component, scope class, work package, status |
+| [review-A-core.md](review-A-core.md) | Review A: core trust layer (backlog findings withheld until fixed) |
+| [review-B-boundary.md](review-B-boundary.md) | Review B: process, network and API boundary (backlog findings withheld until fixed) |
+| [review-C-modules.md](review-C-modules.md) | Review C: Hermes adapter and bundled modules (backlog findings withheld until fixed) |
 | [review-D-engineering.md](review-D-engineering.md) | Review D in full: tests, CI, release, packaging, first-run walkthrough, documentation accuracy |
 
 ## Totals
@@ -24,7 +27,9 @@ component and work package so the scope and progress are visible. When a fix mer
 1. Set the finding's status in `findings-index.md` to `fixed in #<PR>` (or `not reproduced`, `accepted`).
 2. Add its disposition row to [15-h1-prework.md](../15-h1-prework.md) section 6.
 3. At phase close, reviews A, B and C are added to this folder if every High and Medium item in them is fixed
-   or dispositioned.
+   or dispositioned. Done at the H1 close (v1.0.1): the 28 Low and Info findings still in the 1.1 backlog are
+   withheld, and each finding's text is added when its issue closes (operator decision Q-SY-H1-3). Probe
+   scripts stay private.
 
 To report a vulnerability, use the private form named in [SECURITY.md](../../../SECURITY.md), not an issue.
 

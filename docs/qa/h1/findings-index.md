@@ -1,86 +1,86 @@
 # H1 findings index
 
 Every finding of the 2026-11-20 evaluation of v1.0.0, with its disposition. Reviews A, B and C concern the
-security of a released version: their descriptions stay in the maintainer's private record until the fix is
-merged (see [README.md](README.md)). Review D is published in full: [review-D-engineering.md](review-D-engineering.md).
+security of a released version. They are published since the H1 close with the backlog findings withheld
+until each is fixed (see [README.md](README.md)). Review D is published in full: [review-D-engineering.md](review-D-engineering.md).
 
 Scope classes: **H1 must** (all High and Medium), **H1 should** (Low or Info, cheap and adjacent; only after the
 must items of the same work package), **Backlog 1.1** (one issue each, not fixed in H1), **No action**.
 
 | ID | Severity | Component | Scope | Work package | Description | Status |
 |---|---|---|---|---|---|---|
-| A-1 | Medium | contract.py, core.py, paths.py | H1 must | WP6 | private until fixed | fixed in #83 |
-| A-2 | Medium | audit.py, capabilities.py | H1 must | WP9 | private until fixed | fixed in #86 |
-| A-3 | Medium | host_t2_child.py, lifecycle.py, manifest.py | H1 must | WP6 | private until fixed | fixed in #83 |
-| A-4 | Medium | contract.py | H1 must | WP6 | private until fixed | fixed in #83 |
-| A-5 | Medium | lifecycle.py | H1 must | WP5 | private until fixed | fixed in #82 |
-| A-6 | Medium | capabilities.py | H1 must | WP6 | private until fixed | fixed in #83 |
-| A-7 | Medium | core.py, lifecycle.py | H1 must | WP6 | private until fixed | fixed in #83 |
-| A-8 | Medium | audit.py | H1 must | WP9 | private until fixed | fixed in #86 |
-| A-9 | Medium | audit.py, core.py | H1 must | WP9 | private until fixed | fixed in #86 |
-| A-10 | Medium | core.py, state.py | H1 must | WP9 | private until fixed | fixed in #86 |
-| A-11 | Medium | core.py | H1 must | WP9 | private until fixed | fixed in #86 |
-| A-12 | Low | audit.py | H1 should | WP9 | private until fixed | fixed in #86 |
-| A-13 | Low | audit.py | H1 should | WP9 | private until fixed | fixed in #86 |
-| A-14 | Low | audit.py | H1 should | WP9 | private until fixed | fixed in #86 |
-| A-15 | Low | capabilities.py | H1 should | WP6 | private until fixed | fixed in #83 |
+| A-1 | Medium | contract.py, core.py, paths.py | H1 must | WP6 | see [review A](review-A-core.md) | fixed in #83 |
+| A-2 | Medium | audit.py, capabilities.py | H1 must | WP9 | see [review A](review-A-core.md) | fixed in #86 |
+| A-3 | Medium | host_t2_child.py, lifecycle.py, manifest.py | H1 must | WP6 | see [review A](review-A-core.md) | fixed in #83 |
+| A-4 | Medium | contract.py | H1 must | WP6 | see [review A](review-A-core.md) | fixed in #83 |
+| A-5 | Medium | lifecycle.py | H1 must | WP5 | see [review A](review-A-core.md) | fixed in #82 |
+| A-6 | Medium | capabilities.py | H1 must | WP6 | see [review A](review-A-core.md) | fixed in #83 |
+| A-7 | Medium | core.py, lifecycle.py | H1 must | WP6 | see [review A](review-A-core.md) | fixed in #83 |
+| A-8 | Medium | audit.py | H1 must | WP9 | see [review A](review-A-core.md) | fixed in #86 |
+| A-9 | Medium | audit.py, core.py | H1 must | WP9 | see [review A](review-A-core.md) | fixed in #86 |
+| A-10 | Medium | core.py, state.py | H1 must | WP9 | see [review A](review-A-core.md) | fixed in #86 |
+| A-11 | Medium | core.py | H1 must | WP9 | see [review A](review-A-core.md) | fixed in #86 |
+| A-12 | Low | audit.py | H1 should | WP9 | see [review A](review-A-core.md) | fixed in #86 |
+| A-13 | Low | audit.py | H1 should | WP9 | see [review A](review-A-core.md) | fixed in #86 |
+| A-14 | Low | audit.py | H1 should | WP9 | see [review A](review-A-core.md) | fixed in #86 |
+| A-15 | Low | capabilities.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-16 | Low | config.py, manifest.py | Backlog 1.1 | - | private until fixed | backlog #89 |
 | A-17 | Low | secrets.py | Backlog 1.1 | - | private until fixed | backlog #90 |
-| A-18 | Low | secrets.py | H1 should | WP6 | private until fixed | fixed in #83 |
-| A-19 | Low | capabilities.py, manifest.py | H1 should | WP6 | private until fixed | fixed in #83 |
+| A-18 | Low | secrets.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
+| A-19 | Low | capabilities.py, manifest.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-20 | Low | manifest.py | Backlog 1.1 | - | private until fixed | backlog #91 |
-| A-21 | Low | capabilities.py, contract.py | H1 should | WP6 | private until fixed | fixed in #83 |
-| A-22 | Low | context.py, lifecycle.py | H1 should | WP6 | private until fixed | fixed in #83 |
+| A-21 | Low | capabilities.py, contract.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
+| A-22 | Low | context.py, lifecycle.py | H1 should | WP6 | see [review A](review-A-core.md) | fixed in #83 |
 | A-23 | - | - | No action: withdrawn by the reviewer | - | withdrawn | no action |
 | A-24 | Low | secrets.py | Backlog 1.1 | - | private until fixed | backlog #92 |
 | A-25 | Low | state.py | Backlog 1.1 | - | private until fixed | backlog #93 |
-| A-26 | Info | capabilities.py, m0-core.md | H1 should | WP10 | private until fixed | fixed in #87 |
+| A-26 | Info | capabilities.py, m0-core.md | H1 should | WP10 | see [review A](review-A-core.md) | fixed in #87 |
 | A-27 | Info | context.py | Backlog 1.1 | - | private until fixed | backlog #94 |
-| A-28 | Info | m0-core.md, state.py | H1 should | WP10 | private until fixed | fixed in #87 |
+| A-28 | Info | m0-core.md, state.py | H1 should | WP10 | see [review A](review-A-core.md) | fixed in #87 |
 | A-29 | Info | audit.py, context.py | Backlog 1.1 | - | private until fixed | backlog #95 |
 | A-30 | Info | capabilities.py, context.py, lifecycle.py | Backlog 1.1 | - | private until fixed | backlog #96 |
 | A-31 | Info | errors.py, secrets.py | Backlog 1.1 | - | private until fixed | backlog #97 |
-| B-1 | Medium | updates.py | H1 must | WP7 | private until fixed | fixed in #84 |
-| B-2 | Medium | core.py, updates.py | H1 must | WP7 | private until fixed | fixed in #84 |
-| B-3 | Medium | process.py | H1 must | WP7 | private until fixed | fixed in #84 |
-| B-4 | Low | logs.py | H1 should | WP9 | private until fixed | fixed in #86 |
+| B-1 | Medium | updates.py | H1 must | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
+| B-2 | Medium | core.py, updates.py | H1 must | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
+| B-3 | Medium | process.py | H1 must | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
+| B-4 | Low | logs.py | H1 should | WP9 | see [review B](review-B-boundary.md) | fixed in #86 |
 | B-5 | Low | scheduler.py | Backlog 1.1 | - | private until fixed | backlog #98 |
 | B-6 | Low | fsread.py | Backlog 1.1 | - | private until fixed | backlog #99 |
 | B-7 | Low | api.py | Backlog 1.1 | - | private until fixed | backlog #100 |
 | B-8 | Low | api.py, cli.py | Backlog 1.1 | - | private until fixed | backlog #101 |
 | B-9 | Low | api.py, cli.py | Backlog 1.1 | - | private until fixed | backlog #102 |
 | B-10 | Low | process.py | Backlog 1.1 | - | private until fixed | backlog #103 |
-| B-11 | Low | updates.py | H1 should | WP7 | private until fixed | fixed in #84 |
+| B-11 | Low | updates.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
 | B-12 | Low | updates.py | Backlog 1.1 | - | private until fixed | backlog #104 |
 | B-13 | Low | updates.py | Backlog 1.1 | - | private until fixed | backlog #105 |
-| B-14 | Low | host_t2.py, rpc.py | H1 should | WP7 | private until fixed | fixed in #84 |
+| B-14 | Low | host_t2.py, rpc.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
 | B-15 | Low | host_t2.py, host_t2_child.py | Backlog 1.1 | - | private until fixed | backlog #106 |
 | B-16 | Low | host_t2.py, rpc.py | Backlog 1.1 | - | private until fixed | backlog #107 |
 | B-17 | Low | api.py | Backlog 1.1 | - | private until fixed | backlog #108 |
 | B-18 | Low | events.py, host_t2.py | Backlog 1.1 | - | private until fixed | backlog #109 |
 | B-19 | Low | schedule.py | Backlog 1.1 | - | private until fixed | backlog #110 |
-| B-20 | Info | api.py | H1 should | WP2 | private until fixed | fixed in #79 |
-| B-21 | Info | scheduler.py | H1 should | WP7 | private until fixed | fixed in #84 |
+| B-20 | Info | api.py | H1 should | WP2 | see [review B](review-B-boundary.md) | fixed in #79 |
+| B-21 | Info | scheduler.py | H1 should | WP7 | see [review B](review-B-boundary.md) | fixed in #84 |
 | B-22 | Info | net.py | Backlog 1.1 | - | private until fixed | backlog #111 |
 | B-23 | Info | logs.py | Backlog 1.1 | - | private until fixed | backlog #112 |
-| B-24 | Info | api.py | H1 should | WP2 | private until fixed | fixed in #79 |
+| B-24 | Info | api.py | H1 should | WP2 | see [review B](review-B-boundary.md) | fixed in #79 |
 | B-25 | Info | host_t2.py, ops.py, updates.py | Backlog 1.1 | - | private until fixed | backlog #113 |
-| C-1 | High | router / bridge | H1 must | WP1 | private until fixed | fixed in #78 |
-| C-2 | Medium | bridge | H1 must | WP8 | private until fixed | fixed in #85 |
-| C-3 | Medium | trim / bridge | H1 must | WP8 | private until fixed | fixed in #85 |
-| C-4 | Medium | router | H1 must | WP1 | private until fixed | fixed in #78 |
-| C-5 | Medium | meter | H1 must | WP8 | private until fixed | fixed in #85 |
-| C-6 | Medium | lifecycle / ops | H1 must | WP5 | private until fixed | fixed in #82 |
-| C-7 | Medium | workers / router | H1 must | WP5 | private until fixed | fixed in #82 |
-| C-8 | Medium | router / engine | H1 must | WP1 | private until fixed | fixed in #78 |
-| C-9 | Low | adapter | H1 should | WP8 | private until fixed | fixed in #85 |
-| C-10 | Low | meter | H1 should | WP8 | private until fixed | fixed in #85 |
-| C-11 | Low | resources | H1 should | WP10 | private until fixed | fixed in #87 |
-| C-12 | Low | dashboard | H1 should | WP10 | private until fixed | fixed in #87 |
-| C-13 | Low | code quality | H1 should | WP10 | private until fixed | fixed in #87 |
+| C-1 | High | router / bridge | H1 must | WP1 | see [review C](review-C-modules.md) | fixed in #78 |
+| C-2 | Medium | bridge | H1 must | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
+| C-3 | Medium | trim / bridge | H1 must | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
+| C-4 | Medium | router | H1 must | WP1 | see [review C](review-C-modules.md) | fixed in #78 |
+| C-5 | Medium | meter | H1 must | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
+| C-6 | Medium | lifecycle / ops | H1 must | WP5 | see [review C](review-C-modules.md) | fixed in #82 |
+| C-7 | Medium | workers / router | H1 must | WP5 | see [review C](review-C-modules.md) | fixed in #82 |
+| C-8 | Medium | router / engine | H1 must | WP1 | see [review C](review-C-modules.md) | fixed in #78 |
+| C-9 | Low | adapter | H1 should | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
+| C-10 | Low | meter | H1 should | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
+| C-11 | Low | resources | H1 should | WP10 | see [review C](review-C-modules.md) | fixed in #87 |
+| C-12 | Low | dashboard | H1 should | WP10 | see [review C](review-C-modules.md) | fixed in #87 |
+| C-13 | Low | code quality | H1 should | WP10 | see [review C](review-C-modules.md) | fixed in #87 |
 | C-14 | Low | adapter / router / meter | Backlog 1.1 | - | private until fixed | backlog #114 |
-| C-15 | Low | secrets | H1 should | WP6 | private until fixed | fixed in #83 |
-| C-16 | Low | activation | H1 should | WP8 | private until fixed | fixed in #85 |
+| C-15 | Low | secrets | H1 should | WP6 | see [review C](review-C-modules.md) | fixed in #83 |
+| C-16 | Low | activation | H1 should | WP8 | see [review C](review-C-modules.md) | fixed in #85 |
 | C-17 | Low | config | Backlog 1.1 | - | private until fixed | backlog #115 |
 | C-18 | Info | dashboard | Backlog 1.1 | - | private until fixed | backlog #116 |
 | D-1 | High | USER-GUIDE.md, README.md | H1 must | WP2 | Guide's first module activation fails: `router` also needs `ui.panel`, which the guide never grants | fixed in #79 |
