@@ -17,7 +17,7 @@ entry = "example:ExampleModule"
 # Request the minimum. Each entry must be justified in the module README.
 request = ["ui.panel"]
 net_hosts = []                    # required when "net.outbound" is requested
-# programs = ["tool"]            # with "process.spawn": the only programs it may run (bare names); omit = any
+# programs = ["tool"]            # with "process.spawn": the only programs it may run (bare names); omit = any, [] = none
 secrets = []                      # secret names (never values); required with "secrets.read"
 
 [contributes]
