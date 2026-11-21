@@ -33,7 +33,7 @@ Docs read first: DESIGN.md §4, ADR-0003, ADR-0010, ADR-0011, m0-core.md, qa/14-
 | B-19 | Low | - | - | - | withheld until fixed (#110) |
 | B-20 | Info | confirmed-by-probe | API | api.py:162-165 | PUT/PATCH/DELETE/OPTIONS reply 501 without the Host or Origin check |
 | B-21 | Info | confirmed-by-reading | scheduler | scheduler.py:140-146 | NaN and inf accepted for `every` and `min_interval_s`; such a trigger never fires |
-| B-22 | Info | - | - | - | withheld until fixed (#111) |
+| B-22 | Info | confirmed-by-reading | net | net.py:99; updates/net | Allow-list checks the name, not the resolved address; module headers may override Host |
 | B-23 | Info | confirmed-by-reading | logs | logs.py:30-37 | Redaction covers values only, not keys |
 | B-24 | Info | confirmed-by-probe | API | api.py (no handle_error) | Each dropped connection prints a full traceback to stderr |
 | B-25 | Info | - | - | - | withheld until fixed (#113) |
@@ -205,9 +205,11 @@ Withheld until #110 is closed.
 - **Impact:** such a trigger never fires, silently. Not probed.
 - **Fix:** require `math.isfinite`.
 
-### B-22 (Info)
-
-Withheld until #111 is closed.
+### B-22 (Info), allow-list checks the name, not the resolved address
+- **Location:** `net.py:96-97` (host from the URL, matched by `require_host`), `net.py:99` (module headers passed through, so `Host` can be overridden).
+- **Impact:** an allow-listed name that resolves to a loopback or link-local address (for example 169.254.169.254) is reachable. The manifest author chose the name, so this is Info. Not probed (no DNS control).
+- **Fix:** optionally resolve and refuse private ranges unless the manifest allows them, and drop `Host` from module headers.
+- Fixed in 1.1 (#111), in two parts: a module-set `Host` header is dropped (#136); the host is resolved once, link-local answers are refused, and the connection goes to the checked addresses (operator decision Q-SY-1.1-2). Loopback and private addresses stay allowed.
 
 ### B-23 (Info), redaction covers values, not keys
 - **Location:** `logs.py:30-37` (`_redact_all` redacts strings and leaves dict keys as written).
@@ -240,7 +242,7 @@ Withheld until #113 is closed.
 ## Not checked
 
 - Real `git` against a remote (fetch, ls-remote, the 300 s behaviour). B-2 uses a stub fetcher.
-- An item for withheld finding B-22.
+- DNS rebinding for the net broker (no DNS control; B-22 is reading only).
 - Windows device I/O for the superscript and colon names (B-6). I did not open a device.
 - icacls ACL outcome on the token file (B-17 is reading only).
 - The full pytest suite. I did not run it, to keep the repo free of cache and coverage writes.

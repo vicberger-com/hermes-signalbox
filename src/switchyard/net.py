@@ -5,12 +5,20 @@ granted ``net.outbound`` to a host listed in its manifest's ``net_hosts`` (``hos
 match). No redirects are followed (a redirect could leave the allow-list), proxies from the environment are
 ignored, the response body is capped, and each request is audited with host, method and status only: URLs
 paths, headers and bodies can carry secrets and are never recorded.
+
+The host name is resolved once. A link-local answer (169.254.0.0/16, fe80::/10: cloud metadata endpoints) is
+refused, and the connection goes to the address that was checked, so a second DNS answer cannot move it
+(rebinding). Loopback and private addresses stay allowed: connectors call local services on purpose (1.1, H1
+B-22, operator decision Q-SY-1.1-2).
 """
 
 from __future__ import annotations
 
+import functools
 import http.client
+import ipaddress
 import json as jsonlib
+import socket
 import time
 import urllib.error
 import urllib.parse
@@ -45,6 +53,70 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _refused_address(address: str) -> str | None:
+    """Why ``address`` may not be contacted, or ``None``."""
+    try:
+        ip = ipaddress.ip_address(address.split("%", 1)[0])
+    except ValueError:
+        return "not an IP address"
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if ip.is_link_local:
+        return "link-local address (cloud metadata range)"
+    return None
+
+
+def _resolve(host: str, port: int) -> list[str]:
+    """Resolve ``host`` once and return the addresses to try, in order; refuse if any answer is link-local."""
+    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    addresses = [str(info[4][0]) for info in infos]
+    if not addresses:
+        raise OSError("no address")
+    for address in addresses:
+        reason = _refused_address(address)
+        if reason is not None:
+            raise _AddressRefused(reason)
+    return list(dict.fromkeys(addresses))
+
+
+class _AddressRefused(Exception):
+    pass
+
+
+def _pinned(
+    conn_class: type[http.client.HTTPConnection], addresses: list[str], host: str, **kwargs: Any
+) -> Any:
+    """An HTTP(S) connection to ``host`` that connects to the checked ``addresses``; the Host header, TLS SNI
+    and the certificate check still use the name."""
+    conn = conn_class(host, **kwargs)
+    connect = conn._create_connection  # type: ignore[attr-defined]
+
+    def to_address(target: tuple[str, int], *args: Any, **kw: Any) -> socket.socket:
+        error: OSError | None = None
+        for (
+            address
+        ) in addresses:  # in resolver order, as socket.create_connection would (localhost: ::1 first)
+            try:
+                return connect((address, target[1]), *args, **kw)  # type: ignore[no-any-return]
+            except OSError as exc:
+                error = exc
+        raise error or OSError("no address")
+
+    conn._create_connection = to_address  # type: ignore[attr-defined]
+    return conn
+
+
+class _PinnedHTTP(urllib.request.HTTPHandler):
+    def http_open(self, req: Any) -> Any:
+        return self.do_open(functools.partial(_pinned, http.client.HTTPConnection, req.pinned_addresses), req)
+
+
+class _PinnedHTTPS(urllib.request.HTTPSHandler):
+    def https_open(self, req: Any) -> Any:
+        factory = functools.partial(_pinned, http.client.HTTPSConnection, req.pinned_addresses)
+        return self.do_open(factory, req, context=self._context)  # type: ignore[attr-defined]
+
+
 def _read_until(resp: Any, deadline: float) -> bytes:
     """Read at most ``MAX_BODY_IN + 1`` bytes, in chunks, within a total deadline (a trickling server cannot
     hold the call beyond ``timeout``; M11 review)."""
@@ -62,7 +134,7 @@ def _read_until(resp: Any, deadline: float) -> bytes:
     return b"".join(chunks)
 
 
-_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect, _PinnedHTTP, _PinnedHTTPS)
 
 
 class NetBroker:
@@ -108,6 +180,14 @@ class NetBroker:
                 raise SwitchyardError("request body too large")
             all_headers.setdefault("Content-Type", "application/json")
         req = urllib.request.Request(url, data=data, method=method, headers=all_headers)  # noqa: S310 - scheme checked
+        try:
+            req.pinned_addresses = _resolve(parts.hostname, port or (443 if parts.scheme == "https" else 80))  # type: ignore[attr-defined]
+        except _AddressRefused as exc:
+            self._record(module_id, host, method, "refused_address")
+            raise SwitchyardError(f"request to {host} refused: it resolves to a {exc}") from None
+        except OSError as exc:
+            self._record(module_id, host, method, type(exc).__name__)
+            raise SwitchyardError(f"request to {host} failed: {type(exc).__name__}") from None
         status = 0
         deadline = time.monotonic() + min(max(timeout, 0.5), MAX_TIMEOUT_S)
         try:
