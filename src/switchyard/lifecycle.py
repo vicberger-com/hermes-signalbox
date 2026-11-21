@@ -18,16 +18,19 @@
 
 from __future__ import annotations
 
+import enum
+import hashlib
 import importlib
 import sys
 import threading
 import time
 import types
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import switchyard
 from switchyard.capabilities import CORE_ACTOR, AuditSink, PolicyEngine
 from switchyard.context import (
     ContextServices,
@@ -37,20 +40,54 @@ from switchyard.context import (
     PanelRegistry,
     SecretBackendPort,
 )
-from switchyard.discovery import _VERIFIED_KEY, ModuleDirectory, _Entry
-from switchyard.discovery import ModuleInfo as ModuleInfo  # re-exported: callers import it from lifecycle
-from switchyard.discovery import ModuleStatus as ModuleStatus  # re-exported likewise
-from switchyard.errors import CapabilityDenied, NotAvailable, SwitchyardError, UsageError
+from switchyard.errors import CapabilityDenied, ManifestError, SwitchyardError
 from switchyard.events import EventBus
 from switchyard.host_t2 import T2Module
-from switchyard.manifest import Manifest, core_compatibility, load_manifest, loaded_inside
+from switchyard.manifest import MANIFEST_NAME, Manifest, load_manifest, loaded_inside
 from switchyard.scheduler import Scheduler
 from switchyard.state import StateStore
 
 PACKAGE_ROOT = "_switchyard_modules"
 MODES = frozenset({"manual", "auto", "disabled"})
 REQUIRED_METHODS = ("activate", "deactivate", "health")
+_MAX_REASON = 900
+_VERIFIED_KEY = "module.verified."  # meta key prefix: last audited verification (1.1 #125)
 _MAX_HEALTH_DETAIL = 200
+
+
+class ModuleStatus(enum.Enum):
+    VERIFIED = "verified"
+    ACTIVE = "active"
+    STOPPED = "stopped"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class ModuleInfo:
+    id: str
+    version: str
+    status: ModuleStatus
+    mode: str
+    isolation: str
+    path: Path
+    error: str | None
+    stop_reason: str = ""  # why it last stopped: "idle", "revoked <cap>", "update", ... (R1 follow-up)
+
+    @property
+    def state(self) -> ModuleStatus:
+        return self.status
+
+
+@dataclass
+class _Entry:
+    manifest: Manifest
+    mode: str
+    status: ModuleStatus = ModuleStatus.VERIFIED
+    error: str | None = None
+    instance: Any = None
+    ctx: ModuleContext | None = None
+    last_used: float = 0.0
+    stop_reason: str = ""
 
 
 def _error_name(exc: BaseException) -> str:
@@ -59,7 +96,11 @@ def _error_name(exc: BaseException) -> str:
     return remote if isinstance(remote, str) else type(exc).__name__
 
 
-class ModuleManager(ModuleDirectory):
+def _utc() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class ModuleManager:
     def __init__(
         self,
         *,
@@ -102,7 +143,7 @@ class ModuleManager(ModuleDirectory):
     def _entry(self, module_id: str) -> _Entry:
         entry = self._entries.get(module_id)
         if entry is None:
-            raise UsageError(f"unknown module {module_id!r}")
+            raise SwitchyardError(f"unknown module {module_id!r}")
         return entry
 
     def ids(self) -> list[str]:
@@ -126,6 +167,110 @@ class ModuleManager(ModuleDirectory):
 
     # records ------------------------------------------------------------------------------------------
 
+    def _record(self, action: str, module_id: str, actor: str, **detail: str) -> None:
+        self._audit.append(actor=actor, action=action, module=module_id, detail=detail)
+        self._bus.publish("core", action, {"module": module_id, **detail})
+
+    def _persist(self, e: _Entry) -> None:
+        if self._store is None:
+            return
+        now = _utc()
+        self._store.core_execute(
+            "INSERT INTO modules (id, version, mode, state, installed_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (id) DO UPDATE SET version = excluded.version, mode = excluded.mode, "
+            "state = excluded.state, updated_at = excluded.updated_at",
+            (e.manifest.id, e.manifest.version, e.mode, e.status.value, now, now),
+        )
+
+    def _stored_mode(self, module_id: str) -> str | None:
+        if self._store is None:
+            return None
+        rows = self._store.core_query("SELECT mode FROM modules WHERE id = ?", (module_id,))
+        return str(rows[0][0]) if rows else None
+
+    # discovery ----------------------------------------------------------------------------------------
+
+    def _reject(self, directory: Path, reason: str) -> None:
+        reason = reason[:_MAX_REASON]
+        self._audit.append(
+            actor=CORE_ACTOR,
+            action="module.rejected",
+            module="",
+            detail={"path": str(directory), "reason": reason},
+        )
+        self._bus.publish("core", "module.rejected", {"path": str(directory), "reason": reason})
+
+    def _is_trusted(self, directory: Path) -> bool:
+        resolved = directory.resolve()
+        return any(resolved.is_relative_to(root) for root in self._trusted)
+
+    def discover(self, roots: Sequence[Path]) -> list[str]:
+        """Load and verify every ``<root>/<dir>/module.toml``. Returns the ids accepted by this call."""
+        accepted: list[str] = []
+        for root in roots:
+            if not root.is_dir():
+                continue
+            for directory in sorted(p for p in root.iterdir() if (p / MANIFEST_NAME).is_file()):
+                module_id = self._discover_one(directory)
+                if module_id is not None:
+                    accepted.append(module_id)
+        return accepted
+
+    def _discover_one(self, directory: Path) -> str | None:
+        try:
+            manifest = load_manifest(directory)
+        except ManifestError as exc:
+            self._reject(directory, "; ".join(exc.errors))
+            return None
+        if manifest.isolation == "in-process" and not self._is_trusted(directory):
+            self._reject(
+                directory, "module is outside the trusted roots; it must declare isolation = 'subprocess'"
+            )
+            return None
+        with self._lock:
+            existing = self._entries.get(manifest.id)
+            if existing is not None and existing.manifest.directory.resolve() != directory.resolve():
+                self._reject(directory, f"duplicate module id {manifest.id!r}")
+                return None
+            if existing is not None and existing.status is ModuleStatus.ACTIVE:
+                return manifest.id  # a running module keeps its manifest until it is restarted
+            try:
+                self._policy.register(manifest)
+            except ManifestError as exc:
+                self._reject(directory, "; ".join(exc.errors))
+                return None
+            mode = self._stored_mode(manifest.id) or manifest.activation
+            entry = _Entry(manifest=manifest, mode=mode)
+            self._entries[manifest.id] = entry
+            self._persist(entry)
+        # 1.1 #125: every process that opens the data directory runs discovery. The audit gets a record when
+        # the verified manifest is new or changed; an unchanged one is only announced on the in-process bus.
+        fingerprint = self._verification_fingerprint(manifest.id, directory)
+        if fingerprint is not None:
+            self._record("module.verified", manifest.id, CORE_ACTOR)
+            self._store_fingerprint(manifest.id, fingerprint)  # only after the record is written
+        else:
+            self._bus.publish("core", "module.verified", {"module": manifest.id})
+        return manifest.id
+
+    def _verification_fingerprint(self, module_id: str, directory: Path) -> str | None:
+        """(directory, manifest digest) when it differs from the last audited verification, else None.
+        Without a store every verification is new."""
+        digest = hashlib.sha256((directory / MANIFEST_NAME).read_bytes()).hexdigest()
+        fingerprint = f"{directory.resolve()}|{digest}"
+        if self._store is None:
+            return fingerprint
+        rows = self._store.core_query("SELECT value FROM meta WHERE key = ?", (_VERIFIED_KEY + module_id,))
+        return None if rows and rows[0][0] == fingerprint else fingerprint
+
+    def _store_fingerprint(self, module_id: str, fingerprint: str) -> None:
+        if self._store is not None:
+            self._store.core_execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                (_VERIFIED_KEY + module_id, fingerprint),
+            )
+
     def reload(self, module_id: str) -> None:
         """Re-read a stopped module's manifest from its directory (after an update swapped the directory)."""
         with self._lock:
@@ -136,9 +281,6 @@ class ModuleManager(ModuleDirectory):
             manifest = load_manifest(directory)
             if manifest.id != module_id:
                 raise SwitchyardError(f"manifest in {directory} now declares id {manifest.id!r}")
-            verdict, why = core_compatibility(manifest.requires_core, switchyard.__version__)
-            if verdict == "incompatible":
-                raise SwitchyardError(why)
             if manifest.isolation == "in-process" and not self._is_trusted(directory):
                 raise SwitchyardError(
                     "module is outside the trusted roots; it must use isolation = 'subprocess'"
@@ -186,7 +328,7 @@ class ModuleManager(ModuleDirectory):
         with self._lock:
             e = self._entry(module_id)
             if e.mode == "disabled":
-                raise NotAvailable(f"module {module_id!r} is disabled")
+                raise SwitchyardError(f"module {module_id!r} is disabled")
             if e.status is ModuleStatus.ACTIVE:
                 e.last_used = self._clock()
                 return
@@ -305,7 +447,7 @@ class ModuleManager(ModuleDirectory):
 
     def set_mode(self, module_id: str, mode: str, *, actor: str) -> None:
         if mode not in MODES:
-            raise UsageError(f"invalid mode {mode!r}; expected one of {sorted(MODES)}")
+            raise SwitchyardError(f"invalid mode {mode!r}; expected one of {sorted(MODES)}")
         with self._lock:
             e = self._entry(module_id)
             if mode == "disabled" and e.status is ModuleStatus.ACTIVE:
