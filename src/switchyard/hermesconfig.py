@@ -171,6 +171,7 @@ class ConfigWriter:
                 "yes": "previous value restored",
                 "unchanged": "previous value unchanged",
                 "skipped": "previous value NOT restored: changed by another writer since",
+                "unknown": "previous value NOT restored: the key could not be read back",
             }.get(restored, "previous value NOT restored")
             raise SwitchyardError(
                 f"writing Hermes config {key} failed ({type(exc).__name__}); {outcome}, backup {backup}"
@@ -181,11 +182,14 @@ class ConfigWriter:
 
     def _roll_back(self, key: str, old: list[str], new: list[str], stored: list[str] | None) -> str:
         """Restore ``old`` unless someone else changed the key since this write (H1 C-17). Returns ``"yes"``,
-        ``"unchanged"`` (nothing to undo), ``"skipped"`` (changed by another writer) or ``"no"``."""
+        ``"unchanged"`` (nothing to undo), ``"skipped"`` (changed by another writer), ``"unknown"`` (the key
+        cannot be read, so nothing is written blind; 1.1 acceptance S2-6) or ``"no"``."""
         try:
             current = sorted(self.get(key))
         except Exception:
             current = None
+        if current is None and stored is not None:  # our write landed, but now nobody can tell what is there
+            return "unknown"
         if current is not None and current == sorted(old):
             return "unchanged"
         # Only a write that landed and was read back can be overtaken: if the key no longer holds what was

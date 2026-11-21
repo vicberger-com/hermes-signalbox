@@ -129,6 +129,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   database's used pages instead of its file size, so a module can no longer write past its quota into pages
   another module freed. A module query may return at most 16 MiB of data (`MAX_RESULT_BYTES`), read row by
   row, instead of up to 10 000 rows of any size.
+- Smaller fixes from the 1.1 acceptance security review: a module action refused at argument binding is
+  audited again (as in 1.0); the secret redactor remembers 16 384 values instead of 256; a Hermes config
+  rollback that cannot read the key back no longer writes over it blind and reports "NOT restored"; the
+  dashboard checks every `Sec-Fetch-Site` value and encodes ids in its request URLs.
 
 ### Documentation
 - USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,

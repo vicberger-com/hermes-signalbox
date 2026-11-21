@@ -45,7 +45,7 @@
           h("td", null, m.mode || ""),
           h("td", null, m.health || ""),
           h("td", null, h("button", { type: "button", onClick: function () {
-            api("/modules/" + m.id + "/" + (active ? "deactivate" : "activate"), "POST").then(props.refresh, props.refresh);
+            api("/modules/" + encodeURIComponent(m.id) + "/" + (active ? "deactivate" : "activate"), "POST").then(props.refresh, props.refresh);
           } }, (active ? "Deactivate " : "Activate ") + m.id)));
       })));
   }
@@ -61,7 +61,7 @@
       h("ul", null, items.map(function (it) {
         return h("li", { key: it.id, className: "sy-sev-" + it.severity },
           h("span", null, "[" + it.severity + "] " + (it.title || it.type) + " (" + it.module + ") " + (it.detail || "") + " "),
-          h("button", { type: "button", onClick: function () { api("/inbox/" + it.id + "/ack", "POST").then(props.refresh, props.refresh); } }, "Acknowledge"));
+          h("button", { type: "button", onClick: function () { api("/inbox/" + encodeURIComponent(it.id) + "/ack", "POST").then(props.refresh, props.refresh); } }, "Acknowledge"));
       })));
   }
 

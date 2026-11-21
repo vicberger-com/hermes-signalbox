@@ -76,3 +76,12 @@ def test_c18_the_dashboards_own_writes_still_reach_switchyard(
     # Past the page check the request reaches the (absent) daemon: 503, not 403.
     r = client.post("/api/plugins/switchyard/modules/router/deactivate", headers=headers)
     assert r.status_code == 503
+
+
+def test_s3_3_every_sec_fetch_site_value_is_checked(client: TestClient) -> None:
+    # Two values, one of them cross-site: Hermes's own gate checks all of them, so does the plugin.
+    r = client.post(
+        "/api/plugins/switchyard/modules/router/deactivate",
+        headers=[("Sec-Fetch-Site", "none"), ("Sec-Fetch-Site", "cross-site")],
+    )
+    assert r.status_code == 403
