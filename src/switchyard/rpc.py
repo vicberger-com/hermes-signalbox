@@ -120,6 +120,7 @@ class Channel:
         self._ids = itertools.count(1)
         self._depth = 0
         self._stopped = False
+        self._deadline: float | None = None
 
     def stop(self) -> None:
         self._stopped = True
@@ -159,12 +160,30 @@ class Channel:
             self._depth -= 1
         self._send(reply)
 
+    def remaining(self) -> float | None:
+        """Seconds left of the innermost call in progress (``None``: no deadline). Transports use it to
+        bound a send by the call's own deadline (H1 B-14)."""
+        return None if self._deadline is None else self._deadline - time.monotonic()
+
     def request(self, method: str, params: dict[str, Any], timeout: float | None = None) -> Any:
+        # One deadline for the whole call, the send included: a peer sending a request every few seconds, or
+        # a slow write, must not stretch it (R1 review, H1 B-14).
+        deadline = None if timeout is None else time.monotonic() + timeout
+        outer = self._deadline
+        if outer is not None:  # a nested call never outlives the call it runs inside
+            self._deadline = outer if deadline is None else min(deadline, outer)
+        else:
+            self._deadline = deadline
+        try:
+            return self._request(method, params, timeout, deadline)
+        finally:
+            self._deadline = outer
+
+    def _request(
+        self, method: str, params: dict[str, Any], timeout: float | None, deadline: float | None
+    ) -> Any:
         mid = next(self._ids)
         self._send({"jsonrpc": "2.0", "id": mid, "method": method, "params": params})
-        # One deadline for the whole call: a peer sending a request every few seconds must not keep it open
-        # forever (R1 review).
-        deadline = None if timeout is None else time.monotonic() + timeout
         while True:
             remaining = None if deadline is None else deadline - time.monotonic()
             if remaining is not None and remaining <= 0:

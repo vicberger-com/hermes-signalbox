@@ -128,3 +128,22 @@ def test_h1_d2_git_resolves_and_runs_here() -> None:
 
     assert git_usable() is True
     assert resolved_git() is not None
+
+
+def test_h1_b3_deadline_covers_stdin_and_every_failure_is_recorded(
+    broker: tuple[ProcessBroker, PolicyEngine], audit: RecordingAudit
+) -> None:
+    import time
+
+    pb, policy = broker
+    policy.grant("demo", "process.spawn", actor="t")
+    code = "import time; time.sleep(30)"  # never reads its stdin
+    start = time.monotonic()
+    with pytest.raises(SwitchyardError, match="timed out"):
+        pb.run("demo", [sys.executable, "-c", code], input="x" * 900_000, timeout=1.0)
+    assert time.monotonic() - start < 6
+    assert audit.records[-1]["detail"] == {"program": Path(sys.executable).name, "result": "timeout"}
+    with pytest.raises(SwitchyardError, match="input"):
+        pb.run("demo", [sys.executable, "-c", "pass"], input="x" * 1_000_001)
+    done = pb.run("demo", [sys.executable, "-c", "import sys; print(len(sys.stdin.read()))"], input="abc")
+    assert done.stdout.strip() == "3"

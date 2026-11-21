@@ -64,6 +64,8 @@ class Operation:
     fn: Callable[[Core, dict[str, Any], str], Any]
     params: Mapping[str, Param] = field(default_factory=dict)
     offline: bool = False
+    # H1 B-2: False for operations that do network work (git) and take the core lock only where they need it
+    locked: bool = True
 
     def validate(self, raw: Mapping[str, Any]) -> dict[str, Any]:
         unknown = set(raw) - set(self.params)
@@ -96,12 +98,12 @@ CAP = Param(str, help="capability id")
 
 
 def op(
-    noun: str, verb: str, description: str, *, offline: bool = False, **params: Param
+    noun: str, verb: str, description: str, *, offline: bool = False, locked: bool = True, **params: Param
 ) -> Callable[..., Any]:
     def register(
         fn: Callable[[Core, dict[str, Any], str], Any],
     ) -> Callable[[Core, dict[str, Any], str], Any]:
-        OPERATIONS[(noun, verb)] = Operation(noun, verb, description, fn, params, offline)
+        OPERATIONS[(noun, verb)] = Operation(noun, verb, description, fn, params, offline, locked)
         return fn
 
     return register
@@ -288,7 +290,7 @@ def run_action(
 
 
 @op("module", "update", "Update a git-installed module to a pinned commit; rolls back if it fails.",
-    id=ID, ref=Param(str, help="full 40-character commit SHA"),
+    locked=False, id=ID, ref=Param(str, help="full 40-character commit SHA"),
     digest=Param(str, required=False, help="tree digest from module preview; refuses different files"),
     accept_wider=Param(bool, required=False, default=False,
                        help="accept new capabilities, hosts, secrets or weaker isolation"))  # fmt: skip
@@ -300,13 +302,14 @@ def _module_update(core: Core, p: dict[str, Any], actor: str) -> Any:
 
 
 @op("module", "preview", "Stage a commit without applying it: SBOM delta, patch notes and tree digest.",
-    id=ID, ref=Param(str, help="full 40-character commit SHA"))  # fmt: skip
+    locked=False, id=ID, ref=Param(str, help="full 40-character commit SHA"))  # fmt: skip
 def _module_preview(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
     return core.updates.preview(p["id"], p["ref"], actor=actor)
 
 
-@op("module", "check_updates", "Compare git-installed modules with the head of their update channel.")
+@op("module", "check_updates", "Compare git-installed modules with the head of their update channel.",
+    locked=False)  # fmt: skip
 def _module_check_updates(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
     return {"modules": core.updates.check_all()}

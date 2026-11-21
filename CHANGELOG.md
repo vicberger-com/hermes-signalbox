@@ -12,6 +12,14 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   never charge or record. Cool-downs are never shortened by a later error. Every request shape is sized.
 
 ### Changed
+- Failure paths (H1 WP7). A failed directory swap during `module update` puts the previous version back and
+  audits `module.rolled_back`; any error while restarting the new version counts as a failed restart (B-1).
+  `module update`, `preview` and `check_updates` run git without the core lock; only the swap takes it, and one
+  update per module runs at a time; `ls-remote` times out after 60 s (B-2). The process broker's deadline covers
+  writing stdin, input is capped at 1 MB, and every failure path kills the tree and is audited (B-3). Updates
+  also refuse `.pyd`, `.so`, `.dylib`, `.dll` and `.pyw` files, case-insensitively (B-11). An RPC call's deadline
+  includes the send (B-14). Trigger numbers must be finite (B-21). The T2 flood kill and stalled-writer kill now
+  run in the suite (D-11).
 - Core trust (H1 WP6). An explicit `--data-dir` / `Core(data_dir=...)` now wins over `SWITCHYARD_DATA_DIR` (A-1),
   and the module contract no longer reads it. An entry `X.py` beside a directory `X/` is rejected, and module code
   is checked after import to come from inside its directory (A-3). `run_contract` has a `trust` check: in-process
