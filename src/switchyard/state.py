@@ -94,11 +94,15 @@ class StateStore:
         self._local = threading.local()
         self._busy_ms = BUSY_TIMEOUT_MS
         self._conn = sqlite3.connect(str(path), isolation_level=None, check_same_thread=False)
-        for pragma in (
-            "journal_mode = WAL", "synchronous = NORMAL", "foreign_keys = ON",
-            f"busy_timeout = {BUSY_TIMEOUT_MS}", "trusted_schema = OFF",
-        ):  # fmt: skip
-            self._conn.execute(f"PRAGMA {pragma}")
+        try:
+            for pragma in (
+                "journal_mode = WAL", "synchronous = NORMAL", "foreign_keys = ON",
+                f"busy_timeout = {BUSY_TIMEOUT_MS}", "trusted_schema = OFF",
+            ):  # fmt: skip
+                self._conn.execute(f"PRAGMA {pragma}")
+        except BaseException:  # H1 A-10: a failed open does not leave the connection behind
+            self._conn.close()
+            raise
 
     # wait budgets -------------------------------------------------------------------------------------
 

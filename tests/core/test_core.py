@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from switchyard.core import Core
-from switchyard.errors import CapabilityDenied, SwitchyardError
+from switchyard.errors import AuditError, CapabilityDenied, SwitchyardError
 from switchyard.ops import OPERATIONS, UsageError
 from switchyard.scheduler import Trigger
 from switchyard.secrets import MemoryBackend
@@ -212,3 +213,62 @@ def test_operations_after_close_are_refused(tmp_path: Path) -> None:
     core.close()
     with pytest.raises(SwitchyardError, match="closed"):
         core.run("module", "list", {}, actor="cli")
+
+
+# H1 WP9 -------------------------------------------------------------------------------------------------
+
+
+def test_h1_a10_failed_startup_releases_the_host_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import switchyard.core as core_mod
+
+    data = tmp_path / "data"
+    real = core_mod.StateStore
+
+    def broken(*a: Any, **k: Any) -> Any:
+        raise sqlite3.OperationalError("unable to open database file")
+
+    monkeypatch.setattr(core_mod, "StateStore", broken)
+    with pytest.raises(sqlite3.OperationalError):
+        Core(data_dir=data, hosting=True)
+    monkeypatch.setattr(core_mod, "StateStore", real)
+    with Core(data_dir=data, hosting=True) as c:  # same process: the lock was released
+        assert c.hosting
+
+
+def test_h1_a11_failed_acknowledgement_keeps_the_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = tmp_path / "data"
+    with Core(data_dir=data, hosting=True) as c:
+        for i in range(3):
+            c.audit.append(actor="t", action="x", module="", detail={"i": str(i)})
+    log = next((data / "audit").glob("audit-*.jsonl"))
+    lines = log.read_text(encoding="utf-8").splitlines(keepends=True)
+    log.write_text("".join(lines[:-1]), encoding="utf-8")  # truncation: the anchor no longer matches
+    with Core(data_dir=data, hosting=True) as c:
+        assert not c.audit_status.ok
+
+        def fail(**kw: Any) -> Any:
+            raise AuditError("disk full")
+
+        monkeypatch.setattr(c.audit_log, "append", fail)
+        with pytest.raises(AuditError):
+            c.run("audit", "ack", {}, actor="cli")
+        monkeypatch.undo()
+        assert c._audit_broken() is not None and c.audit.stored_head() is not None
+        assert c.run("audit", "ack", {}, actor="cli")["acknowledged"] is True
+    with Core(data_dir=data, hosting=True) as c:
+        assert c.audit_status.ok
+
+
+def test_h1_a9_torn_tail_at_startup_is_not_flagged(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    with Core(data_dir=data, hosting=True) as c:
+        c.audit.append(actor="t", action="x", module="", detail={})
+    log = next((data / "audit").glob("audit-*.jsonl"))
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write('{"seq": 99, "ts"')  # a crash mid-write
+    with Core(data_dir=data, hosting=True) as c:
+        assert c.audit_status.ok and c._audit_broken() is None

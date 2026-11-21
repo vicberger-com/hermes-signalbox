@@ -12,6 +12,14 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   never charge or record. Cool-downs are never shortened by a later error. Every request shape is sized.
 
 ### Changed
+- Audit log and startup (H1 WP9). A torn last line (a crash mid-write) is repaired when the log is opened, so
+  startup no longer reports it as tampering; a record whose final newline was stripped now fails `verify` (A-9).
+  `audit tail` splits on `\n` only, so records holding U+2028/U+2029 read back (A-8). A failed start releases the
+  host lock and closes the database (A-10). `audit ack` records the acknowledgement before clearing the warning
+  (A-11). Policy denials with long module-supplied values are always recorded, values shortened (A-2). Bad bytes
+  or deeply nested JSON in the log give a verify report instead of an exception (A-12); records are capped at
+  128 KiB and the last record is found whatever its size (A-13); short writes are completed (A-14). Log lines
+  with long event names stay valid JSON (B-4).
 - Hot path (H1 WP8). Bridge calls have a per-module circuit breaker: three timeouts in a row pause that module's
   hooks, gates and middleware for 60 s (audited `module.hooks_paused`), and at most 4 calls per module run at once;
   observers run side by side against one shared deadline (C-2). The core's own scan of tool output has a 0.5 s

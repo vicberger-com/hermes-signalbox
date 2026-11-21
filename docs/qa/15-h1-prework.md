@@ -152,12 +152,21 @@ adapter; measure per-call overhead. Results are appended to this file under a ne
 | B-21 | Fixed | #84 | `_number` requires `math.isfinite` |
 | D-11 | Fixed | #84 | Regression tests for the T2 flood kill and the stalled-writer kill |
 | D-27 | Fixed | #84 | Vacuous assertion replaced by a status check |
-| C-2 | Fixed | WP8 | Breaker per module (3 timeouts: 60 s pause, audited once); 4 in-flight calls max; observers share one deadline |
-| C-3 | Fixed | WP8 | `trim.normalise` / `must_keep` take a deadline (0.5 s per step); past it the transform fails open, audited `core.transform_skipped` |
-| C-5 | Fixed | WP8 | Bridge remembers the model sent per `api_request_id` and passes `sent_model` to `post_api_request` / `api_request_error` observers; meter uses it first |
-| C-9 | Fixed | WP8 | `core.adapter_error` once per hook and class, warning logged; gate dispatch separated from observer dispatch |
-| C-10 | Fixed | WP8 | Finite float counts are rounded |
-| C-16 | Fixed | WP8 | `health()` is read-only; expiry at the next turn or apply/restore |
+| C-2 | Fixed | #85 | Breaker per module (3 timeouts: 60 s pause, audited once); 4 in-flight calls max; observers share one deadline |
+| C-3 | Fixed | #85 | `trim.normalise` / `must_keep` take a deadline (0.5 s per step); past it the transform fails open, audited `core.transform_skipped` |
+| C-5 | Fixed | #85 | Bridge remembers the model sent per `api_request_id` and passes `sent_model` to `post_api_request` / `api_request_error` observers; meter uses it first |
+| C-9 | Fixed | #85 | `core.adapter_error` once per hook and class, warning logged; gate dispatch separated from observer dispatch |
+| C-10 | Fixed | #85 | Finite float counts are rounded |
+| C-16 | Fixed | #85 | `health()` is read-only; expiry at the next turn or apply/restore |
+| A-2 | Fixed | WP9 | `PolicyEngine._deny`/`_refuse` clip values to 1000 characters with a `[+N chars]` marker; the denial is always recorded |
+| A-8 | Fixed | WP9 | `tail` and `_iter_lines` split on `\n` only |
+| A-9 | Fixed | WP9 | Torn tail repaired on open (`audit.torn_tail_repaired`); `verify` requires the final newline; docstring corrected |
+| A-10 | Fixed | WP9 | `Core.__init__` releases the host lock and closes the store on any start failure; `StateStore` closes its connection if a pragma fails |
+| A-11 | Fixed | WP9 | `ack_audit`: append, re-anchor, then clear the flag |
+| A-12 | Fixed | WP9 | `verify_directory` reads bytes and reports decode errors and `RecursionError` as `unparseable record` |
+| A-13 | Fixed | WP9 | `_recover` widens its window until the last record is whole; `MAX_RECORD_BYTES` 128 KiB |
+| A-14 | Fixed | WP9 | Write loop; zero progress raises `AuditError` without advancing the chain |
+| B-4 | Fixed | WP9 | Header fields cut to 256 characters; an over-long line is re-serialised with `{"truncated": true}` |
 | D-25 | Fixed | #80 | `hatchling>=1.27,<2` in `[build-system]` |
 | D-2 | Fixed | #81 | `find_runnable` tries each `PATH` candidate with `--version`; `[tools] git` override; `config show` names it; git tests run on this workstation |
 | D-15 | Fixed | #81 | Test forces an absolute working-directory hit on every OS; shared `_outside_cwd` check also guards `program_candidates` |

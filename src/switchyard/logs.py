@@ -19,6 +19,7 @@ from typing import Any
 from switchyard.errors import SwitchyardError
 
 MAX_LINE_BYTES = 16 * 1024
+MAX_HEADER_CHARS = 256  # module, stream and event are cut to this before serialising (H1 B-4)
 MAX_STREAM_BYTES = 20 * 1024 * 1024
 _STREAM = re.compile(r"[a-z][a-z0-9_.-]{0,63}\Z")
 
@@ -56,19 +57,19 @@ class JsonlLogSink:
     def write(self, module_id: str, stream: str, event: str, fields: Mapping[str, Any]) -> None:
         if not isinstance(stream, str) or not _STREAM.match(stream) or ".." in stream:
             raise SwitchyardError(f"invalid log stream name {stream!r}")
-        record: dict[str, Any] = {"ts": self._clock(), "module": module_id, "stream": stream, "event": event}
+        record: dict[str, Any] = {
+            "ts": self._clock(), "module": str(module_id)[:MAX_HEADER_CHARS], "stream": stream,
+            "event": str(event)[:MAX_HEADER_CHARS],
+        }  # fmt: skip
         # default=str turns paths and other objects into text before redaction sees them
         record["fields"] = json.loads(json.dumps(dict(fields), default=str))
         record = _redact_all(record, self._redact)
         line = json.dumps(record, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n"
         if len(line) > MAX_LINE_BYTES:
+            # The header is bounded, so the whole record re-serialised with only the marker always fits and
+            # stays valid JSON (H1 B-4: slicing bytes produced broken lines).
             record["fields"] = {"truncated": True}
-            line = (
-                json.dumps(record, separators=(",", ":"), ensure_ascii=False).encode("utf-8")[
-                    : MAX_LINE_BYTES - 1
-                ]
-                + b"\n"
-            )
+            line = json.dumps(record, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n"
         flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
         path = self.directory / f"{stream}.jsonl"
         with self._lock:

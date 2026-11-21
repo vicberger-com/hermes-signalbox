@@ -7,7 +7,11 @@ chain runs across files. Every append is flushed and fsynced.
 
 ``verify`` detects an edited, deleted, inserted or reordered record. A log cut off at the end is still a valid
 chain, so callers keep the last ``head`` (seq, hash) elsewhere (the state store) and pass it as
-``expected_head``. Opening a log whose last line is torn fails closed with ``AuditError``.
+``expected_head``. The last record must end with a newline (H1 A-9: a stripped newline fails ``verify``).
+
+A last line that is torn (no newline, not parseable) is what a crash mid-write leaves. It was never anchored,
+so opening the log repairs it: the bytes move to a ``.torn-<ns>`` file and ``audit.torn_tail_repaired`` is
+recorded. A torn line that held an anchored record still fails ``verify`` (the anchor is missing).
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ MAX_DETAIL_CHARS = 1024
 _FILE_RE = re.compile(r"audit-(\d{6})\.jsonl\Z")
 _FIELDS = frozenset({"seq", "ts", "actor", "action", "module", "detail", "prev", "hash"})
 _TAIL_PROBE_BYTES = 64 * 1024
+MAX_RECORD_BYTES = 128 * 1024  # one record, serialised (H1 A-13)
 
 
 def _utc_now() -> str:
@@ -83,12 +88,14 @@ def _files(directory: Path) -> list[Path]:
     return [p for _, p in sorted(found)]
 
 
-def _iter_lines(directory: Path) -> Iterator[str]:
+def _iter_lines(directory: Path) -> Iterator[tuple[bytes, bool]]:
+    """Raw non-empty lines and whether each ends with a newline. Splits on ``\\n`` only (H1 A-8): records
+    are written with ``ensure_ascii=False``, so U+2028 and friends appear raw inside them."""
     for path in _files(directory):
-        with path.open("r", encoding="utf-8", newline="\n") as fh:
+        with path.open("rb") as fh:
             for line in fh:
                 if line.strip():
-                    yield line.rstrip("\n")
+                    yield line.rstrip(b"\n"), line.endswith(b"\n")
 
 
 class _TornTail(AuditError):
@@ -115,7 +122,9 @@ class AuditLog:
         try:
             self._seq, self._prev, self._file_no = self._recover()
         except _TornTail:
-            self._seq, self._prev, self._file_no = 0, GENESIS, 1  # repaired under the lock on first append
+            # H1 A-9: a crash mid-write is repaired now, so startup verification does not see it as tampering
+            with self._lock, self._file_lock():
+                self._seq, self._prev, self._file_no = self._recover_repairing()
 
     # state --------------------------------------------------------------------------------------------
 
@@ -131,9 +140,14 @@ class AuditLog:
                 return 0, GENESIS, file_no
             last = files[-2]
             size = last.stat().st_size
+        probe = _TAIL_PROBE_BYTES
         with last.open("rb") as fh:
-            fh.seek(max(0, size - _TAIL_PROBE_BYTES))
-            tail = fh.read()
+            while True:  # H1 A-13: widen the window until the last record is whole
+                fh.seek(max(0, size - probe))
+                tail = fh.read()
+                if probe >= size or tail.rstrip(b"\n").count(b"\n") >= 1:
+                    break
+                probe *= 4
         if not tail.endswith(b"\n"):
             raise _TornTail(f"{last}: last record is incomplete (torn write); run 'switchyard audit verify'")
         try:
@@ -184,15 +198,19 @@ class AuditLog:
         with self._lock, self._file_lock():
             # Another process may have appended since our last write: recover the head under the shared
             # lock, so two writers never fork the chain (R1 review).
-            try:
-                self._seq, self._prev, self._file_no = self._recover()
-            except _TornTail:
-                # A crash cut the last record short. It was never anchored; keep its bytes in a quarantine
-                # file, drop it from the log, and record that (R1 follow-up: otherwise every append failed).
-                quarantined = self._repair_torn_tail()
-                self._seq, self._prev, self._file_no = self._recover()
-                self._emit("core", "audit.torn_tail_repaired", "", {"quarantine": quarantined})
+            self._seq, self._prev, self._file_no = self._recover_repairing()
             return self._emit(actor, action, module, clean)
+
+    def _recover_repairing(self) -> tuple[int, str, int]:
+        """``_recover``; a torn last record is quarantined and the repair recorded (the caller holds both
+        locks). A crash cut the record short: it was never anchored (R1 follow-up, H1 A-9)."""
+        try:
+            return self._recover()
+        except _TornTail:
+            quarantined = self._repair_torn_tail()
+            self._seq, self._prev, self._file_no = self._recover()
+            self._emit("core", "audit.torn_tail_repaired", "", {"quarantine": quarantined})
+            return self._seq, self._prev, self._file_no
 
     def _repair_torn_tail(self) -> str:
         last = next(p for p in reversed(_files(self._dir)) if p.stat().st_size > 0)
@@ -211,7 +229,10 @@ class AuditLog:
             "module": module, "detail": clean, "prev": self._prev,
         }  # fmt: skip
         body["hash"] = record_hash(body)
-        self._write(_canonical(body) + b"\n")
+        line = _canonical(body) + b"\n"
+        if len(line) > MAX_RECORD_BYTES:
+            raise AuditError(f"audit record is too large ({len(line)} bytes; limit {MAX_RECORD_BYTES})")
+        self._write(line)
         self._seq, self._prev = body["seq"], body["hash"]
         return AuditRecord(**{**body, "detail": MappingProxyType(clean)})
 
@@ -224,7 +245,12 @@ class AuditLog:
         try:
             fd = os.open(path, flags, 0o600)
             try:
-                os.write(fd, line)
+                view = memoryview(line)
+                while view:  # H1 A-14: a short write is continued, never left half done
+                    written = os.write(fd, view)
+                    if written <= 0:
+                        raise AuditError("cannot write audit record: no progress")
+                    view = view[written:]
                 os.fsync(fd)
             finally:
                 os.close(fd)
@@ -240,7 +266,8 @@ class AuditLog:
         out: list[dict[str, Any]] = []
         with self._lock:
             for path in reversed(_files(self._dir)):
-                lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+                text = path.read_text(encoding="utf-8", errors="replace")
+                lines = [ln for ln in text.split("\n") if ln.strip()]  # "\n" only (H1 A-8)
                 out[:0] = [json.loads(ln) for ln in lines[-(n - len(out)) :]]
                 if len(out) >= n:
                     break
@@ -257,12 +284,16 @@ class AuditLog:
 
     @staticmethod
     def verify_directory(directory: Path, expected_head: tuple[int, str] | None = None) -> VerifyResult:
-        prev, seq, anchor_seen = GENESIS, 0, False
-        for line in _iter_lines(directory):
+        prev, seq, anchor_seen, last_terminated = GENESIS, 0, False, True
+        for raw, terminated in _iter_lines(directory):
+            last_terminated = terminated
             expected = seq + 1
             try:
-                rec = json.loads(line)
-            except ValueError:
+                rec = json.loads(raw.decode("utf-8"))
+            except (
+                ValueError,
+                RecursionError,
+            ):  # bad bytes or hostile nesting (H1 A-12): a report, not a crash
                 return VerifyResult(False, seq, expected, "unparseable record")
             if not isinstance(rec, dict) or set(rec) != _FIELDS:
                 return VerifyResult(False, seq, expected, "record has the wrong fields")
@@ -278,6 +309,8 @@ class AuditLog:
                 if prev != expected_head[1]:
                     return VerifyResult(False, seq, seq, "head anchor hash does not match")
                 anchor_seen = True
+        if not last_terminated:
+            return VerifyResult(False, seq, seq, "last record is not terminated by a newline")
         if expected_head is not None and expected_head[0] > 0 and not anchor_seen:
             return VerifyResult(
                 False, seq, seq + 1, f"head anchor missing: log ends at {seq}, anchor is {expected_head[0]}"
