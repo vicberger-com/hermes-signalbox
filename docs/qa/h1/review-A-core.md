@@ -44,7 +44,7 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 | A-24 | Low | confirmed-by-reading | secrets.py:116-127 | Redactor value set grows without bound and is never cleared; each `redact()` scans every value. |
 | A-25 | Low | confirmed-by-reading | state.py:263-286 | No storage quota for module tables or kv. A module can grow `state.db` until disk fills. |
 | A-26 | Info | confirmed-by-reading | capabilities.py:170; m0-core.md §4 | `policy.denied` is listed as an event in the docs; it is only audited, never published to the bus. |
-| A-27 | Info | confirmed-by-reading | context.py:242 | `ModuleContext.audit` truncates keys to 64 and values to 256 chars silently; two long keys with a common prefix collide. |
+| A-27 | Info | - | - | withheld until fixed (#94) |
 | A-28 | Info | confirmed-by-reading | state.py:229; m0-core.md §6 | Docs say CTEs are refused by the authorizer. Code allows `SQLITE_RECURSIVE`. Cost is still bounded by the work budget (P06b: 0.08 s) and the row cap. Docs need fixing. |
 | A-29 | Info | confirmed-by-reading | context.py:99-100, 217, 381-412, 387; audit.py:127 | Typing: public `ctx.state`, `ctx.secrets`, `ctx.notify`, `ctx.hermes_config` return `object`; `ContextServices.audit`/`bridge` are `Any`; a `# type: ignore` covers a regex match. Module authors get no static types. |
 | A-30 | Info | confirmed-by-reading | context.py:258-309; capabilities.py:185-206; lifecycle.py (463 lines) | Duplication and cohesion: the bridge-None and hook-declared checks repeat three times in `context.py`; lock/lookup/deny is duplicated in `require_host`/`require_secret`; `ModuleManager` mixes discovery, import, transitions, health, persistence and records; `ModuleContext` (~25 members) includes Hermes-adapter methods. |
@@ -218,9 +218,7 @@ Repo check: after the probes, no file under the repo is newer than the first pro
 **A-26 · Info · confirmed-by-reading · capabilities.py:170; m0-core.md §4**
 - The docs list `policy.denied` among the events. `PolicyEngine` has no bus reference, so the event is only audited. Either publish it or fix the docs.
 
-**A-27 · Info · confirmed-by-reading · context.py:242**
-- `clean = {str(k)[:64]: str(v)[:256] for ...}` silently collapses keys that match in their first 64 characters, and truncates values without a marker.
-- Fixed in 1.1 (#94): names over 64 characters keep an 8-character digest of the whole name; cut values end in `[truncated]`.
+**A-27 · Info**: withheld until #94 is closed.
 
 **A-28 · Info · confirmed-by-probe · state.py:229; m0-core.md §6**
 - Docs: "CTEs were already refused by the authorizer". Code: `if action in (SQLITE_SELECT, SQLITE_RECURSIVE): return OK`.
