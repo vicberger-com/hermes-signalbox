@@ -31,11 +31,17 @@ _log = logging.getLogger("switchyard.process")
 _BATCH_UNSAFE = frozenset('&|<>^%!"()\r\n')
 # 1.1 acceptance S1-2: variables that make a program run other code or load other files. The caller may not
 # set them; the child gets PATH and the rest from BASE_ENV (the host's own values) only.
+# H3-24: expanded to include Unix equivalents
 _ENV_EXACT = frozenset({"PATH", "PATHEXT", "COMSPEC", "SYSTEMROOT", "WINDIR", "BASH_ENV", "ENV", "PERL5OPT",
                         "PERL5LIB", "RUBYOPT", "RUBYLIB", "NODE_OPTIONS", "NODE_PATH", "SSH_ASKPASS", "SHELL",
-                        "PROMPT_COMMAND", "IFS"})  # fmt: skip
-_ENV_PREFIXES = ("GIT_", "LD_", "DYLD_", "PYTHON", "NPM_CONFIG_", "JAVA_TOOL_", "_JAVA_")
-_ENV_SUFFIXES = ("_COMMAND", "_ASKPASS", "_SHELL", "_EDITOR", "_PAGER")
+                        "PROMPT_COMMAND", "IFS", "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES",
+                        "DYLD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS",
+                        "SSH_AUTH_SOCK", "GPG_AGENT_INFO", "GPG_TTY", "PINENTRY_USER_DATA"})  # fmt: skip
+_ENV_PREFIXES = (
+    "GIT_", "LD_", "DYLD_", "PYTHON", "NPM_CONFIG_", "JAVA_TOOL_", "_JAVA_",
+    "SSH_", "GPG_", "PINENTRY_"
+)  # fmt: skip
+_ENV_SUFFIXES = ("_COMMAND", "_ASKPASS", "_SHELL", "_EDITOR", "_PAGER", "_PATH", "_LIBRARY_PATH")  # fmt: skip
 
 
 def _env_refused(key: str) -> bool:

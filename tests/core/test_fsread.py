@@ -76,7 +76,7 @@ def test_rules(fs: tuple[FsBroker, PolicyEngine], tmp_path: Path) -> None:
 def test_device_files_are_refused(fs: tuple[FsBroker, PolicyEngine]) -> None:
     broker, policy = fs
     policy.grant("demo", "fs.read", actor="t")
-    with pytest.raises(SwitchyardError, match="regular file"):
+    with pytest.raises(SwitchyardError, match="refuses Unix device paths"):
         broker.read_text("demo", os.devnull)
 
 

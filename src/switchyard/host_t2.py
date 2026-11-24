@@ -23,7 +23,7 @@ import threading
 from typing import IO, Any
 
 from switchyard.context import ModuleContext
-from switchyard.errors import NotAvailable, SwitchyardError, UsageError
+from switchyard.errors import SwitchyardError, UsageError
 from switchyard.manifest import Manifest
 from switchyard.rpc import Channel, Message, ProtocolError, RemoteError, read_frame, write_frame
 
@@ -177,7 +177,10 @@ class T2Module:
     def _call(self, method: str, params: dict[str, Any], timeout: float | None = None) -> Any:
         with self._call_lock:
             if self._channel is None:
-                raise NotAvailable(f"module {self._manifest.id!r} is not running")
+                # H3-23: use ModuleNotRunning for clearer semantics
+                from switchyard.errors import ModuleNotRunning
+
+                raise ModuleNotRunning(f"module {self._manifest.id!r} is not running")
             try:
                 return self._channel.request(method, params, timeout or self._timeout)
             except RemoteError:
@@ -202,7 +205,10 @@ class T2Module:
 
     def deactivate(self) -> None:
         if self._channel is None:
-            raise NotAvailable(f"module {self._manifest.id!r} is not running")
+            # H3-23: use ModuleNotRunning for clearer semantics
+            from switchyard.errors import ModuleNotRunning
+
+            raise ModuleNotRunning(f"module {self._manifest.id!r} is not running")
         try:
             self._call("deactivate", {})
         finally:
@@ -213,7 +219,7 @@ class T2Module:
                     self._proc.wait(timeout=SHUTDOWN_TIMEOUT_S)
             except (SwitchyardError, subprocess.TimeoutExpired) as exc:
                 # Not silent (H1 B-25): the child is killed below either way; say why it came to that.
-                self.shutdown_error = type(exc).__name__
+                self.shutdown_error = f"{type(exc).__name__}: {exc}"
                 sys.stderr.write(
                     f"switchyard: module {self._manifest.id!r} did not shut down cleanly "
                     f"({self.shutdown_error}); stopped it\n"
@@ -273,7 +279,12 @@ class T2Module:
             if member is None:
                 raise UsageError("unknown capability broker")
             getattr(ctx, member)  # policy check; raises CapabilityDenied when not granted
-            raise NotAvailable("capability brokers are not available to subprocess modules in M0")
+            # H3-23: use BrokerUnavailableToSubprocess for clearer semantics
+            from switchyard.errors import BrokerUnavailableToSubprocess
+
+            raise BrokerUnavailableToSubprocess(
+                "capability brokers are not available to subprocess modules in M0"
+            )
         raise UsageError(f"unknown method {method!r}")
 
     @staticmethod

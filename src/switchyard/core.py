@@ -45,6 +45,8 @@ from switchyard.updates import Fetcher, GitFetcher, UpdateController
 BUILTIN_MODULES = Path(switchyard.__file__).resolve().parent / "modules"
 _HEAD_KEY = "audit.head"
 CROSS_CALL_AUDIT_WINDOW_S = 60.0  # 1.1 #124: one audit record per cross-module read call path per window
+# H3-17: resources.resolve audit sampling - longer window to reduce audit overhead on Windows
+CROSS_CALL_RESOURCES_RESOLVE_AUDIT_WINDOW_S = 300.0  # 5 minutes for resources.resolve specifically
 _BROKEN_KEY = "audit.broken"
 
 
@@ -260,12 +262,18 @@ class Core:
         # It is recorded once per (caller, target, action) per window, with the number of calls since the
         # last record, instead of one fsynced record per call. Operator and model actions are still
         # recorded every time.
+        # H3-17: resources.resolve uses a longer audit window (5 min) to reduce audit overhead on Windows.
         key = (caller, module_id, action)
         now = time.monotonic()
         with self._cross_lock:
             last, count = self._cross_calls.get(key, (None, 0))
             count += 1
-            record = last is None or now - last >= CROSS_CALL_AUDIT_WINDOW_S
+            window = (
+                CROSS_CALL_RESOURCES_RESOLVE_AUDIT_WINDOW_S
+                if module_id == "resources" and action == "resolve"
+                else CROSS_CALL_AUDIT_WINDOW_S
+            )
+            record = last is None or now - last >= window
             self._cross_calls[key] = (now, 0) if record else (last, count)
         return run_action(self, module_id, action, args, actor=f"module:{caller}", read_only_only=True,
                           audit=record, audit_detail={"calls": str(count)})  # fmt: skip

@@ -79,6 +79,9 @@ def check_local_path(path: str | Path, *, windows: bool | None = None) -> Path:
         return Path(text)
     if not text.startswith("/"):
         raise SwitchyardError("fs.read needs an absolute path")
+    # H3-25: refuse Unix device paths (/dev/, /sys/, /proc/)
+    if text.startswith("/dev/") or text.startswith("/sys/") or text.startswith("/proc/"):
+        raise UsageError("fs.read refuses Unix device paths")
     return Path(text)
 
 

@@ -51,8 +51,11 @@ MAX_RESPONSE_BYTES = 1024 * 1024
 SOCKET_TIMEOUT_S = 10.0
 CLIENT_TIMEOUT_S = 60.0
 CONNECT_TIMEOUT_S = 0.5  # loopback: a refused or dead port must not cost seconds (H1 D-9)
-MAX_CONNECTIONS = 16  # handler threads at once; further connections are closed at once (H1 B-7)
-REQUEST_READ_DEADLINE_S = 10.0  # the whole request (head and body) must arrive within this (H1 B-7)
+# H3-20: MAX_CONNECTIONS and REQUEST_READ_DEADLINE_S are now configurable
+# via api.max_connections and api.request_read_deadline_s
+# Defaults (used as fallback when config is not available):
+DEFAULT_MAX_CONNECTIONS = 16  # handler threads at once; further connections are closed at once (H1 B-7)
+DEFAULT_REQUEST_READ_DEADLINE_S = 10.0  # the whole request (head and body) must arrive within this (H1 B-7)
 LOOPBACK = "127.0.0.1"
 _ROUTE = re.compile(r"/v1/([a-z]+)/([a-z_]+)\Z")
 CHALLENGE_HEADER = "X-Switchyard-Challenge"
@@ -163,7 +166,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def setup(self) -> None:
         super().setup()
-        deadline = time.monotonic() + REQUEST_READ_DEADLINE_S
+        deadline = time.monotonic() + self.control.request_read_deadline_s
         self.rfile = io.BufferedReader(_DeadlineReader(self.connection, deadline))
 
     def log_message(self, format: str, *args: Any) -> None:  # request lines can carry data; never log them
@@ -334,8 +337,13 @@ DASHBOARD_ACTIONS = frozenset({("inbox", "list"), ("inbox", "ack"), ("inbox", "a
 class _Server(ThreadingHTTPServer):
     allow_reuse_address = False  # Windows SO_REUSEADDR would let a second socket bind a held port (M9 review)
 
-    def __init__(self, address: tuple[str, int], handler: type[BaseHTTPRequestHandler]) -> None:
-        self._slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+    def __init__(
+        self,
+        address: tuple[str, int],
+        handler: type[BaseHTTPRequestHandler],
+        max_connections: int = DEFAULT_MAX_CONNECTIONS,
+    ) -> None:
+        self._slots = threading.BoundedSemaphore(max_connections)
         super().__init__(address, handler)
 
     def process_request(self, request: Any, client_address: Any) -> None:
@@ -371,9 +379,18 @@ class ControlServer:
         self.core = core
         self.host = host
         self.profile = profile
+        # H3-20: read max_connections and request_read_deadline_s from config
+        self.max_connections = (
+            core.config.api.max_connections if core.config and core.config.api else DEFAULT_MAX_CONNECTIONS
+        )
+        self.request_read_deadline_s = (
+            core.config.api.request_read_deadline_s
+            if core.config and core.config.api
+            else DEFAULT_REQUEST_READ_DEADLINE_S
+        )
         self.token = secrets.token_urlsafe(32)
         handler = type("Handler", (_Handler,), {"control": self})
-        self._httpd = _Server((host, port), handler)
+        self._httpd = _Server((host, port), handler, max_connections=self.max_connections)
         self._httpd.daemon_threads = True
         self.port: int = self._httpd.server_address[1]
         self._thread: threading.Thread | None = None
