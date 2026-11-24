@@ -247,8 +247,8 @@ class HermesAdapter:
         tries to host at once, so that the gates apply to this very turn. Returns whether it hosts."""
         if self.core.hosting:
             return True
-        if self._turn_attempted:
-            return False  # another process hosts; the driver thread keeps trying
+        if self._closing or self._turn_attempted:
+            return False  # unloaded, or another process hosts and the driver thread keeps trying
         self._runs_turns.set()
         hosted = self._host_if_allowed()  # serialised: a concurrent first call waits for this attempt
         self._turn_attempted = True
@@ -257,7 +257,7 @@ class HermesAdapter:
     def _note_not_hosting(self) -> None:
         """Gates, hooks and transforms run only in the hosting process. Record once per process that this one
         is running turns without them, so the operator can see it (R1 review)."""
-        if getattr(self, "_not_hosting_noted", False):
+        if self._closing or getattr(self, "_not_hosting_noted", False):
             return
         self._not_hosting_noted = True
         with contextlib.suppress(Exception):
@@ -379,7 +379,7 @@ class HermesAdapter:
                     self.core.audit.append(actor=CORE_ACTOR, action="core.tick_failed", module="",
                                            detail={"error": type(exc).__name__})  # fmt: skip
 
-    def close(self) -> None:
+    def close(self, *, reason: str = "shutdown") -> None:
         self._stop.set()
         with self._host_mutex:  # after this, no hosting attempt starts a server or modules
             self._closing = True
@@ -388,7 +388,7 @@ class HermesAdapter:
             server.shutdown()
         if self._thread is not None:
             self._thread.join(timeout=5)
-        self.core.close()
+        self.core.close(reason=reason)
 
     # model tools --------------------------------------------------------------------------------------
 
@@ -518,6 +518,31 @@ def register(ctx: Any) -> None:
     adapter.register()
     with _current_lock:
         _current = adapter
+
+    def switchyard_unload() -> None:
+        _unload(adapter)
+
+    # H4 R1-F14: Hermes calls this when the plugin is disabled, uninstalled or force-reloaded in a running
+    # process. Hermes has had ``on_unload`` since 0.22; a host without it keeps the exit-time cleanup only.
+    on_unload = getattr(ctx, "on_unload", None)
+    if callable(on_unload):
+        try:
+            on_unload(switchyard_unload)
+        except Exception as exc:  # the plugin still works; it just stops only at exit
+            adapter._adapter_error("on_unload", exc)
+
+
+def _unload(adapter: HermesAdapter) -> None:
+    """Stop ``adapter``: modules (reason ``unload``), the loopback API, the driver thread, the host lock. A
+    later load may have replaced it already; then only this one is closed. Never raises."""
+    global _current
+    with _current_lock:
+        if _current is adapter:
+            _current = None
+    try:
+        adapter.close(reason="unload")
+    except Exception as exc:
+        _log.warning("switchyard unload failed: %s", type(exc).__name__)
 
 
 atexit.register(shutdown)

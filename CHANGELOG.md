@@ -12,6 +12,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   transforms. A process that may host and finds the data directory taken retries every 5 seconds and records
   `core.hosting_acquired` when it takes over ([ADR-0014](docs/adr/0014-hermes-hosting-process.md)).
 
+- R1-F14 (Medium): when Hermes unloads the plugin in a running process (disable, uninstall, forced reload),
+  Switchyard now stops there: modules are deactivated (`module.deactivated` with reason `unload`), the loopback
+  API stops and `api.port` / `api.token` are removed, and the host lock is released. Before, all of it stayed
+  alive in the gateway until the gateway was restarted. A stop step that fails no longer keeps the host lock.
+
 ### Changed
 
 - `config show` prints `hosting.here` and `hosting.pid`; `module show` and `module health` carry `host_pid`

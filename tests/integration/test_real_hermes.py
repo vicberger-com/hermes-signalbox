@@ -117,6 +117,27 @@ def test_h4_f8_gateway_ownership_check_is_the_one_hermes_ships(hermes: Any) -> N
     assert current.core.hosting
 
 
+def test_h4_f14_hermes_unload_stops_switchyard(hermes: Any) -> None:
+    """Hermes's own unload (the disable/uninstall path of a running process) runs the adapter's callback."""
+    import switchyard.hermes as adapter
+    from switchyard.errors import SwitchyardError
+    from switchyard.hostlock import HostLock
+
+    current = adapter.current()
+    plugins.invoke_hook("pre_llm_call", session_id="s", turn_id="t", user_message="hello")
+    assert current.core.hosting and current.driver_alive()
+    lock_path = current.core.data_dir / "host.lock"
+    assert hermes.unload("switchyard") is True
+    assert not current.driver_alive() and not current.core.hosting
+    with pytest.raises(SwitchyardError):
+        adapter.current()
+    other = HostLock(lock_path)
+    try:
+        assert other.acquire()
+    finally:
+        other.release()
+
+
 def test_dashboard_api_imports_against_hermes(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("fastapi")
     import importlib.util
