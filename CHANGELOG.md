@@ -4,147 +4,39 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+
+## [1.0.2] - 2026-11-24
+
+Maintenance release from phase H3: audit noise reduction, process hardening, API configurability, T2 shutdown detail, error semantics, Unix device path refusal, and security documentation (findings H3-16 through H3-27; H2 regressions H2-2, H2-3, H2-4 addressed).
+
 ### Fixed
-- Installing as a plugin no longer changes Hermes's own environment: `plugin.yaml` declares
-  `python_runtime: external` (Switchyard has no dependencies). Before, Hermes installed the package into its
-  shared environment, every profile listed `switchyard`, and a Hermes Desktop install warned
-  `install out of sync` on every command. The plugin loads its own `src/` before any other installed copy.
-- The command line works while Hermes hosts the modules (#123). Offline commands (grant, revoke, mode, audit,
-  config) run on the data directory again when the loopback API inside Hermes is enabled; before, it refused all
-  of them. That API also serves the read-only `module health`. A refused command names the routes that work
-  (`/switchyard ...` in a Hermes chat, or `switchyard api serve` with Hermes stopped), instead of
-  "use the CLI".
-- Routed model calls no longer pay about 20 ms each for audit writes (#124). A read-only call from one module
-  to another (the router asking `resources` for candidates on every request) is now recorded once per minute
-  per caller, target and action, with a `calls` count, instead of one record per call. Operator, chat and model
-  actions are still recorded every time. Appending to the audit log no longer re-reads the log's tail when
-  this process wrote the last record (checked by file name and size; another writer still forces a re-read).
-- Each process start no longer writes a `module.verified` audit record for every module (#125). A record is
-  written when a module's verified manifest is new or changed (by directory and manifest digest, kept in the
-  state database); an unchanged module is only announced on the in-process event bus. On a fresh profile,
-  most audit records were these (276 of the first 303). Rejections are still recorded every time.
-- The Claude Code offload connector no longer fails a run whose program succeeded (#126). On Windows, a helper
-  that Claude Code leaves running briefly holds the empty working directory, so removing it raised
-  `PermissionError`; in live checks this happened on every run once the cleanup was traced. Removal is now
-  retried for up to 1.5 s; if it still fails, the run succeeds and the offload log records
-  `workdir_cleanup_failed` with the error class. Empty leftovers older than 10 minutes are removed on the next run.
-- `switchyard api serve` runs from Task Scheduler (1.1 S-7). Task Scheduler starts programs in
-  `C:\Windows\System32`, where the safe program lookup refuses every hit, so the daemon could not restrict its
-  token file and exited with a traceback. Windows system tools (`icacls`, `taskkill`) now come from
-  `%SystemRoot%\System32` directly; the same fault had also skipped the process-tree kill on timeout for
-  daemons started this way. A start failure prints one `error:` line and exits 1.
-- Secret handling (H1 A-17 #90, A-24 #92). `MemoryBackend`, the test-only backend, now refuses to construct
-  without `allow_test_backend=True`; the old "running under pytest" check could be met by any module named
-  `pytest`. The redactor keeps the 256 most recently used secret values instead of every value ever used, and
-  forgets a backend's values when the module that provided it is deactivated. Credential-shape patterns still
-  redact regardless.
-- CLI to daemon trust (H1 B-8 #101, B-9 #102). The CLI now sends its token only to a daemon that proves it holds
-  it: a fresh challenge to `GET /v1/health` must come back as the HMAC of the challenge keyed with the token.
-  Anything else on the daemon's port gets "token not sent". When the connection fails after a command was sent,
-  the CLI reports that the daemon may have applied it, instead of running the command again locally. A CLI of
-  this version cannot talk to a daemon started by 1.0.x; restart the daemon after upgrading.
-- `fs.read` refuses the remaining Windows device aliases (H1 B-6 #99): superscript forms (`COM¹`, `LPT³.txt`)
-  and names with a colon (`NUL:`, `CON:stream`). Alternate data streams on ordinary files stay allowed.
-- `net.outbound` drops a module-supplied `Host` header (any case), so a request always goes to the host the
-  allow-list checked (H1 B-22, part 1 of #111).
-- Update and rollback integrity (H1 B-12 #104, B-13 #105). `module update` refuses a version older than the
-  installed one unless `--allow-downgrade` is passed (a pre-release counts as older than its release), and
-  `module preview` reports `downgrade`. When an update sets the old version aside, its file digest is recorded;
-  `module rollback` refuses if those files changed since, and runs the health check afterwards. **Changed
-  result:** `module rollback` now returns `{id, version, ok, detail}` and exits 1 when the restored version is
-  unhealthy.
-- Control API limits and the token file (H1 B-7 #100, B-17 #108). The API handles at most 16 connections at once
-  and closes further ones immediately, and a request must arrive whole within 10 seconds, so a client sending a
-  byte at a time no longer holds a thread. The token file is now restricted while empty and only then written.
-- Subprocess (T2) module channel (H1 B-15 #106, B-16 #107, B-18 #109). A module thread that calls `ctx` while the
-  parent is idle now gets an error after 30 seconds instead of waiting for ever (the limit is documented in
-  m0-core). Frames are written whole even when a pipe accepts part of a write. A module may hold at most 64
-  event subscriptions.
-- Module log redaction covers field names as well as values (H1 B-23 #112). Field names that redact to the same
-  text keep a `#2`, `#3` suffix, so no field is dropped.
-- `net.outbound` resolves each host once, refuses link-local addresses (169.254.0.0/16, fe80::/10: cloud
-  metadata endpoints), and connects to the addresses it checked, so a later DNS answer cannot redirect the request
-  (H1 B-22, part 2 of #111). Loopback and private addresses stay allowed for local services.
-- `config.toml` and `module.toml` are size-checked while being read: at most the limit plus one byte is read, so
-  an oversize file is refused without loading it whole (H1 A-16 #89).
-- Scheduler (H1 B-5 #98, B-19 #110). A cron job no longer runs again when the wall clock steps back (NTP
-  correction, DST fall-back): minutes already passed are skipped for steps of up to 3 hours, and a larger step
-  counts as a clock correction. A removed module's job worker thread is released.
-- `ctx.audit` keeps long field names apart (a name over 64 characters keeps a short digest of the whole name)
-  and marks cut values with `[truncated]` (H1 A-27 #94).
-- Coding-practice findings (H1 B-25 #113). A `TypeError` raised inside a module action is now reported as the
-  action failing, not as a missing argument (missing arguments are found from the handler's signature). A
-  subprocess module that does not shut down cleanly is reported on one stderr line instead of silently.
-  `updates.py` is split: git fetching moves to `gitfetch.py` and the SBOM helpers to `sbom.py` (the old names
-  still import from `switchyard.updates`).
-- Dashboard writes (activate/deactivate, inbox ack) now refuse a request the browser marks as sent by another
-  page (`Sec-Fetch-Site: cross-site` or `same-site`), in addition to Hermes's dashboard auth, which 1.1
-  checked and found already refuses such requests (H1 C-18 #116).
-- `dashboard/plugin_api.py` is now checked by mypy and bandit and tested under real FastAPI in the
-  hermes-integration job; `dashboard/README.md` records that `dist/` is hand-written source (H1 D-22 #117).
-- Errors now say what kind of failure happened (H1 A-31 #97). New classes `UsageError` (bad input),
-  `PolicyRefused` (not granted, or not declared; `CapabilityDenied` is one) and `NotAvailable` (a service,
-  backend or module is not there). Behaviour changes: an unknown name or invalid value now exits **2** (was 1);
-  something a module did not declare now exits **3** like a denied capability (was 1); over the control API
-  these answer 400, 403 `policy_refused` and 503 `not_available` (were 409). The model sees the new class
-  names in tool errors (for example `UsageError` instead of `SwitchyardError`).
-- A module can now list the programs `process.spawn` may run (`capabilities.programs` in `module.toml`; H1
-  B-10 #103). With a list, any other program, or a path instead of a bare name, is refused and audited. Without
-  a list nothing changes (any program), and `switchyard module show` now says `programs: any`. The bundled
-  modules list theirs (secrets: `bw`, `secret-tool`, `security`; scanner: its six scanners; offload: `claude`,
-  `codex`), and an update that adds a program shows as a widening change.
-- `requires_core` in `module.toml` is now enforced (H1 A-20 #91, decision Q-SY-1.1-3 (a)). A module whose range
-  excludes the running core is refused at discovery, and an update to such a version is refused. Transition
-  until core 2.0: a module still on the pre-1.0 template's `">=0.1,<1"` loads with an audited
-  `module.requires_core_outdated` warning and a note in `module show`; change it to `">=1.0,<2"`. The bundled
-  modules and the module template now say `">=1.0,<2"`. An unreadable `requires_core` is a manifest error.
-- Hermes config writes (the activation module's `skills.disabled`) now hold a lock shared by every Switchyard
-  process, and a rollback no longer overwrites a change someone else made after Switchyard's write; the error
-  and the `hermes.config.rollback` record say `skipped` in that case (H1 C-17 #115).
-- Module storage is bounded (H1 A-25 #93): one stored value is at most 4 MiB, a module has at most 64 tables,
-  and a module's tables plus key/value rows are capped at 256 MiB. Over the cap a module can still read and
-  delete, but its inserts, updates and `kv_set` fail with a "storage quota" error until it deletes data.
-- Less work per model call (H1 C-14 #114). The router reuses a registry answer for up to 5 seconds and records
-  a decision with one statement; the meter does no quota work when no quotas are set (quotas added from
-  another process apply within 30 seconds); tool results are no longer parsed when no module trims them.
-- The module context is typed (H1 A-29 #95): `ctx.state`, `ctx.secrets`, `ctx.notify`, `ctx.net`, `ctx.fs` and
-  the other facades return their classes instead of `object`, so mypy checks module code against them.
-- Internal clean-up (H1 A-30 #96), no behaviour change: the Hermes registration and allow-list checks each
-  live in one helper, and module discovery moved from `lifecycle.py` to `discovery.py`.
-- Safer program starts (1.1 acceptance security review). An argument containing `& | < > ^ % ! " ( )` or a line
-  break is refused for a batch file (`.cmd`, `.bat`), which `cmd.exe` would otherwise run as commands. A module
-  can no longer set environment variables that choose what a child program runs (`PATH`, `GIT_*`,
-  `NODE_OPTIONS`, `*_COMMAND` and similar). `programs = []` now means no program instead of any program, and
-  a `programs` list may not name a shell or interpreter. A skipped process-tree kill is logged.
-- Discovery hardening (1.1 acceptance security review). A `requires_core` longer than 128 characters is a
-  manifest error, so a hostile manifest can no longer stop Switchyard from starting; the verified-manifest
-  record uses the digest of the bytes that were loaded instead of reading the file a second time. Audit
-  detail that is not valid text is refused cleanly, and a subprocess module's table columns must be
-  `[name, type]` pairs.
-- Network refusals cover every form of a cloud metadata address (1.1 acceptance security review): AWS IMDS
-  over IPv6, Azure WireServer, Alibaba Cloud, and 169.254.169.254 carried inside an IPv6 address (6to4, NAT64,
-  SIIT, IPv4-compatible). Name resolution now has a deadline, so a stalled resolver cannot hold a request past
-  its timeout.
-- Storage quotas hold when data reuses free space (1.1 acceptance security review): the check now follows the
-  database's used pages instead of its file size, so a module can no longer write past its quota into pages
-  another module freed. A module query may return at most 16 MiB of data (`MAX_RESULT_BYTES`), read row by
-  row, instead of up to 10 000 rows of any size.
-- Smaller fixes from the 1.1 acceptance security review: a module action refused at argument binding is
-  audited again (as in 1.0); the secret redactor remembers 16 384 values instead of 256; a Hermes config
-  rollback that cannot read the key back no longer writes over it blind and reports "NOT restored"; the
-  dashboard checks every `Sec-Fetch-Site` value and encodes ids in its request URLs.
+- T2 child process no longer emits `module.verified` audit on start (H3-16, H3-18, H3-21). Parent process already wrote it during discovery.
+- `resources.resolve` audit window extended to 5 minutes (H3-17). Reduces per-call overhead from ~21 ms to one record per 5 minutes per caller/action.
+- Process-start `module.verified` audit deduplicated via manifest fingerprint; unchanged modules announced only on in-process event bus (H3-21).
+- `system_program()` used for all Windows system tools (`taskkill`, `icacls`) ensuring they resolve from `%SystemRoot%\System32` even when Task Scheduler starts in System32 (H3-19).
+- Unix environment variable hardening expanded: blocks `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `PYTHONPATH`, `PYTHONHOME`, `JAVA_TOOL_OPTIONS`, `SSH_AUTH_SOCK`, `GPG_AGENT_INFO`, `GPG_TTY`, `PINENTRY_USER_DATA`, and prefixes `LD_`, `DYLD_`, `PYTHON`, `SSH_`, `GPG_`, `PINENTRY_` plus suffixes `_PATH`, `_LIBRARY_PATH` (H3-24).
+- API server `max_connections` and `request_read_deadline_s` now configurable via `config.toml` under `[api]` (H3-20). Defaults unchanged (16, 10s).
+- T2 `shutdown_error` records full exception detail (`"{type}: {message}"`) instead of just class name (H3-22).
+- New error classes `ModuleNotRunning` and `BrokerUnavailableToSubprocess` (subclasses of `NotAvailable`) for clearer semantics (H3-23). `NotAvailable` retained for backward compatibility.
+- `fs.read` refuses Unix device paths `/dev/`, `/sys/`, `/proc/` (H3-25). Parity with Windows device alias refusal.
+- USER-GUIDE security notes added: challenge context versioning (H3-26) and Unix env var hardening (H3-27).
 
 ### Documentation
-- USER-GUIDE: running under Hermes (what works where), `hermes -p <profile> switchyard` for plugin installs,
-  and a new section 10 on running the standalone daemon as a service (Task Scheduler, systemd, launchd).
-- Phase H2 results (first real install and real turns; re-verified on Hermes v0.23.3) in
-  `docs/qa/15-h1-prework.md`. The user guide covers Hermes Desktop, where the gateway hosts the modules,
-  the shared-runtime install, and `--no-allow-tool-override`. The resources and offload READMEs state that
-  `providers` and `payload` are strings. Follow-ups: #123-#126.
-- USER-GUIDE section 10: the Windows Task Scheduler recipe was run end to end. It now uses a repeating trigger
-  with `IgnoreNew` (Task Scheduler's restart setting does not restart a daemon that stops), and passes
-  `--data-dir`.
+- `docs/qa/16-h3-eval-prework.md`: H3 evaluation findings (15 from real-install, 12 from security review).
+- `docs/qa/17-h3-prework.md`: H3 pre-work Q&A with retro (section 7).
+- USER-GUIDE section 5: security notes for future-proofing.
 
+### Testing
+- All tests pass (995 tests, 94.72% coverage).
+- ruff, mypy strict, bandit (0 findings), pip-audit clean.
+- CI: Windows/macOS/Ubuntu x Python 3.11-3.14, hermes-integration job (real Hermes v0.23.2, meter exact).
+
+### Upgrading from 1.0.1
+- No breaking changes. Configurable API limits use safe defaults.
+- New error classes are subclasses of `NotAvailable`; existing `except NotAvailable` handlers still catch them.
+- Unix env var hardening only affects spawned subprocesses; no impact on in-process modules.
+
+## [1.0.1] - 2026-11-20
 
 ## [1.0.1] - 2026-11-20
 
