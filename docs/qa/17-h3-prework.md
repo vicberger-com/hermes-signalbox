@@ -88,3 +88,10 @@ One pull request each, in this order. Tests first: each finding gets a regressio
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| Single PR for all WPs was acceptable | H1 used one PR per WP; H3 combined 7 WPs into one PR which made review harder and CI slower | Future maintenance phases should use one PR per WP |
+| Bandit report in repo root was acceptable | `bandit-report.json` is a build artifact, not source; should be in CI artifacts only | Remove from repo; add to `.gitignore` and CI upload |
+| `DEFAULT_MAX_CONNECTIONS` naming leaked into tests | Tests patched `DEFAULT_MAX_CONNECTIONS` instead of using config; better to inject via `CoreConfig` | Test fixtures should use config injection pattern |
+| H2 regression H2-4 (offload claude-code) assumed fixed by retry logic | Retry logic (`_remove_workdir` with `CLEANUP_RETRY_DELAYS`) was already in 1.1 stabilization; H3-4 was mis-scoped as new finding | Future evals must check if "open" H2 finding was already fixed in interim stabilization |
+| T2 child detection via `SWITCHYARD_T2=1` env var | Works but is a convention not a contract; could be spoofed by a malicious module | Consider a more robust T2 detection (e.g., parent PID check) if threat model expands |
+| Unix env var hardening list completeness | Added known dangerous vars (`LD_PRELOAD`, `DYLD_*`, `PYTHONPATH`, `SSH_*`, `GPG_*`, `PINENTRY_*`) but may miss platform-specific ones (e.g., `SHLIB_PATH` on HP-UX, `LIBPATH` on AIX) | Document that list covers Linux/macOS; Windows already covered separately |
+| Challenge context versioning (`switchyard-api-v1:`) is future-proof | Documented but not implemented; if protocol changes, both sides must coordinate | Consider adding a protocol version handshake in a future minor release |
