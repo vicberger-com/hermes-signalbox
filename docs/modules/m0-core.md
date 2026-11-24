@@ -251,7 +251,8 @@ dropped by the OS on exit) hosts modules: `start_auto()` plus a daemon thread ca
 live operations (activate, deactivate, health, panel). `api serve` requires hosting; the offline CLI never hosts.
 Since v1.0.3 ([ADR-0014](../adr/0014-hermes-hosting-process.md)) the Hermes adapter builds its core with
 `hosting=False` and calls `Core.acquire_hosting()` only in a process that is the gateway runtime or has run a
-turn, retrying every 5 s while another process holds the lock; `Core.host_pid()` names the host.
+turn, retrying every 5 s while another process holds the lock; `Core.host_pid()` names the host. `register()`
+also gives Hermes an `on_unload` callback that closes the adapter and its core (`Core.close(reason="unload")`).
 
 ### Update control
 

@@ -398,21 +398,30 @@ class Core:
             for metric, value in capacity_metrics(self.data_dir).items():
                 self.scheduler.observe(metric, value)
 
-    def close(self) -> None:
+    def close(self, *, reason: str = "shutdown") -> None:
+        """Stop every module (recorded with ``reason``), then release everything this core holds. Each step
+        runs even when an earlier one raised, so a failed stop never keeps the host lock (H4 R1-F14)."""
         with self._lock:
             if self._closed:
                 return
-            for module_id in self.manager.ids():
-                self.manager.deactivate(module_id, actor=CORE_ACTOR, reason="shutdown")
-            self._closed = True
-            self.bridge.close()
-            self.schedules.close()
-            if self.hosting:
-                with contextlib.suppress(Exception):  # the lock, not this record, says who hosts
-                    self.store.core_execute("DELETE FROM meta WHERE key = ?", (_HOST_PID_KEY,))
-            self.store.close()
-            self._host_lock.release()
-            self.hosting = False
+            with contextlib.ExitStack() as steps:  # run in reverse order of registration
+                steps.callback(self._release_hosting)
+                steps.callback(self.store.close)
+                steps.callback(self._forget_host_pid)
+                steps.callback(self.schedules.close)
+                steps.callback(self.bridge.close)
+                steps.callback(setattr, self, "_closed", True)
+                for module_id in self.manager.ids():
+                    self.manager.deactivate(module_id, actor=CORE_ACTOR, reason=reason)
+
+    def _forget_host_pid(self) -> None:
+        if self.hosting:
+            with contextlib.suppress(Exception):  # the lock, not this record, says who hosts
+                self.store.core_execute("DELETE FROM meta WHERE key = ?", (_HOST_PID_KEY,))
+
+    def _release_hosting(self) -> None:
+        self._host_lock.release()
+        self.hosting = False
 
     def __enter__(self) -> Core:
         return self

@@ -170,6 +170,7 @@ class FakeHermesCtx:
         self.patterns: list[str] = []
         self.hooks: dict[str, Callable[..., Any]] = {}
         self.middleware: dict[str, Callable[..., Any]] = {}
+        self.unload_callbacks: list[Callable[[], None]] = []
 
     def get_config(self, key: str, default: Any = None) -> Any:
         return self.settings.get(key, default)
@@ -205,3 +206,13 @@ class FakeHermesCtx:
 
     def register_middleware(self, kind: str, fn: Callable[..., Any]) -> None:
         self.middleware[kind] = fn
+
+    def on_unload(self, callback: Callable[[], None]) -> None:
+        self.unload_callbacks.append(callback)
+
+    def unload(self) -> None:
+        """What Hermes does when the plugin is disabled, uninstalled or force-reloaded: the callbacks, newest
+        first."""
+        callbacks, self.unload_callbacks = self.unload_callbacks[::-1], []
+        for callback in callbacks:
+            callback()

@@ -53,6 +53,32 @@ restart step produced it.
 6. **Unchanged:** `switchyard api serve` requires hosting, the offline CLI never hosts, and `Core()` used as a
    library hosts when the lock is free.
 
+## Unload (R1-F14)
+
+Read in the same source: `PluginContext.on_unload(callback)` exists at every tag from v0.22.0. Hermes runs the
+callbacks, newest first, when it unloads a plugin in a running process: a targeted unload (disable, uninstall)
+and the unload-all that precedes a forced rediscovery (`hermes_cli/plugins_ledger.py`; the gateway's
+`reload-plugins` control verb in `gateway/run_plugin_rewire.py`, which `hermes plugins enable` and
+`hermes plugins disable` ask a running gateway for, `hermes_cli/plugins_cmd.py`, v0.23.3).
+
+Up to v1.0.2 the adapter registered no such callback. Its cleanup ran only when the plugin was registered
+again or the process exited, so after a disable and uninstall the gateway kept the host lock, the loopback API
+and the active modules until it was restarted. (The acceptance note that `HermesAdapter.close()` did not close
+the core was not reproduced: it does, and a test pins it. The missing callback is the whole cause.)
+
+7. **`register()` hands Hermes an unload callback** when the context has `on_unload`. The callback stops the
+   adapter it was created for: modules are deactivated with reason `unload`, the API stops and its files are
+   removed, the driver thread ends, the host lock is released. A callback of an adapter that a later load has
+   already replaced closes only that old adapter. The callback never raises.
+8. **`Core.close(reason=...)`** records the reason on each `module.deactivated` (`shutdown` by default) and
+   runs every release step even when an earlier step raised, so a failed stop cannot keep the host lock.
+9. **After unload, references Hermes may still hold do nothing:** hooks and middleware return `None`, tools
+   and the slash command answer "core is closed", and nothing is recorded.
+
+A forced rediscovery while the plugin stays enabled therefore stops and restarts the modules, as the
+re-registration already did before. A host without `on_unload`, or one whose registration fails
+(`core.adapter_error`), keeps the exit-time cleanup only.
+
 ## Consequences
 
 - `hermes gateway status`, `hermes gateway restart` and `hermes switchyard ...` write no activation records
@@ -64,6 +90,8 @@ restart step produced it.
 - With no gateway and no turn yet, nothing hosts: live operations from the slash command make the process a
   host; the standalone CLI still needs `switchyard api serve`.
 - `module health` results gain `host_pid`. Code that compared the whole result must read `ok` and `detail`.
+- After `hermes plugins disable switchyard` or an uninstall, a running gateway releases the data directory
+  as soon as Hermes unloads the plugin in it; no restart is needed for that.
 - A module's `mode` and status are still read when the plugin loads; a change made between load and a late
   takeover is the subject of R1-F9 (work package 3).
 
