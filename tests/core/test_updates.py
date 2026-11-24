@@ -102,7 +102,8 @@ def test_unhealthy_update_rolls_back(env: Any) -> None:
     result = core.run("module", "update", {"id": "ext", "ref": BAD}, actor="t")
     assert result["rolled_back"] is True and result["to"] == "0.1.0"
     assert _version(core) == "0.1.0"
-    assert core.run("module", "health", {"id": "ext"}, actor="t") == {"ok": True, "detail": "ok"}
+    health = core.run("module", "health", {"id": "ext"}, actor="t")
+    assert (health["ok"], health["detail"]) == (True, "ok")
     actions = [r["action"] for r in core.run("audit", "tail", {"n": 30}, actor="t")]
     assert "module.rolled_back" in actions
 

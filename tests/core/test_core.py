@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 from pathlib import Path
@@ -66,6 +67,7 @@ def test_full_module_flow_through_operations(tmp_path: Path) -> None:
         assert core.run("module", "health", {"id": "example"}, actor="cli") == {
             "ok": True,
             "detail": "active",
+            "host_pid": os.getpid(),  # H4 R1-F8
         }
         panel = core.run("module", "panel", {"id": "example", "panel": "example.status"}, actor="cli")
         assert panel == {"title": "Example", "state": "active"}

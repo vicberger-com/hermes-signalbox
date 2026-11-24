@@ -10,6 +10,7 @@ modules, not to the control plane that must report the problem).
 from __future__ import annotations
 
 import contextlib
+import os
 import threading
 import time
 from collections.abc import Iterator, Mapping, Sequence
@@ -48,6 +49,7 @@ CROSS_CALL_AUDIT_WINDOW_S = 60.0  # 1.1 #124: one audit record per cross-module 
 # H3-17: resources.resolve audit sampling - longer window to reduce audit overhead on Windows
 CROSS_CALL_RESOURCES_RESOLVE_AUDIT_WINDOW_S = 300.0  # 5 minutes for resources.resolve specifically
 _BROKEN_KEY = "audit.broken"
+_HOST_PID_KEY = "core.host_pid"  # ADR-0014: who hosts, for processes that do not
 
 
 class AnchoredAudit:
@@ -147,6 +149,7 @@ class Core:
         # hosting=True: must host (raise if another process does); None: host if free; False: never host.
         self._host_lock = HostLock(self.data_dir / "host.lock")
         self.hosting = bool(hosting is not False and self._host_lock.acquire())
+        self._closed = False
         try:
             self._start(hosting, trusted_roots, module_roots, secret_backends, fetcher, hermes_config)
         except BaseException:
@@ -249,7 +252,8 @@ class Core:
         self._lock = threading.RLock()
         self._cross_lock = threading.Lock()
         self._cross_calls: dict[tuple[str, str, str], tuple[float | None, int]] = {}
-        self._closed = False
+        if self.hosting:
+            self._record_host_pid()
         self.updates = UpdateController(
             self.manager, self.audit, self.data_dir, fetcher or GitFetcher(configured=self.config.git),
             swap_guard=self._open_and_locked,
@@ -277,6 +281,48 @@ class Core:
             self._cross_calls[key] = (now, 0) if record else (last, count)
         return run_action(self, module_id, action, args, actor=f"module:{caller}", read_only_only=True,
                           audit=record, audit_detail={"calls": str(count)})  # fmt: skip
+
+    def _record_host_pid(self) -> None:
+        self.store.core_execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (_HOST_PID_KEY, str(os.getpid()))
+        )
+
+    def acquire_hosting(self) -> bool:
+        """Become the hosting process of this data directory if nobody is (ADR-0014). True when this core
+        hosts afterwards. A core that starts hosting here records ``core.hosting_acquired``; starting the
+        ``auto`` modules is the caller's next step."""
+        with self._lock:
+            if self._closed:
+                return False
+            if self.hosting:
+                return True
+            if not self._host_lock.acquire():
+                return False
+            try:
+                self._record_host_pid()
+                self.audit.append(actor=CORE_ACTOR, action="core.hosting_acquired", module="",
+                                  detail={"pid": str(os.getpid())})  # fmt: skip
+            except BaseException:
+                self._host_lock.release()
+                raise
+            self.hosting = True
+            return True
+
+    def host_pid(self) -> int | None:
+        """The process that hosts this data directory, or ``None`` when nobody does. The recorded pid is
+        reported only while the host lock is held: a host that died left the record, not the lock."""
+        if self.hosting:
+            return os.getpid()
+        probe = HostLock(self.data_dir / "host.lock")
+        try:
+            if probe.acquire():
+                probe.release()
+                return None
+        except OSError:
+            return None
+        rows = self.store.core_query("SELECT value FROM meta WHERE key = ?", (_HOST_PID_KEY,))
+        value = str(rows[0][0]) if rows else ""
+        return int(value) if value.isdigit() else None
 
     def _audit_broken(self) -> str | None:
         rows = self.store.core_query("SELECT value FROM meta WHERE key = ?", (_BROKEN_KEY,))
@@ -361,8 +407,12 @@ class Core:
             self._closed = True
             self.bridge.close()
             self.schedules.close()
+            if self.hosting:
+                with contextlib.suppress(Exception):  # the lock, not this record, says who hosts
+                    self.store.core_execute("DELETE FROM meta WHERE key = ?", (_HOST_PID_KEY,))
             self.store.close()
             self._host_lock.release()
+            self.hosting = False
 
     def __enter__(self) -> Core:
         return self

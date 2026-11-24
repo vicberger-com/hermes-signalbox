@@ -25,6 +25,10 @@ data directory and are marked `[daemon]` in `switchyard <noun> --help`. `module 
 `missing_grants` (capabilities needed to start that are not granted). `config show` prints `data_dir` and
 `data_dir_source` (why that directory was chosen) and nested settings as `section.key: value`.
 
+Which process hosts: `config show` prints `hosting.here` (whether the answering process hosts the modules) and
+`hosting.pid` (the process that does; `None` when nobody hosts the data directory). `module show` and
+`module health` carry the same pid as `host_pid`.
+
 CLI exit codes: 0 success; 1 operation error, or a result that reports failure (`status: failed`, `ok: false`);
 2 usage error (an unknown name or an invalid value, including an unknown capability name); 3 refused by policy
 (a capability not granted, or something the module's manifest does not declare).
@@ -78,7 +82,7 @@ CLI exit codes: 0 success; 1 operation error, or a result that reports failure (
 
 Core actions (detail values are redacted before writing):
 
-`api.start_failed`, `audit.acknowledged`, `audit.verify_failed`, `core.not_hosting`, `core.tick_failed`, `event.depth_exceeded`, `event.handler_failed`, `fs.read`, `fs.read_failed`, `hermes.config.rollback`, `hermes.config.write`, `module.action`, `module.activated`, `module.auto_skipped`, `module.deactivate_failed`, `module.deactivated`, `module.delegation_failed`, `module.delegation_refused`, `module.failed`, `module.gate_blocked`, `module.gate_rejected`, `module.hook_failed`, `module.hook_timeout`, `module.job_skipped`, `module.job_timeout`, `module.middleware_rejected`, `module.mode_changed`, `module.notify`, `module.rejected`, `module.reloaded`, `module.removed`, `module.rolled_back`, `module.transform_paused`, `module.update_check_failed`, `module.update_previewed`, `module.update_rejected`, `module.updated`, `module.verified`, `net.request`, `policy.denied`, `policy.grant_refused`, `policy.granted`, `policy.grants_removed`, `policy.revoked`, `process.spawned`, `secret.backend_added`, `secret.backend_removed`, `secret.leak_blocked`, `secret.unavailable`, `secret.used`, `trigger.failed`.
+`api.start_failed`, `audit.acknowledged`, `audit.verify_failed`, `core.hosting_acquired`, `core.not_hosting`, `core.tick_failed`, `event.depth_exceeded`, `event.handler_failed`, `fs.read`, `fs.read_failed`, `hermes.config.rollback`, `hermes.config.write`, `module.action`, `module.activated`, `module.auto_skipped`, `module.deactivate_failed`, `module.deactivated`, `module.delegation_failed`, `module.delegation_refused`, `module.failed`, `module.gate_blocked`, `module.gate_rejected`, `module.hook_failed`, `module.hook_timeout`, `module.job_skipped`, `module.job_timeout`, `module.middleware_rejected`, `module.mode_changed`, `module.notify`, `module.rejected`, `module.reloaded`, `module.removed`, `module.rolled_back`, `module.transform_paused`, `module.update_check_failed`, `module.update_previewed`, `module.update_rejected`, `module.updated`, `module.verified`, `net.request`, `policy.denied`, `policy.grant_refused`, `policy.granted`, `policy.grants_removed`, `policy.revoked`, `process.spawned`, `secret.backend_added`, `secret.backend_removed`, `secret.leak_blocked`, `secret.unavailable`, `secret.used`, `trigger.failed`.
 
 Module actions are recorded as `module.<id>.<name>`:
 

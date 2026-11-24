@@ -7,9 +7,10 @@ models, skills and spend for those sessions.
 
 ## Layout
 
-- Switchyard runs inside Hermes as a plugin. The first Hermes session to start **hosts** modules: it runs their
-  hooks, gates, transforms and schedules. Later sessions use stored state only (one `core.not_hosting` audit
-  record each).
+- Switchyard runs inside Hermes as a plugin. The Hermes gateway **hosts** modules: it runs their hooks, gates,
+  transforms and schedules. Without a gateway, the first Hermes process that runs a turn hosts. One-shot
+  commands (`hermes gateway status`, `hermes switchyard ...`) never host. Another process that runs turns while
+  the host is up uses stored state only (one `core.not_hosting` audit record) and takes over if the host exits.
 - Data directory: the Hermes profile's plugin data directory, unless `data_dir` is set.
 - Nothing listens on the network unless `[api] enabled = true` (loopback only).
 

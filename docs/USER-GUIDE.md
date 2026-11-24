@@ -45,8 +45,11 @@ are **two different stores** unless you point both at one: set `SWITCHYARD_DATA_
 the same absolute path everywhere. `switchyard config show` prints the directory in use and why it was chosen
 (`data_dir_source`).
 
-**Which process hosts modules.** Only one process hosts modules for a data directory: the first Hermes session
-that opens it, or `switchyard api serve`. Commands marked `[daemon]` in `switchyard <noun> --help` (activate,
+**Which process hosts modules.** Only one process hosts modules for a data directory: the Hermes gateway (or,
+without a gateway, the Hermes process that runs your turns), or `switchyard api serve`. A one-shot command such
+as `hermes gateway status` or `hermes switchyard ...` never becomes the host. If something else holds the
+directory when Hermes starts, Hermes takes over within seconds of it letting go (audit record
+`core.hosting_acquired`). `switchyard config show` prints the hosting process (`hosting.pid`). Commands marked `[daemon]` in `switchyard <noun> --help` (activate,
 deactivate, health, panel, action, update, preview, rollback, check_updates, report) need that hosting process
 with its loopback API. Other commands (list, show, grant, revoke, mode, remove, audit, config) work directly on
 the data directory. A process that runs turns without hosting writes one `core.not_hosting` audit record.

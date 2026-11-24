@@ -44,3 +44,10 @@ def _no_bundled_modules(
     if request.node.get_closest_marker("bundled_modules") is None:
         monkeypatch.setattr("switchyard.core.BUILTIN_MODULES", tmp_path_factory.mktemp("no-bundled-modules"))
     yield
+
+
+@pytest.fixture(autouse=True)
+def _adapter_is_the_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Adapter tests stand for the Hermes gateway process, which hosts at plugin load (H4 R1-F8, ADR-0014).
+    Tests of the other process roles replace this again (``tests/core/test_h4_hosting.py``)."""
+    monkeypatch.setattr("switchyard.hermes._gateway_runtime", lambda: True)

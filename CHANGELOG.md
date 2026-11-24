@@ -4,6 +4,21 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- R1-F8 (High): inside Hermes, only the gateway (or, without one, a process that runs turns) hosts the modules.
+  A one-shot command such as `hermes gateway status`, `hermes gateway restart` or `hermes switchyard ...` no
+  longer becomes the host for its lifetime, which left the gateway running turns without hooks, gates and
+  transforms. A process that may host and finds the data directory taken retries every 5 seconds and records
+  `core.hosting_acquired` when it takes over ([ADR-0014](docs/adr/0014-hermes-hosting-process.md)).
+
+### Changed
+
+- `config show` prints `hosting.here` and `hosting.pid`; `module show` and `module health` carry `host_pid`
+  (the process that hosts the data directory, `None` when nobody does). Scripts that compared the whole
+  `module health` result must read `ok` and `detail`.
+- New audit action `core.hosting_acquired` (one record each time a Hermes process starts hosting).
+
 
 ## [1.0.2] - 2026-11-24
 

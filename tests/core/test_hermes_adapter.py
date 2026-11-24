@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -122,6 +123,7 @@ def test_model_tools_list_and_run_modules(ctx: FakeCtx) -> None:
     assert _tool(ctx, "switchyard_modules", action="health", id="ext")["result"] == {
         "ok": True,
         "detail": "ok",
+        "host_pid": os.getpid(),  # H4 R1-F8
     }
     assert not _tool(ctx, "switchyard_modules", action="deactivate", id="ext")["ok"]  # R1: operator only
     from switchyard.errors import CapabilityDenied
@@ -196,7 +198,8 @@ def test_driver_thread_ticks_only_in_the_hosting_process(ctx: FakeCtx, tmp_path:
     other = HermesAdapter(FakeCtx(ctx.state.data_dir))
     other.register()
     try:
-        assert not other.core.hosting and not other.driver_alive()
+        # H4 R1-F8: a process that may host keeps its driver, which retries the lock; it does not tick
+        assert not other.core.hosting and other.driver_alive()
         out = json.loads(
             other.ctx.tools["switchyard_modules"]["handler"]({"action": "activate", "id": "ext"})
         )

@@ -81,7 +81,12 @@ def test_client_runs_operations(served: tuple[ControlServer, Path]) -> None:
     [row] = client.request("module", "list", {})
     assert row["id"] == "ext" and row["status"] == "verified"
     client.request("module", "activate", {"id": "ext"})
-    assert client.request("module", "health", {"id": "ext"}) == {"ok": True, "detail": "ok"}
+    # H4 R1-F8: health names the process that hosts the module
+    assert client.request("module", "health", {"id": "ext"}) == {
+        "ok": True,
+        "detail": "ok",
+        "host_pid": os.getpid(),
+    }
     client.request("module", "deactivate", {"id": "ext"})
     actors = {r["actor"] for r in client.request("audit", "tail", {"n": 20})}
     assert "api" in actors
