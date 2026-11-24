@@ -32,9 +32,18 @@ def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def small_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[ControlServer]:
-    monkeypatch.setattr(api, "MAX_CONNECTIONS", 4)
-    monkeypatch.setattr(api, "REQUEST_READ_DEADLINE_S", 1.0)
+    monkeypatch.setattr(api, "DEFAULT_MAX_CONNECTIONS", 4)
+    monkeypatch.setattr(api, "DEFAULT_REQUEST_READ_DEADLINE_S", 1.0)
     core = Core(data_dir=tmp_path / "data")
+    # Set config values for the test (dataclasses are frozen, so create new instances)
+    core.config = core.config.__class__(
+        data_dir=core.config.data_dir,
+        api=core.config.api.__class__(enabled=True, port=0, max_connections=4, request_read_deadline_s=1.0),
+        log_level=core.config.log_level,
+        host_profile=core.config.host_profile,
+        modules=core.config.modules,
+        git=core.config.git,
+    )
     server = ControlServer(core)
     server.start()
     try:
@@ -64,7 +73,7 @@ def test_h1_b7_handler_threads_are_bounded(small_server: ControlServer) -> None:
     sockets = [_stalled(small_server.port) for _ in range(30)]
     try:
         time.sleep(0.3)
-        assert threading.active_count() - before <= api.MAX_CONNECTIONS
+        assert threading.active_count() - before <= api.DEFAULT_MAX_CONNECTIONS
     finally:
         for s in sockets:
             s.close()

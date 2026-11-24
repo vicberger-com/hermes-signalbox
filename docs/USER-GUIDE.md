@@ -218,6 +218,14 @@ daemon needs no administrator rights; run it as your own user, with the same `SW
 `switchyard` commands use. After a crash, the next command removes the daemon's stale `api.port` and
 `api.token` and reports that no daemon is running.
 
+## 5. Security notes (H3 evaluation)
+
+**H3-26: Challenge context versioning.** The API challenge-response proof uses a static context string (`switchyard-api-v1:`). If the proof format ever changes, the context string will be versioned (e.g., `switchyard-api-v2:`). Clients should not hardcode the context string.
+
+**H3-27: Unix environment variable hardening.** The process broker blocks dangerous environment variables on both Windows and Unix. On Unix, variables like `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `PYTHONPATH`, `PYTHONHOME`, `JAVA_TOOL_OPTIONS`, and variables with prefixes `LD_`, `DYLD_`, `PYTHON`, `SSH_`, `GPG_`, `PINENTRY_` are refused. See `src/switchyard/process.py` for the complete list.
+
+---
+
 The Windows recipe was run end to end on Windows 11 (1.1): start, commands through the daemon, a hard kill,
 restart, and stop. The systemd and launchd recipes follow each service manager's documented form and have not
 yet been run end to end.

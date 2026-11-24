@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import enum
+import os
 import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -24,6 +25,11 @@ from switchyard.state import StateStore
 
 _MAX_REASON = 900
 _VERIFIED_KEY = "module.verified."  # meta key prefix: last audited verification (1.1 #125)
+
+# H3-16/H3-18/H3-21: T2 child process should not write module.verified audit.
+# The parent already wrote it during discovery.
+def _is_t2_child() -> bool:
+    return os.environ.get("SWITCHYARD_T2") == "1"
 
 
 class ModuleStatus(enum.Enum):
@@ -161,7 +167,10 @@ class ModuleDirectory:
         # the verified manifest is new or changed; an unchanged one is only announced on the in-process bus.
         fingerprint = self._verification_fingerprint(manifest.id, directory, manifest.digest)
         if fingerprint is not None:
-            self._record("module.verified", manifest.id, CORE_ACTOR)
+            # H3-16/H3-18/H3-21: T2 child process should not write module.verified audit.
+            # The parent already wrote it during discovery.
+            if not _is_t2_child():
+                self._record("module.verified", manifest.id, CORE_ACTOR)
             if verdict == "outdated":  # the 1.0 transition (Q-SY-1.1-3): loads, and says so once per change
                 self._record(
                     "module.requires_core_outdated",

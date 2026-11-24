@@ -31,6 +31,8 @@ HOST_PROFILES = frozenset({"auto", "tiny", "laptop", "workstation", "server"})
 class ApiConfig:
     enabled: bool = False
     port: int = 0
+    max_connections: int = 16
+    request_read_deadline_s: float = 10.0
 
 
 @dataclass(frozen=True)
@@ -74,13 +76,27 @@ def parse_config(doc: Mapping[str, Any]) -> CoreConfig:
         if not data_dir.is_absolute():
             raise ConfigError(f"data_dir must be an absolute path, got {raw!r}")
 
-    api = _table(doc, "api", frozenset({"enabled", "port"}))
+    api = _table(doc, "api", frozenset({"enabled", "port", "max_connections", "request_read_deadline_s"}))
     enabled = api.get("enabled", False)
     if not isinstance(enabled, bool):
         raise ConfigError("api.enabled: expected true or false")
     port = api.get("port", 0)
     if isinstance(port, bool) or not isinstance(port, int) or not 0 <= port <= 65535:
         raise ConfigError("api.port: expected an integer from 0 to 65535")
+    max_connections = api.get("max_connections", 16)
+    if (
+        isinstance(max_connections, bool)
+        or not isinstance(max_connections, int)
+        or not 1 <= max_connections <= 1024
+    ):
+        raise ConfigError("api.max_connections: expected an integer from 1 to 1024")
+    request_read_deadline_s = api.get("request_read_deadline_s", 10.0)
+    if (
+        isinstance(request_read_deadline_s, bool)
+        or not isinstance(request_read_deadline_s, (int, float))
+        or not 0.1 <= request_read_deadline_s <= 300.0
+    ):
+        raise ConfigError("api.request_read_deadline_s: expected a float from 0.1 to 300.0")
 
     level = _choice(_table(doc, "log", frozenset({"level"})).get("level", "INFO"), "log.level", LOG_LEVELS)
     profile = _choice(
@@ -93,8 +109,12 @@ def parse_config(doc: Mapping[str, Any]) -> CoreConfig:
     if not isinstance(modules, Mapping) or not all(isinstance(v, Mapping) for v in modules.values()):
         raise ConfigError("modules: expected one table per module id ([modules.<id>])")
     return CoreConfig(
-        data_dir=data_dir, api=ApiConfig(enabled, port), log_level=level, host_profile=profile,
-        modules={str(k): dict(v) for k, v in modules.items()}, git=git,
+        data_dir=data_dir,
+        api=ApiConfig(enabled, port, max_connections, request_read_deadline_s),
+        log_level=level,
+        host_profile=profile,
+        modules={str(k): dict(v) for k, v in modules.items()},
+        git=git,
     )  # fmt: skip
 
 

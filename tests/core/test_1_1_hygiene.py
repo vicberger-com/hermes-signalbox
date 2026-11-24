@@ -55,8 +55,8 @@ def test_h1_b25_a_failed_t2_shutdown_is_reported(capsys: pytest.CaptureFixture[s
     module.kill = lambda: calls.append("kill")  # type: ignore[method-assign]
     module.deactivate()
     assert calls == ["deactivate", "shutdown", "kill"]
-    assert "did not shut down cleanly (TimeoutExpired)" in capsys.readouterr().err
-    assert module.shutdown_error == "TimeoutExpired"
+    assert "did not shut down cleanly (TimeoutExpired:" in capsys.readouterr().err
+    assert module.shutdown_error.startswith("TimeoutExpired:")
 
 
 def test_h1_b25_updates_is_split_and_keeps_its_names() -> None:

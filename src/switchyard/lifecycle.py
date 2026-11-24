@@ -40,7 +40,7 @@ from switchyard.context import (
 from switchyard.discovery import _VERIFIED_KEY, ModuleDirectory, _Entry
 from switchyard.discovery import ModuleInfo as ModuleInfo  # re-exported: callers import it from lifecycle
 from switchyard.discovery import ModuleStatus as ModuleStatus  # re-exported likewise
-from switchyard.errors import CapabilityDenied, NotAvailable, SwitchyardError, UsageError
+from switchyard.errors import CapabilityDenied, SwitchyardError, UsageError
 from switchyard.events import EventBus
 from switchyard.host_t2 import T2Module
 from switchyard.manifest import Manifest, core_compatibility, load_manifest, loaded_inside
@@ -186,7 +186,9 @@ class ModuleManager(ModuleDirectory):
         with self._lock:
             e = self._entry(module_id)
             if e.mode == "disabled":
-                raise NotAvailable(f"module {module_id!r} is disabled")
+                # H3-23: use ModuleNotRunning for clearer semantics
+                from switchyard.errors import ModuleNotRunning
+                raise ModuleNotRunning(f"module {module_id!r} is disabled")
             if e.status is ModuleStatus.ACTIVE:
                 e.last_used = self._clock()
                 return
