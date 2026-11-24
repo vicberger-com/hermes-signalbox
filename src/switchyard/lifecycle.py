@@ -188,6 +188,7 @@ class ModuleManager(ModuleDirectory):
             if e.mode == "disabled":
                 # H3-23: use ModuleNotRunning for clearer semantics
                 from switchyard.errors import ModuleNotRunning
+
                 raise ModuleNotRunning(f"module {module_id!r} is disabled")
             if e.status is ModuleStatus.ACTIVE:
                 e.last_used = self._clock()

@@ -26,6 +26,7 @@ from switchyard.state import StateStore
 _MAX_REASON = 900
 _VERIFIED_KEY = "module.verified."  # meta key prefix: last audited verification (1.1 #125)
 
+
 # H3-16/H3-18/H3-21: T2 child process should not write module.verified audit.
 # The parent already wrote it during discovery.
 def _is_t2_child() -> bool:

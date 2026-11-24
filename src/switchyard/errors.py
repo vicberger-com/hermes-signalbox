@@ -21,12 +21,15 @@ class PolicyRefused(SwitchyardError):
 class NotAvailable(SwitchyardError):
     """A service, backend or module the call needs is not there or not running (fail closed)."""
 
+
 # H3-23: Split NotAvailable into more specific classes for clearer semantics
 class ModuleNotRunning(NotAvailable):
     """The module is not running (not activated or already stopped)."""
 
+
 class BrokerUnavailableToSubprocess(NotAvailable):
     """A capability broker is not available to subprocess modules in M0."""
+
 
 class ConfigError(SwitchyardError):
     """Invalid configuration or data-directory setting."""

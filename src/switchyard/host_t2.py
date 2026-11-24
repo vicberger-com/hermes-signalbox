@@ -179,6 +179,7 @@ class T2Module:
             if self._channel is None:
                 # H3-23: use ModuleNotRunning for clearer semantics
                 from switchyard.errors import ModuleNotRunning
+
                 raise ModuleNotRunning(f"module {self._manifest.id!r} is not running")
             try:
                 return self._channel.request(method, params, timeout or self._timeout)
@@ -206,6 +207,7 @@ class T2Module:
         if self._channel is None:
             # H3-23: use ModuleNotRunning for clearer semantics
             from switchyard.errors import ModuleNotRunning
+
             raise ModuleNotRunning(f"module {self._manifest.id!r} is not running")
         try:
             self._call("deactivate", {})
@@ -279,6 +281,7 @@ class T2Module:
             getattr(ctx, member)  # policy check; raises CapabilityDenied when not granted
             # H3-23: use BrokerUnavailableToSubprocess for clearer semantics
             from switchyard.errors import BrokerUnavailableToSubprocess
+
             raise BrokerUnavailableToSubprocess(
                 "capability brokers are not available to subprocess modules in M0"
             )

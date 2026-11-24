@@ -381,9 +381,7 @@ class ControlServer:
         self.profile = profile
         # H3-20: read max_connections and request_read_deadline_s from config
         self.max_connections = (
-            core.config.api.max_connections
-            if core.config and core.config.api
-            else DEFAULT_MAX_CONNECTIONS
+            core.config.api.max_connections if core.config and core.config.api else DEFAULT_MAX_CONNECTIONS
         )
         self.request_read_deadline_s = (
             core.config.api.request_read_deadline_s
