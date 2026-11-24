@@ -163,6 +163,8 @@ def _module_show(core: Core, p: dict[str, Any], actor: str) -> Any:
         "requires_core": manifest.requires_core,
         "requires_core_note": core_compatibility(manifest.requires_core, switchyard.__version__)[1],
         "panels": core.panels.panels(p["id"]),
+        # H4 R1-F8: the process that runs the modules; None when nobody hosts this data directory
+        "host_pid": core.host_pid(),
     }
 
 
@@ -226,7 +228,7 @@ def _module_deactivate(core: Core, p: dict[str, Any], actor: str) -> Any:
 def _module_health(core: Core, p: dict[str, Any], actor: str) -> Any:
     _require_host(core)
     ok, detail = core.manager.health(p["id"])
-    return {"ok": ok, "detail": detail}
+    return {"ok": ok, "detail": detail, "host_pid": core.host_pid()}
 
 
 @op("module", "panel", "Render one of a running module's panels as plain data.", id=ID, panel=Param(str))
@@ -404,6 +406,8 @@ def _config_show(core: Core, p: dict[str, Any], actor: str) -> Any:
         "api": {"enabled": c.api.enabled, "port": c.api.port},
         "log": {"level": c.log_level},
         "host": {"profile": c.host_profile},
+        # H4 R1-F8: whether this process hosts the modules, and the pid of the one that does
+        "hosting": {"here": core.hosting, "pid": core.host_pid()},
         # H1 D-2: which git the update operations run, and whether it was configured
         "tools": {"git_configured": c.git, "git": _git_in_use(core)},
     }

@@ -249,6 +249,9 @@ capabilities are declared. Verified with `hermes plugins validate` on Hermes v0.
 dropped by the OS on exit) hosts modules: `start_auto()` plus a daemon thread calling `Core.tick()` every 15 s
 (resolves the open item: Hermes idle tasks are hour-scale). `Core(hosting=True|None|False)`; non-hosting cores refuse
 live operations (activate, deactivate, health, panel). `api serve` requires hosting; the offline CLI never hosts.
+Since v1.0.3 ([ADR-0014](../adr/0014-hermes-hosting-process.md)) the Hermes adapter builds its core with
+`hosting=False` and calls `Core.acquire_hosting()` only in a process that is the gateway runtime or has run a
+turn, retrying every 5 s while another process holds the lock; `Core.host_pid()` names the host.
 
 ### Update control
 

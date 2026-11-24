@@ -383,7 +383,7 @@ def test_hermes_provider(core: Core, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "agent.delegation_provider", fake)
     from switchyard.hermes.delegation import make_provider
 
-    provider = make_provider(core.bridge, True)
+    provider = make_provider(core.bridge, lambda: True)
     assert provider.name == "switchyard" and provider.summary and provider.is_available()
     assert provider.task_parameters({}) == {} and provider.description({}) == ""
     pool(core, "coder", f"{OR}/free/coder:free")
@@ -393,4 +393,4 @@ def test_hermes_provider(core: Core, monkeypatch: pytest.MonkeyPatch) -> None:
     assert provider.route_task(task("coder"), {})["model"] == "free/coder:free"
     with pytest.raises(RouteError, match="unknown role"):
         provider.route_task(task("ghost"), {})
-    assert not make_provider(core.bridge, False).is_available()
+    assert not make_provider(core.bridge, lambda: False).is_available()

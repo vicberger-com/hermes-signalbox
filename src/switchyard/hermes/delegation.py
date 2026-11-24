@@ -4,7 +4,7 @@ task's route. Imports Hermes lazily: the core never imports Hermes."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from switchyard.bridge import HermesBridge
@@ -12,8 +12,9 @@ from switchyard.bridge import HermesBridge
 NAME = "switchyard"
 
 
-def make_provider(bridge: HermesBridge, hosting: bool) -> Any:
-    """Build the provider object; raises ``ImportError`` outside Hermes."""
+def make_provider(bridge: HermesBridge, hosting: Callable[[], bool]) -> Any:
+    """Build the provider object; raises ``ImportError`` outside Hermes. ``hosting`` is asked on every call:
+    a process can start hosting after the plugin loaded (ADR-0014)."""
     from agent.delegation_provider import (  # type: ignore[import-not-found,unused-ignore]
         DelegationProvider,
         DelegationRouteError,
@@ -30,7 +31,7 @@ def make_provider(bridge: HermesBridge, hosting: bool) -> Any:
 
         def is_available(self) -> bool:
             # False fails delegation closed in Hermes: no silent fallback to another route.
-            return hosting and bridge.delegation_active()
+            return hosting() and bridge.delegation_active()
 
         def task_parameters(self, config: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
             roles = bridge.delegation_roles()

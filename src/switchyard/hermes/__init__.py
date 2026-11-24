@@ -11,10 +11,13 @@ A thin layer over ``Core.run``; the core never imports Hermes. What it registers
 * **Idle task** ``switchyard-audit-verify`` (daily): re-verifies the audit chain.
 * **Redaction patterns**: the redactor's default credential shapes that Hermes accepts (>= 2 literal chars).
 
-Hosting: Hermes may run several processes (CLI, TUI, gateway) that all load this plugin. Only the process
-that takes the data directory's host lock hosts modules; it starts ``auto`` modules and runs a daemon thread
-calling ``Core.tick()`` every ``TICK_SECONDS`` (Hermes idle tasks are hour-scale, too coarse for triggers).
-Other processes work on persistent state and refuse live operations.
+Hosting (ADR-0014): Hermes loads this plugin in many processes, including one-shot commands. A process may
+host only when it is the gateway runtime (Hermes's own ``gateway.status.owns_gateway_runtime_lock``) or has
+itself run a turn (a hook, the middleware, a model tool or the slash command fired here). Such a process
+takes the data directory's host lock, starts ``auto`` modules and the loopback API, and its daemon thread
+calls ``Core.tick()`` every ``TICK_SECONDS`` (Hermes idle tasks are hour-scale, too coarse for triggers). If
+another process holds the lock, the thread retries every ``HOST_RETRY_SECONDS``. Every other process works on
+persistent state and refuses live operations.
 
 Tool results are JSON strings ``{"ok", "result" | "error", "message"}``. Every exception is caught here:
 Hermes would otherwise put the exception message into the model's context; only core-written messages are
@@ -31,6 +34,7 @@ import logging
 import os
 import re
 import shlex
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -50,6 +54,7 @@ _log = logging.getLogger("switchyard")
 ACTOR = MODEL_ACTOR  # model-initiated tool calls
 USER_ACTOR = "hermes-user"  # the /switchyard slash command, typed by the user
 TICK_SECONDS = 15.0
+HOST_RETRY_SECONDS = 5.0  # ADR-0014: how often a process that may host, but does not, tries the lock
 # No "deactivate": stopping a module can switch off a gate the operator relies on (router hard stop;
 # R1 review).
 MODEL_TOOL_ACTIONS = ("list", "show", "activate", "health", "run")
@@ -124,17 +129,40 @@ def _error(exc: BaseException) -> str:
     return json.dumps({"ok": False, "error": type(exc).__name__, "message": message})
 
 
+def _gateway_runtime() -> bool:
+    """True when this process is the Hermes gateway runtime, by Hermes's own ownership check (published
+    plugin API, ``gateway.status``). The module is looked up, never imported: a process that has not loaded
+    the gateway code cannot own its runtime lock. The gateway's marker environment variable is not used: every
+    shell the gateway starts inherits it (ADR-0014)."""
+    status = sys.modules.get("gateway.status")
+    owns = getattr(status, "owns_gateway_runtime_lock", None)
+    if not callable(owns):
+        return False
+    try:
+        return owns() is True
+    except Exception:  # a host bug must not break plugin load; this process then waits for a turn
+        return False
+
+
 class HermesAdapter:
     def __init__(self, ctx: Any) -> None:
         self.ctx = ctx
         configured = ctx.get_config("data_dir", None)
         data_dir = Path(configured) if configured else None
+        # ADR-0014: never host just because the plugin was loaded; see _host_if_allowed
         self.core = Core(
-            data_dir=data_dir, hermes_dir=Path(ctx.state.data_dir), hermes_config=HermesConfigAdapter()
+            data_dir=data_dir,
+            hermes_dir=Path(ctx.state.data_dir),
+            hermes_config=HermesConfigAdapter(),
+            hosting=False,
         )
         self._stop = threading.Event()
         self._server: ControlServer | None = None
         self._thread: threading.Thread | None = None
+        self._runs_turns = threading.Event()
+        self._host_mutex = threading.Lock()  # one hosting attempt at a time; also guards _server and _closing
+        self._closing = False
+        self._turn_attempted = False
 
     # registration -------------------------------------------------------------------------------------
 
@@ -167,25 +195,64 @@ class HermesAdapter:
         ctx.register_hook("transform_tool_result", self._transform_tool)
         if hasattr(ctx, "register_delegation_provider"):  # ADR-0007; Hermes builds without it are fine
             with contextlib.suppress(ImportError):
-                ctx.register_delegation_provider(make_provider(self.core.bridge, self.core.hosting))
+                ctx.register_delegation_provider(make_provider(self.core.bridge, lambda: self.core.hosting))
         patterns = [p for p in DEFAULT_PATTERNS if _LITERAL_PREFIX.match(p)]
         ctx.register_redaction_patterns(patterns)
+        self._host_if_allowed()
+        self._thread = threading.Thread(target=self._drive, name="switchyard-tick", daemon=True)
+        self._thread.start()
+
+    # hosting (ADR-0014) ---------------------------------------------------------------------------------
+
+    def _may_host(self) -> bool:
+        return self._runs_turns.is_set() or _gateway_runtime()
+
+    def _host_if_allowed(self) -> bool:
+        """Take over hosting when this process may host and nobody does: start ``auto`` modules and the
+        loopback API. True when this process hosts afterwards. Never raises."""
         if self.core.hosting:
+            return True
+        try:
+            with self._host_mutex:
+                if self._closing or not self._may_host():
+                    return False
+                if self.core.hosting:
+                    return True
+                if not self.core.acquire_hosting():
+                    return False
+                self._start_hosting()
+                return True
+        except Exception as exc:
+            self._adapter_error("hosting", exc)
+            return self.core.hosting
+
+    def _start_hosting(self) -> None:
+        with self.core._lock:  # hooks and tools of running turns use the core meanwhile
             self.core.manager.start_auto(actor=CORE_ACTOR)
-            if self.core.config.api.enabled:  # M9: the dashboard tab talks to this loopback API
-                try:
-                    server = ControlServer(self.core, port=self.core.config.api.port, profile="dashboard")
-                    server.start()
-                    self._server = server
-                except (OSError, SwitchyardError) as exc:  # a busy port must not stop the tick (M9 review)
-                    self.core.audit.append(
-                        actor=CORE_ACTOR,
-                        action="api.start_failed",
-                        module="",
-                        detail={"error": type(exc).__name__},
-                    )
-            self._thread = threading.Thread(target=self._drive, name="switchyard-tick", daemon=True)
-            self._thread.start()
+        if self.core.config.api.enabled:  # M9: the dashboard tab talks to this loopback API
+            try:
+                server = ControlServer(self.core, port=self.core.config.api.port, profile="dashboard")
+                server.start()
+                self._server = server
+            except (OSError, SwitchyardError) as exc:  # a busy port must not stop the tick (M9 review)
+                self.core.audit.append(
+                    actor=CORE_ACTOR,
+                    action="api.start_failed",
+                    module="",
+                    detail={"error": type(exc).__name__},
+                )
+
+    def _turn_here(self) -> bool:
+        """A turn-time surface fired in this process, so it runs turns and may host. The first such call
+        tries to host at once, so that the gates apply to this very turn. Returns whether it hosts."""
+        if self.core.hosting:
+            return True
+        if self._turn_attempted:
+            return False  # another process hosts; the driver thread keeps trying
+        self._runs_turns.set()
+        hosted = self._host_if_allowed()  # serialised: a concurrent first call waits for this attempt
+        self._turn_attempted = True
+        return hosted
 
     def _note_not_hosting(self) -> None:
         """Gates, hooks and transforms run only in the hosting process. Record once per process that this one
@@ -213,7 +280,7 @@ class HermesAdapter:
     def _forwarder(self, name: str) -> Any:
         def forward(**kwargs: Any) -> Any:
             try:
-                if not self.core.hosting:
+                if not self._turn_here():
                     self._note_not_hosting()
                     return None
                 self.core.bridge.dispatch_hook(name, kwargs)
@@ -233,7 +300,7 @@ class HermesAdapter:
 
     def _transform_terminal(self, **kwargs: Any) -> str | None:
         try:
-            if not self.core.hosting:
+            if not self._turn_here():
                 self._note_not_hosting()
                 return None
             meta = {
@@ -252,9 +319,10 @@ class HermesAdapter:
         ``stderr``, ``result``, ``text``) and re-encode, so the result stays valid JSON."""
         try:
             result = kwargs.get("result")
-            if not self.core.hosting:
+            hosting = self._turn_here()
+            if not hosting:
                 self._note_not_hosting()
-            if not self.core.hosting or not isinstance(result, str):
+            if not hosting or not isinstance(result, str):
                 return None
             if not self.core.bridge.has_transform("tool_result"):  # H1 C-14: no parse when nothing trims
                 return None
@@ -288,7 +356,7 @@ class HermesAdapter:
     def _llm_request(self, request: dict[str, Any], **context: Any) -> dict[str, Any] | None:
         """Hermes ``llm_request`` middleware: ``{"request": ...}`` only when a module changed the model."""
         try:
-            if not self.core.hosting or not isinstance(request, dict):
+            if not self._turn_here() or not isinstance(request, dict):
                 return None
             changed = self.core.bridge.dispatch_llm_request(request, context)
         except Exception as exc:
@@ -300,18 +368,24 @@ class HermesAdapter:
         return self._thread is not None and self._thread.is_alive()
 
     def _drive(self) -> None:
-        while not self._stop.wait(TICK_SECONDS):
+        """Tick while hosting; while not hosting, try to take over whenever this process may host."""
+        while not self._stop.wait(TICK_SECONDS if self.core.hosting else HOST_RETRY_SECONDS):
+            if not self.core.hosting and not self._host_if_allowed():
+                continue
             try:
                 self.core.tick()
             except Exception as exc:  # the driver must survive; record and continue
-                self.core.audit.append(actor=CORE_ACTOR, action="core.tick_failed", module="",
-                                       detail={"error": type(exc).__name__})  # fmt: skip
+                with contextlib.suppress(Exception):
+                    self.core.audit.append(actor=CORE_ACTOR, action="core.tick_failed", module="",
+                                           detail={"error": type(exc).__name__})  # fmt: skip
 
     def close(self) -> None:
-        if self._server is not None:
-            self._server.shutdown()
-            self._server = None
         self._stop.set()
+        with self._host_mutex:  # after this, no hosting attempt starts a server or modules
+            self._closing = True
+            server, self._server = self._server, None
+        if server is not None:
+            server.shutdown()
         if self._thread is not None:
             self._thread.join(timeout=5)
         self.core.close()
@@ -322,6 +396,7 @@ class HermesAdapter:
         self, noun: str, verb: str, params: dict[str, Any], actor: str = ACTOR, *, untrusted: bool = False
     ) -> str:
         redact = self.core.redactor
+        self._turn_here()  # model tools and the slash command run where turns run (ADR-0014)
         try:
             result = redact.redact_obj(self.core.run(noun, verb, params, actor=actor))
         except Exception as exc:

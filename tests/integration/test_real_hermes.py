@@ -92,6 +92,31 @@ def test_slash_command_runs_through_hermes(hermes: Any) -> None:
     assert "router" in str(out)
 
 
+def test_h4_f8_gateway_ownership_check_is_the_one_hermes_ships(hermes: Any) -> None:
+    """ADR-0014 relies on ``gateway.status.owns_gateway_runtime_lock``: it must exist in the pinned Hermes, be
+    in the published plugin API, and say that this test process is not the gateway runtime."""
+    import importlib
+    import sys
+
+    import hermes_cli
+
+    import switchyard.hermes as adapter
+
+    status = importlib.import_module("gateway.status")
+    assert callable(status.owns_gateway_runtime_lock)
+    assert sys.modules["gateway.status"] is status
+    assert adapter._gateway_runtime() is False
+    api = json.loads(
+        (Path(hermes_cli.__file__).resolve().parent / "data" / "plugin_api.json").read_text(encoding="utf-8")
+    )
+    assert '"gateway.status"' in json.dumps(api)
+    # a plugin load in a process that is not the gateway does not host; its first turn does
+    current = adapter.current()
+    assert not current.core.hosting
+    plugins.invoke_hook("pre_llm_call", session_id="s", turn_id="t", user_message="hello")
+    assert current.core.hosting
+
+
 def test_dashboard_api_imports_against_hermes(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("fastapi")
     import importlib.util

@@ -7,6 +7,7 @@ import textwrap
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -154,3 +155,53 @@ activation = "{activation}"
         encoding="utf-8",
     )
     return d
+
+
+class FakeHermesCtx:
+    """A recording stand-in for Hermes's ``PluginContext`` (the registrations the adapter makes)."""
+
+    def __init__(self, data_dir: Path, settings: dict[str, Any] | None = None) -> None:
+        self.state = SimpleNamespace(data_dir=data_dir)
+        self.settings = settings or {}
+        self.tools: dict[str, dict[str, Any]] = {}
+        self.commands: dict[str, Callable[[str], str | None]] = {}
+        self.cli: dict[str, dict[str, Any]] = {}
+        self.idle: dict[str, dict[str, Any]] = {}
+        self.patterns: list[str] = []
+        self.hooks: dict[str, Callable[..., Any]] = {}
+        self.middleware: dict[str, Callable[..., Any]] = {}
+
+    def get_config(self, key: str, default: Any = None) -> Any:
+        return self.settings.get(key, default)
+
+    def register_tool(self, name: str, toolset: str, schema: dict[str, Any], handler: Callable[..., str],
+                      **kw: Any) -> None:  # fmt: skip
+        self.tools[name] = {"toolset": toolset, "schema": schema, "handler": handler, **kw}
+
+    def register_command(self, name: str, handler: Callable[[str], str | None], description: str = "",
+                         args_hint: str = "") -> None:  # fmt: skip
+        self.commands[name] = handler
+
+    def register_cli_command(
+        self,
+        name: str,
+        help: str,
+        setup_fn: Callable[..., None],
+        handler_fn: Any = None,
+        description: str = "",
+    ) -> None:
+        self.cli[name] = {"setup": setup_fn, "handler": handler_fn}
+
+    def register_idle_task(self, name: str, fn: Callable[[Any], str | None], *, interval_hours: float,
+                           min_idle_hours: float = 2.0, first_run: str = "defer") -> None:  # fmt: skip
+        self.idle[name] = {"fn": fn, "interval_hours": interval_hours}
+
+    def register_redaction_patterns(self, patterns: list[str]) -> int:
+        self.patterns.extend(patterns)
+        return len(patterns)
+
+    def register_hook(self, name: str, fn: Callable[..., Any]) -> None:
+        self.hooks[name] = fn
+
+    def register_middleware(self, kind: str, fn: Callable[..., Any]) -> None:
+        self.middleware[kind] = fn
