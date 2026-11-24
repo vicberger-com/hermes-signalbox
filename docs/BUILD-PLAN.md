@@ -23,6 +23,8 @@ Executed by a Hermes agent under [AGENTS.md](../AGENTS.md). Order is fixed: core
 | R1 | Hardening review, full docs pass, public release | all | v1.0.0 |
 | H1 | Hardening after the v1.0.0 evaluation: all High and Medium findings, named Low ones ([Q&A](qa/15-h1-prework.md)) | R1 | v1.0.1 |
 | H2 | First real install in a Hermes test profile, real-Hermes CI job, live connector checks, re-verification on the current Hermes release | H1 | none (report in the Q&A) |
+| H3 | Maintenance after the evaluation of v1.0.1 plus the 1.1 stabilization ([evaluation](qa/16-h3-eval-prework.md), [Q&A](qa/17-h3-prework.md)) | H2 | v1.0.2 |
+| H4 | Maintenance after the v1.0.2 install acceptance: every finding of the first acceptance install ([Q&A](qa/18-h4-prework.md)) | H3 | v1.0.3 |
 
 ## Maintenance phases (after 1.0)
 
