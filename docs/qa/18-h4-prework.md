@@ -85,12 +85,12 @@ One pull request each, in this order. Tests first: each finding gets a regressio
 | R1-F5 | Low | fixed | #202 | A live command run while the gateway hosts with the API off told the operator to start `switchyard api serve`, which cannot start there; it now names `/switchyard <command>` in a chat, or `[api] enabled = true` plus a Hermes restart |
 | R1-F7 | Low | fixed | #202 | Setting the mode a module already has recorded `module.mode_changed`; it now records nothing (the mode is compared with the stored one) |
 | R1-F12 | Low | fixed | #202 | The usage report printed an exception class name (`unavailable: UsageError`) for a module that was not running; it now says `not installed`, `not active` or `action failed` |
-| R1-F1 | Documentation | fixed | WP6 | README and guide section 1: install by owner/repository and commit only; the catalog's `hermes-switchyard` entry is an unrelated project |
-| R1-F2 | Documentation | fixed | WP6 | Guide section 1: the install's "custom (unreviewed) source" warning is expected for a plugin outside the catalog |
-| R1-F3 | Documentation | fixed | WP6 | Guide section 4: the model tools reach new chats only after `hermes plugins enable` (Hermes defers plugin tools to the next session) |
-| R1-F6 | Documentation | fixed | WP6 | Guide section 3: a grant records consent and never starts a module; in a running Hermes start it with `/switchyard module activate <id>` |
-| R1-F13 | Documentation | fixed | WP6 | Guide sections 6 and 7: reports and `check_updates` / `preview` / `update` / `rollback` are chat-only while Hermes hosts |
-| doc-1 | Documentation | fixed | WP6 | Guide section 9: disable before remove, what Hermes's reply means, when to restart, every data directory; the second section 5 is section 11; wiki page matches |
+| R1-F1 | Documentation | fixed | #203 | README and guide section 1: install by owner/repository and commit only; the catalog's `hermes-switchyard` entry is an unrelated project |
+| R1-F2 | Documentation | fixed | #203 | Guide section 1: the install's "custom (unreviewed) source" warning is expected for a plugin outside the catalog |
+| R1-F3 | Documentation | fixed | #203 | Guide section 4: the model tools reach new chats only after `hermes plugins enable` (Hermes defers plugin tools to the next session) |
+| R1-F6 | Documentation | fixed | #203 | Guide section 3: a grant records consent and never starts a module; in a running Hermes start it with `/switchyard module activate <id>` |
+| R1-F13 | Documentation | fixed | #203 | Guide sections 6 and 7: reports and `check_updates` / `preview` / `update` / `rollback` are chat-only while Hermes hosts |
+| doc-1 | Documentation | fixed | #203 | Guide section 9: disable before remove, what Hermes's reply means, when to restart, every data directory; the second section 5 is section 11; wiki page matches |
 | H4-N1 | Medium | fixed | #201 | Found while fixing R1-F9, same cause: `module revoke` from the command line stopped a module only in its own process; while Hermes hosted, the module kept running there with the hooks, gates and jobs registered under the revoked grant until restart. The host's tick now stops an active module whose required grants are incomplete (reason `revoked <capability>`) ([ADR-0014](../adr/0014-hermes-hosting-process.md), decision 10) |
 
 ## 7. Retro (fill in after phase close)
