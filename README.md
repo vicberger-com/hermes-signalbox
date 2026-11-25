@@ -11,7 +11,9 @@ workers, output trimming, dashboard and inbox, security scanners, offload connec
 by a Hermes instance following [AGENTS.md](AGENTS.md); every phase had a fresh security review (results in each
 module README and `docs/qa/`).
 
-Start with the [user guide](docs/USER-GUIDE.md).
+Start with the [user guide](docs/USER-GUIDE.md). Install by owner/repository and commit
+(`hermes plugins install vicberger-com/hermes-switchyard --ref <SHA>`): the Hermes plugin catalog's
+`hermes-switchyard` entry is a different, unrelated project.
 
 **Priorities (in order, used to break every tie):** 1 security, 2 utility, 3 open source, 4 speed and capacity,
 5 size and code clarity.

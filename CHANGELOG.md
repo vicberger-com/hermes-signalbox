@@ -65,6 +65,18 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   `policy.grant_refused` (reason `module not registered`). Scripts that treated exit 3 as "unknown module" must
   check for 2.
 
+### Documentation
+
+- R1-F1, R1-F2: README and user guide section 1 say to install by owner/repository and commit only: the Hermes
+  catalog's `hermes-switchyard` entry is an unrelated project. The install's "custom (unreviewed) source"
+  warning is expected.
+- R1-F3: section 4 says the model tools reach new chats only after `hermes plugins enable`.
+- R1-F6: section 3 says a grant never starts a module in a running Hermes, and how to start it.
+- R1-F13: sections 6 and 7 mark reports and update commands as chat-only (`/switchyard ...`) while Hermes hosts.
+- doc-1: section 9 disables the plugin before removing it, says what Hermes's reply means and when to restart
+  the gateway, and names every data directory to delete; the stray second section 5 is now section 11. The
+  workstation deployment page in the wiki matches.
+
 
 ## [1.0.2] - 2026-11-24
 
