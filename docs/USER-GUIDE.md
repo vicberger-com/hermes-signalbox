@@ -80,7 +80,7 @@ serve` for that profile; it reports that another process hosts modules. What wor
 
 | You want to | Do |
 |---|---|
-| Grant, revoke, set modes, read the audit log, show config | The command line as usual (`hermes -p <profile> switchyard ...`); it works on the data directory. Hermes applies a new mode within its next tick (15 s): `disabled` stops a running module, `auto` lets the model start it |
+| Grant, revoke, set modes, read the audit log, show config | The command line as usual (`hermes -p <profile> switchyard ...`); it works on the data directory. Hermes applies a new mode or a revoke within its next tick (15 s): `disabled` stops a running module, `auto` lets the model start it, a revoked required capability stops the module |
 | Remove a module | `/switchyard module remove <id>` in a Hermes chat; the command line refuses while Hermes hosts |
 | Start or stop a module, check its health, run any module action | `/switchyard <noun> <verb> ...` in a Hermes chat of that profile, for example `/switchyard module activate router` |
 | Use the command line for those too | Set `[api] enabled = true` in `<data_dir>/config.toml` and restart Hermes. The API inside Hermes serves `module activate`, `deactivate`, `health`, `panel` and read-only actions; anything else is refused with a message naming `/switchyard` |
@@ -122,7 +122,7 @@ switchyard module health router                 # [daemon]
 switchyard module mode router --mode auto       # start it with every hosting process
 ```
 
-`module revoke` withdraws a capability (a module that needs it stops). `module mode <id> --mode disabled` keeps a
+`module revoke` withdraws a capability (a module that needs it stops, in a running Hermes within 15 s). `module mode <id> --mode disabled` keeps a
 module from starting. Removing a module (`module remove`) always drops its grants; `--keep-data` keeps only its
 stored data.
 

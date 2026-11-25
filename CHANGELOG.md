@@ -34,6 +34,13 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - R1-F11 (Low): the dashboard's Health column is filled: `ok`, `failing: <detail>`, or `unknown` for each running
   module, empty for modules that are not running.
 
+- H4-N1 (Medium, found while fixing R1-F9): `module revoke` from the command line now stops the module in the
+  process that hosts it. Before, while Hermes hosted, a module that needed the revoked capability kept running
+  there, with the hooks, gates and jobs it had registered under the grant, until Hermes restarted. The host's
+  tick now stops an active module whose required grants are incomplete (`module.deactivated` reason
+  `revoked <capability>`), within 15 s in Hermes and 1 s for the daemon. Optional capabilities are still
+  checked when used.
+
 ### Changed
 
 - `config show` prints `hosting.here` and `hosting.pid`; `module show` and `module health` carry `host_pid`

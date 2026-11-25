@@ -55,6 +55,7 @@ One pull request each, in this order. Tests first: each finding gets a regressio
 | WP1 | `fix/h4-f8-hosting` | Hermes adapter, core hosting | R1-F8 (High) | must |
 | WP2 | `fix/h4-f14-unload` | Hermes adapter, core shutdown | R1-F14 (Medium) | must |
 | WP3 | `fix/h4-f9-mode` | Module lifecycle, discovery, CLI | R1-F9 (Medium) | must |
+| WP3b | `fix/h4-n1-revoke` | Module lifecycle | H4-N1 (Medium), found while fixing R1-F9; added to the release by operator decision | must |
 | WP4 | `fix/h4-f10-dashboard` | Dashboard backend | R1-F10 (High), R1-F11 (Low) | must, should |
 | WP5 | `fix/h4-cli-polish` | CLI, operations, reports | R1-F4, R1-F5, R1-F7, R1-F12 (Low) | should |
 | WP6 | `docs/h4-guide` | User guide, reference, README | R1-F1, R1-F2, R1-F3, R1-F6, R1-F13, doc-1 (Documentation) | should |
@@ -90,6 +91,7 @@ One pull request each, in this order. Tests first: each finding gets a regressio
 | R1-F6 | Documentation | open | - | - |
 | R1-F13 | Documentation | open | - | - |
 | doc-1 | Documentation | open | - | - |
+| H4-N1 | Medium | fixed | #201 | Found while fixing R1-F9, same cause: `module revoke` from the command line stopped a module only in its own process; while Hermes hosted, the module kept running there with the hooks, gates and jobs registered under the revoked grant until restart. The host's tick now stops an active module whose required grants are incomplete (reason `revoked <capability>`) ([ADR-0014](../adr/0014-hermes-hosting-process.md), decision 10) |
 
 ## 7. Retro (fill in after phase close)
 

@@ -96,6 +96,9 @@ old mode. Every command-line call also ran discovery, which rewrote the `state` 
 11. **Each write owns its columns.** A status change writes `version` and `state`; a mode change writes `mode`;
     discovery inserts a missing row and follows a new version, nothing else. A process that starts hosting
     writes the state of every module, replacing rows a host that died left behind.
+    The same holds for grants (H4-N1, found while fixing R1-F9): the tick stops an active module whose
+    required grants another process revoked (reason `revoked <capability>`), removing the hooks, gates and
+    jobs it registered under the grant, as `module revoke` already did in the process that runs it.
 12. **`module remove` runs where the module runs.** Offline, it is refused while another process holds the host
     lock, naming that process; the daemon's API runs it in the host as before. Hermes's restricted API does not
     serve it, so with Hermes hosting the operator uses `/switchyard module remove <id>` in a chat.
