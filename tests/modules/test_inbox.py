@@ -220,7 +220,8 @@ def test_dashboard_backend_proxy(core: Core, monkeypatch: pytest.MonkeyPatch, tm
     ):
         with pytest.raises(HTTPException):
             asyncio.run(call)
-    assert {c[1] for c in calls} <= {"list", "show", "panel", "activate", "deactivate", "action"} | {"show"}
+    # H4 R1-F11: the module list also asks each running module's health (in DASHBOARD_OPS since M9)
+    assert {c[1] for c in calls} <= {"list", "show", "panel", "activate", "deactivate", "action", "health"}
 
 
 def test_dashboard_api_profile_refuses_privileged_ops(core: Core) -> None:

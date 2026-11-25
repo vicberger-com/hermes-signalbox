@@ -146,6 +146,7 @@ for that.
 Set `[api] enabled = true` in `config.toml` and restart Hermes. The Hermes dashboard then shows a Switchyard tab
 (module status, panels, reports, the inbox). Requests go through Hermes's authenticated dashboard to a loopback
 API that accepts a fixed allow-list of read operations plus activate, deactivate and inbox acknowledgements.
+The tab uses the plugin's own data directory; its Health column shows each running module's check.
 
 ## 6. Notifications and reports
 

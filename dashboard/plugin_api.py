@@ -13,9 +13,7 @@ repeats the ``Sec-Fetch-Site`` check here, so it holds in either mode and if Her
 
 from __future__ import annotations
 
-import os
 import re
-import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -29,19 +27,11 @@ _KINDS = ("health", "usage", "security", "changes")
 
 
 def _data_dir() -> Path:
-    """Resolve the data directory the way the core does: ``SWITCHYARD_DATA_DIR``, else the Hermes plugin data
-    directory, then a ``data_dir`` set in its ``config.toml`` (M9 review)."""
-    override = os.environ.get("SWITCHYARD_DATA_DIR", "")
-    if override:
-        return Path(override)
-    from plugins.plugin_storage import plugin_data_dir
+    """The data directory the agent plugin uses, resolved as its core resolves it, creating nothing
+    (H4 R1-F10; ``switchyard.hermes.dashboard``)."""
+    from switchyard.hermes.dashboard import data_dir
 
-    base = plugin_data_dir("switchyard")
-    try:
-        configured = tomllib.loads((base / "config.toml").read_text(encoding="utf-8")).get("data_dir")
-    except (OSError, ValueError):
-        configured = None
-    return Path(configured) if isinstance(configured, str) and Path(configured).is_absolute() else base
+    return data_dir()
 
 
 def _call(noun: str, verb: str, params: dict[str, Any]) -> Any:
@@ -77,7 +67,10 @@ def _check(pattern: re.Pattern[str], value: str) -> str:
 
 @router.get("/modules")
 async def modules() -> Any:
-    return _call("module", "list", {})
+    from switchyard.hermes.dashboard import rows_with_health
+
+    # H4 R1-F11: the Health column, from each running module's own check
+    return rows_with_health(_call("module", "list", {}), lambda mid: _call("module", "health", {"id": mid}))
 
 
 @router.get("/modules/{module_id}")

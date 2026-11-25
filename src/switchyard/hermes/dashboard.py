@@ -1,0 +1,97 @@
+"""Support for the dashboard backend (``dashboard/plugin_api.py``), kept in the package so it is typed and
+unit-tested without FastAPI (H4 R1-F10, R1-F11).
+
+The dashboard runs in Hermes's web server process, which has no ``PluginContext``. It finds the agent
+plugin's data directory with the same names Hermes uses to build ``ctx.state``
+(``hermes_cli.plugins_state.PluginState``, published plugin API) and the same precedence as the adapter's
+core (``paths.resolve_data_dir``). Up to v1.0.2 it used ``plugin_data_dir("switchyard")`` from
+``plugins.plugin_storage``: a different directory than the plugin's
+(``plugin-data/agent-plugin-switchyard-<digest>``), and one that the call creates.
+"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
+from typing import Any
+
+from switchyard.errors import SwitchyardError
+from switchyard.paths import ENV_VAR, resolve_data_dir
+
+PLUGIN_ID = "switchyard"
+HEALTH_MAX = 120  # characters of the Health cell
+
+
+def configured_data_dir(config: Mapping[str, Any]) -> Path | None:
+    """The plugin's ``data_dir`` setting in Hermes's configuration, read the way ``PluginContext.get_config``
+    reads it: ``plugins.entries.switchyard.settings.data_dir``, then the legacy ``config`` subtree."""
+    plugins = config.get("plugins")
+    entries = plugins.get("entries") if isinstance(plugins, Mapping) else None
+    entry = entries.get(PLUGIN_ID) if isinstance(entries, Mapping) else None
+    if not isinstance(entry, Mapping):
+        return None
+    for subtree in ("settings", "config"):
+        section = entry.get(subtree)
+        if isinstance(section, Mapping) and "data_dir" in section:
+            value = section["data_dir"]
+            return Path(value) if isinstance(value, str) and value else None
+    return None
+
+
+def _hermes_config() -> Mapping[str, Any]:
+    """Hermes's configuration, or nothing outside Hermes (then no setting can name a directory)."""
+    try:
+        import hermes_cli.config as config  # type: ignore[import-not-found,unused-ignore]
+    except ImportError:
+        return {}
+    load = getattr(config, "load_config_readonly", None) or config.load_config
+    loaded = load()
+    return loaded if isinstance(loaded, Mapping) else {}
+
+
+def _plugin_state_dir() -> Path:
+    from hermes_cli.plugins_state import PluginState  # type: ignore[import-not-found,unused-ignore]
+
+    return Path(PluginState(PLUGIN_ID).data_dir)
+
+
+def data_dir() -> Path:
+    """The data directory the Switchyard plugin uses in this Hermes profile. Creates nothing."""
+    configured = configured_data_dir(_hermes_config())
+    try:
+        needs_plugin_dir = configured is None and not os.environ.get(ENV_VAR, "")
+        hermes_dir = _plugin_state_dir() if needs_plugin_dir else None
+    except ImportError as exc:
+        raise SwitchyardError(
+            f"this Hermes does not publish the plugin data directory; set {ENV_VAR} for the dashboard"
+        ) from exc
+    return resolve_data_dir(configured=configured, hermes_dir=hermes_dir)
+
+
+def health_cell(result: object) -> str:
+    """The Health column for one ``module health`` result."""
+    if not isinstance(result, Mapping):
+        return "unknown"
+    if result.get("ok") is True:
+        return "ok"
+    detail = str(result.get("detail") or "").strip()
+    text = f"failing: {detail}" if detail else "failing"
+    return text[:HEALTH_MAX]
+
+
+def rows_with_health(
+    rows: Sequence[Mapping[str, Any]], health: Callable[[str], object]
+) -> list[dict[str, Any]]:
+    """``module list`` rows with a ``health`` cell: the check's result for running modules, empty for the
+    others (nothing runs to check). A check that errors shows ``unknown`` and leaves the list intact."""
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        cell = ""
+        if row.get("status") == "active":
+            try:
+                cell = health_cell(health(str(row.get("id", ""))))
+            except Exception:  # the list must still render; the cell says the check did not answer
+                cell = "unknown"
+        out.append({**row, "health": cell})
+    return out

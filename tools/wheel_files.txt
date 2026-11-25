@@ -27,6 +27,7 @@ switchyard/fsread.py
 switchyard/gitfetch.py
 switchyard/hermes/__init__.py
 switchyard/hermes/config_port.py
+switchyard/hermes/dashboard.py
 switchyard/hermes/delegation.py
 switchyard/hermesconfig.py
 switchyard/host_t2.py
