@@ -244,6 +244,15 @@ def _module_panel(core: Core, p: dict[str, Any], actor: str) -> Any:
     offline=True, id=ID, keep_data=Param(bool, required=False, default=False),
 )  # fmt: skip
 def _module_remove(core: Core, p: dict[str, Any], actor: str) -> Any:
+    host = None if core.hosting else core.host_pid()
+    if host is not None:
+        # H4 R1-F9: the hosting process would keep running the module, with its hooks, on grants and data
+        # this process just dropped. The daemon's own API runs this in the host; Hermes's restricted API and
+        # the offline path cannot, so the operator removes it where it runs.
+        raise SwitchyardError(
+            f"process {host} hosts this data directory and may be running {p['id']!r}; remove it there "
+            f"('/switchyard module remove {p['id']}' in a Hermes chat), or stop that process first"
+        )
     core.manager.remove(p["id"], actor=actor, keep_data=p["keep_data"])
     return {"removed": p["id"]}
 

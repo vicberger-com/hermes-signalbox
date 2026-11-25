@@ -249,6 +249,8 @@ class Core:
             call=self._module_call,
         )
         self.manager.discover(roots)
+        if self.hosting:
+            self.manager.persist_states()  # H4 R1-F9: discovery no longer writes the state column
         self._lock = threading.RLock()
         self._cross_lock = threading.Lock()
         self._cross_calls: dict[tuple[str, str, str], tuple[float | None, int]] = {}
@@ -306,6 +308,7 @@ class Core:
                 self._host_lock.release()
                 raise
             self.hosting = True
+            self.manager.persist_states()  # H4 R1-F9: this process's statuses are the true ones now
             return True
 
     def host_pid(self) -> int | None:

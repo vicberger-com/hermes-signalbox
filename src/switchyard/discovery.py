@@ -87,23 +87,61 @@ class ModuleDirectory:
         self._audit.append(actor=actor, action=action, module=module_id, detail=detail)
         self._bus.publish("core", action, {"module": module_id, **detail})
 
-    def _persist(self, e: _Entry) -> None:
+    # H4 R1-F9: each write touches only the columns its caller owns. A status change (the hosting process)
+    # writes ``state``; a mode change (any process) writes ``mode``; discovery (any process) adds a missing
+    # row and follows a new version. Up to v1.0.2 every write replaced the whole row, so a host's activation
+    # put back the mode it had read at load, and every CLI call's discovery reset ``state`` to 'verified'.
+    _INSERT = (
+        "INSERT INTO modules (id, version, mode, state, installed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) "
+    )
+
+    def _row(self, e: _Entry, on_conflict: str) -> None:
         if self._store is None:
             return
         now = _utc()
         self._store.core_execute(
-            "INSERT INTO modules (id, version, mode, state, installed_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT (id) DO UPDATE SET version = excluded.version, mode = excluded.mode, "
-            "state = excluded.state, updated_at = excluded.updated_at",
-            (e.manifest.id, e.manifest.version, e.mode, e.status.value, now, now),
+            self._INSERT + on_conflict, (e.manifest.id, e.manifest.version, e.mode, e.status.value, now, now)
         )
+
+    def _persist(self, e: _Entry) -> None:
+        """Record a status change (the version may have changed with it, after a reload)."""
+        self._row(
+            e,
+            "ON CONFLICT (id) DO UPDATE SET version = excluded.version, state = excluded.state, "
+            "updated_at = excluded.updated_at",
+        )
+
+    def _persist_mode(self, e: _Entry) -> None:
+        self._row(e, "ON CONFLICT (id) DO UPDATE SET mode = excluded.mode, updated_at = excluded.updated_at")
+
+    def _persist_discovered(self, e: _Entry) -> None:
+        self._row(
+            e,
+            "ON CONFLICT (id) DO UPDATE SET version = excluded.version, updated_at = excluded.updated_at "
+            "WHERE modules.version IS NOT excluded.version",
+        )
+
+    def persist_states(self) -> None:
+        """Write every module's status. The hosting process calls this when it starts hosting: its statuses
+        are the true ones, and a host that died may have left 'active' rows behind (H4 R1-F9)."""
+        with self._lock:
+            for e in self._entries.values():
+                self._persist(e)
 
     def _stored_mode(self, module_id: str) -> str | None:
         if self._store is None:
             return None
         rows = self._store.core_query("SELECT mode FROM modules WHERE id = ?", (module_id,))
         return str(rows[0][0]) if rows else None
+
+    def _current_mode(self, e: _Entry) -> str:
+        """The module's mode as the store has it now. Another process (the offline CLI) may have changed it
+        since this one loaded, so every decision that depends on the mode reads it fresh, as grants are
+        (H4 R1-F9). Without a store, or without a row, the in-memory mode stands."""
+        stored = self._stored_mode(e.manifest.id)
+        if stored is not None and stored != e.mode:
+            e.mode = stored
+        return e.mode
 
     # discovery ----------------------------------------------------------------------------------------
 
@@ -163,7 +201,7 @@ class ModuleDirectory:
             mode = self._stored_mode(manifest.id) or manifest.activation
             entry = _Entry(manifest=manifest, mode=mode)
             self._entries[manifest.id] = entry
-            self._persist(entry)
+            self._persist_discovered(entry)
         # 1.1 #125: every process that opens the data directory runs discovery. The audit gets a record when
         # the verified manifest is new or changed; an unchanged one is only announced on the in-process bus.
         fingerprint = self._verification_fingerprint(manifest.id, directory, manifest.digest)

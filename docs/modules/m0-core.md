@@ -141,7 +141,7 @@ staged manifest excludes this core is refused), `activate(id)`, `deactivate(id, 
 States: `verified`, `active`, `stopped`, `failed`. `activate(id)` refuses (`CapabilityDenied`, audited as
 `policy.denied`) while a requested, non-optional capability is not granted, before importing any module code
 (H1 A-5); the module keeps its state. The `module activate` operation also refuses the model actor unless the
-module's mode is `auto` (H1 C-6). Modes persist in the `modules` table. Each module is imported as
+module's mode is `auto` (H1 C-6). Modes persist in the `modules` table; the hosting process reads a module's mode from it before every decision, so a mode set by another process applies there (H4 R1-F9, ADR-0014 "Mode"). Each module is imported as
 the synthetic package `_switchyard_modules.<id>` rooted at its directory (no name clashes, relative imports work,
 removal purges `sys.modules`). In-process modules are accepted only under trusted roots (resolved paths). Any
 exception from import, construction, `activate`, `health` or a bus handler fails that module closed (audited by

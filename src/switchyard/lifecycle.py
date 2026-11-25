@@ -113,8 +113,9 @@ class ModuleManager(ModuleDirectory):
         with self._lock:
             e = self._entry(module_id)
             m = e.manifest
+            mode = self._current_mode(e)
             return ModuleInfo(
-                m.id, m.version, e.status, e.mode, m.isolation, m.directory, e.error, e.stop_reason
+                m.id, m.version, e.status, mode, m.isolation, m.directory, e.error, e.stop_reason
             )
 
     def manifest(self, module_id: str) -> Manifest:
@@ -185,7 +186,7 @@ class ModuleManager(ModuleDirectory):
     def activate(self, module_id: str, *, actor: str) -> None:
         with self._lock:
             e = self._entry(module_id)
-            if e.mode == "disabled":
+            if self._current_mode(e) == "disabled":  # H4 R1-F9: as the store has it now
                 # H3-23: use ModuleNotRunning for clearer semantics
                 from switchyard.errors import ModuleNotRunning
 
@@ -314,7 +315,7 @@ class ModuleManager(ModuleDirectory):
             if mode == "disabled" and e.status is ModuleStatus.ACTIVE:
                 self.deactivate(module_id, actor=actor, reason="disabled")
             e.mode = mode
-            self._persist(e)
+            self._persist_mode(e)  # H4 R1-F9: the mode column only; the hosting process owns ``state``
         self._record("module.mode_changed", module_id, actor, mode=mode)
 
     def start_auto(self, *, actor: str) -> None:
@@ -324,7 +325,7 @@ class ModuleManager(ModuleDirectory):
         A module still waiting for grants is left alone (``module.auto_skipped``) rather than failed."""
         for module_id in self.ids():
             e = self._entries[module_id]
-            if e.mode == "auto" and e.status in (ModuleStatus.VERIFIED, ModuleStatus.STOPPED):
+            if self._current_mode(e) == "auto" and e.status in (ModuleStatus.VERIFIED, ModuleStatus.STOPPED):
                 missing = sorted(e.manifest.requested - e.manifest.optional - self._policy.granted(module_id))
                 if missing:
                     self._record("module.auto_skipped", module_id, actor, missing=",".join(missing))
@@ -337,17 +338,19 @@ class ModuleManager(ModuleDirectory):
             self._entry(module_id).last_used = self._clock()
 
     def tick(self) -> None:
-        """Stop ``auto`` modules idle for ``idle_stop_seconds``."""
+        """Stop modules another process set to ``disabled`` (H4 R1-F9), and ``auto`` modules idle for
+        ``idle_stop_seconds``."""
         now = self._clock()
         for module_id in self.ids():
             e = self._entries[module_id]
+            if e.status is not ModuleStatus.ACTIVE:
+                continue
+            mode = self._current_mode(e)
+            if mode == "disabled":
+                self.deactivate(module_id, actor=CORE_ACTOR, reason="disabled")
+                continue
             idle = e.manifest.idle_stop_seconds
-            if (
-                e.status is ModuleStatus.ACTIVE
-                and e.mode == "auto"
-                and idle > 0
-                and now - e.last_used >= idle
-            ):
+            if mode == "auto" and idle > 0 and now - e.last_used >= idle:
                 self.deactivate(module_id, actor=CORE_ACTOR, reason="idle")
 
     def remove(self, module_id: str, *, actor: str, keep_data: bool = False) -> None:

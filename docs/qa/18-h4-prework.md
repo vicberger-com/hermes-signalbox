@@ -77,7 +77,7 @@ One pull request each, in this order. Tests first: each finding gets a regressio
 |---|---|---|---|---|
 | R1-F8 | High | fixed | #197 | A one-shot command that loaded the plugin while the data directory was free became the host for its lifetime; a gateway starting in that window never hosted and ran turns without gates. Now only the gateway runtime, or a process that has run a turn, may host, and it retries every 5 s ([ADR-0014](../adr/0014-hermes-hosting-process.md)). `config show`, `module show` and `module health` name the hosting pid |
 | R1-F14 | Medium | fixed | #198 | The plugin registered no unload callback, so after disable and uninstall a running gateway kept the host lock, the loopback API and the active modules until restart. `register()` now passes Hermes an `on_unload` callback that stops everything (reason `unload`); `Core.close` releases the lock even when a stop step fails ([ADR-0014](../adr/0014-hermes-hosting-process.md), "Unload"). The note that `HermesAdapter.close()` left the core open was not reproduced |
-| R1-F9 | Medium | open | - | - |
+| R1-F9 | Medium | fixed | WP3 | `module mode` from the command line wrote only the state store; the hosting process kept the mode it had read at load, ignored the change and wrote its old mode back on its next activation, and every command-line call reset the `state` column of running modules. The host now reads the mode from the store for every decision and its tick stops a module set to `disabled`; each write touches only its own columns; offline `module remove` is refused while another process hosts ([ADR-0014](../adr/0014-hermes-hosting-process.md), "Mode") |
 | R1-F10 | High | open | - | - |
 | R1-F11 | Low | open | - | - |
 | R1-F4 | Low | open | - | - |

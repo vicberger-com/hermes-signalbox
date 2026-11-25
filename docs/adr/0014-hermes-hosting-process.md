@@ -79,6 +79,27 @@ A forced rediscovery while the plugin stays enabled therefore stops and restarts
 re-registration already did before. A host without `on_unload`, or one whose registration fails
 (`core.adapter_error`), keeps the exit-time cleanup only.
 
+## Mode (R1-F9)
+
+Up to v1.0.2 `module mode` was an offline operation: it wrote the state store, while the hosting process kept
+the mode it had read at load in memory. The host therefore ignored a mode set from the command line (the model
+stayed refused for a module set to `auto`), and its next status write replaced the whole `modules` row with its
+old mode. Every command-line call also ran discovery, which rewrote the `state` column of every module to
+`verified`, including modules the host was running.
+
+10. **The store is the source of a module's mode, as it already is for grants.** Every decision that depends on
+    the mode reads it fresh: activation (`disabled` refuses), `start_auto`, the model's `auto`-only rule and
+    `module show` / `list`. The host's tick stops a running module that another process set to `disabled`
+    (reason `disabled`), so a change takes effect within one tick (15 s in Hermes, 1 s for the daemon).
+    Setting `auto` does not start a module by itself, as with a grant; the next `start_auto` or an activation
+    does.
+11. **Each write owns its columns.** A status change writes `version` and `state`; a mode change writes `mode`;
+    discovery inserts a missing row and follows a new version, nothing else. A process that starts hosting
+    writes the state of every module, replacing rows a host that died left behind.
+12. **`module remove` runs where the module runs.** Offline, it is refused while another process holds the host
+    lock, naming that process; the daemon's API runs it in the host as before. Hermes's restricted API does not
+    serve it, so with Hermes hosting the operator uses `/switchyard module remove <id>` in a chat.
+
 ## Consequences
 
 - `hermes gateway status`, `hermes gateway restart` and `hermes switchyard ...` write no activation records
@@ -92,8 +113,7 @@ re-registration already did before. A host without `on_unload`, or one whose reg
 - `module health` results gain `host_pid`. Code that compared the whole result must read `ok` and `detail`.
 - After `hermes plugins disable switchyard` or an uninstall, a running gateway releases the data directory
   as soon as Hermes unloads the plugin in it; no restart is needed for that.
-- A module's `mode` and status are still read when the plugin loads; a change made between load and a late
-  takeover is the subject of R1-F9 (work package 3).
+- A module's mode set by another process after the plugin loaded is read from the store (see "Mode").
 
 ## Alternatives considered
 
