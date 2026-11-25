@@ -15,6 +15,13 @@ hermes plugins install vicberger-com/hermes-switchyard --ref <40-character commi
 pip install "git+https://github.com/vicberger-com/hermes-switchyard@<40-character commit SHA>"
 ```
 
+**Install by owner/repository and commit, never by the bare name.** The Hermes plugin catalog has an entry named
+`hermes-switchyard` that belongs to a different, unrelated project (it also adds a `/switchyard` command), so
+`hermes plugins install hermes-switchyard` installs that one, not this. Always pass
+`vicberger-com/hermes-switchyard` with `--ref <SHA>`, and do not install both. Because this repository is not in
+the catalog, the install prints `Warning: custom (unreviewed) source — not from the Hermes catalog.`; that is
+expected.
+
 Releases carry `SHA256SUMS`, a CycloneDX SBOM of what the wheel installs, and a build provenance attestation
 (`gh attestation verify <file> -R vicberger-com/hermes-switchyard`). Pin a commit SHA, not a tag name, for
 both routes: tags are annotated but not yet signed.
@@ -122,6 +129,11 @@ switchyard module health router                 # [daemon]
 switchyard module mode router --mode auto       # start it with every hosting process
 ```
 
+A grant only records consent; it never starts a module. In a running Hermes, a module whose last missing grant
+you just gave stays stopped until you start it (`/switchyard module activate <id>` in a chat, or the command
+line through the API, section 2) or until Hermes next loads the plugin, which starts `auto` modules whose grants
+are complete.
+
 `module revoke` withdraws a capability (a module that needs it stops, in a running Hermes within 15 s). `module mode <id> --mode disabled` keeps a
 module from starting. Removing a module (`module remove`) always drops its grants; `--keep-data` keeps only its
 stored data.
@@ -130,6 +142,10 @@ Module settings live in `<data_dir>/config.toml` under `[modules.<id>]`; each mo
 Restart the hosting process after editing them.
 
 ## 4. What the model may do
+
+The tools reach the model in the next chat after you enable the plugin: Hermes adds a plugin's tools to new
+sessions only (`hermes plugins enable` prints `deferred: tools (next session)`), so start a new chat before
+asking the model to use them. `/switchyard` commands work at once.
 
 Hermes's model gets three tools: `switchyard_modules` (list, show, activate, health, and read-only module
 actions), `switchyard_audit` (verify, tail) and `switchyard_host`. The model may start only modules you set to
@@ -146,7 +162,9 @@ for that.
 Set `[api] enabled = true` in `config.toml` and restart Hermes. The Hermes dashboard then shows a Switchyard tab
 (module status, panels, reports, the inbox). Requests go through Hermes's authenticated dashboard to a loopback
 API that accepts a fixed allow-list of read operations plus activate, deactivate and inbox acknowledgements.
-The tab uses the plugin's own data directory; its Health column shows each running module's check.
+The tab uses the plugin's own data directory; its Health column shows each running module's check. No extra
+setting is needed for the tab to find the API. Release 1.0.2's tab looked in, and created, `plugin-data/switchyard`
+in the Hermes home; that directory is unused and can be deleted.
 
 ## 6. Notifications and reports
 
@@ -158,7 +176,9 @@ switchyard module grant inbox --capability ui.panel
 switchyard module activate inbox                # [daemon]
 ```
 
-Reports (`--kind` is `health`, `usage`, `security` or `changes`; all need the daemon):
+Reports (`--kind` is `health`, `usage`, `security` or `changes`; all need the daemon). When Hermes hosts the
+modules, run them in a chat instead: `/switchyard report show --kind health`. In the usage report, a module that
+cannot report shows `unavailable: not installed`, `not active` or `action failed`.
 
 ```bash
 switchyard report show --kind health
@@ -176,6 +196,10 @@ switchyard module preview <id> --ref <sha>               # [daemon] files change
 switchyard module update <id> --ref <sha> --digest <digest>
 switchyard module rollback <id>
 ```
+
+When Hermes hosts the modules (section 2), `check_updates`, `preview`, `update` and `rollback` are chat-only:
+run them as `/switchyard module check_updates` and so on in a Hermes chat. The API inside Hermes does not serve
+them, so the command line refuses them there with a message naming `/switchyard`.
 
 Updates run git. Switchyard uses the first git on `PATH` that it can actually run (on Windows with Hermes
 Desktop, the packaged copy that comes first on `PATH` cannot be run by other programs, so a Git for Windows
@@ -205,13 +229,35 @@ rewrite both files as your user can forge history.
 
 ## 9. Uninstall
 
+First note the data directory in use (`data_dir` in the output), since the plugin command goes away with the
+plugin:
+
 ```bash
-switchyard module list                                    # deactivate anything you no longer want first
-hermes plugins remove switchyard                          # or: pip uninstall hermes-switchyard
+hermes -p <profile> switchyard config show
 ```
 
-The data directory (audit log, state, logs, `config.toml`) is left in place; delete it yourself if you do not
-need the audit history.
+Then disable and remove the plugin:
+
+```bash
+hermes plugins disable switchyard
+hermes plugins remove switchyard                          # also accepted: uninstall; pip route: pip uninstall hermes-switchyard
+```
+
+`hermes plugins disable` asks the running gateway to reload its plugins. When it prints `The running gateway
+reloaded its plugins and unloaded switchyard`, Switchyard has stopped there: its modules are deactivated
+(audit reason `unload`), the loopback API is closed and `api.port` / `api.token` are removed, and the data
+directory is free. When it prints that the gateway refused, or that no running gateway answered while one is
+running, restart it (`hermes gateway restart`) before removing the plugin. `hermes plugins remove` only deletes
+the plugin files; it does not stop anything that is still running.
+
+The data directories are left in place; delete them yourself if you do not need the audit history (audit log,
+state, logs, `config.toml`):
+
+- the plugin's data directory in the profile's Hermes home, `plugin-data/agent-plugin-switchyard-<digest>`
+  (the `data_dir` you noted; a `data_dir` plugin setting or `SWITCHYARD_DATA_DIR` points it elsewhere);
+- `plugin-data/switchyard`, if release 1.0.2's dashboard tab created it (unused since 1.0.3);
+- with the pip route, the `switchyard` command's own directory (section 2), unless `SWITCHYARD_DATA_DIR` or
+  `--data-dir` pointed it at the same place.
 
 ## 10. Running the daemon as a service
 
@@ -222,14 +268,6 @@ Run `switchyard api serve` from a service manager that starts it at logon and re
 daemon needs no administrator rights; run it as your own user, with the same `SWITCHYARD_DATA_DIR` that your
 `switchyard` commands use. After a crash, the next command removes the daemon's stale `api.port` and
 `api.token` and reports that no daemon is running.
-
-## 5. Security notes (H3 evaluation)
-
-**H3-26: Challenge context versioning.** The API challenge-response proof uses a static context string (`switchyard-api-v1:`). If the proof format ever changes, the context string will be versioned (e.g., `switchyard-api-v2:`). Clients should not hardcode the context string.
-
-**H3-27: Unix environment variable hardening.** The process broker blocks dangerous environment variables on both Windows and Unix. On Unix, variables like `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `PYTHONPATH`, `PYTHONHOME`, `JAVA_TOOL_OPTIONS`, and variables with prefixes `LD_`, `DYLD_`, `PYTHON`, `SSH_`, `GPG_`, `PINENTRY_` are refused. See `src/switchyard/process.py` for the complete list.
-
----
 
 The Windows recipe was run end to end on Windows 11 (1.1): start, commands through the daemon, a hard kill,
 restart, and stop. The systemd and launchd recipes follow each service manager's documented form and have not
@@ -276,3 +314,9 @@ macOS (launchd agent `~/Library/LaunchAgents/com.vicberger.switchyard.plist` wit
 `systemctl --user stop` and `launchctl unload` send a stop signal, and the daemon shuts down cleanly and removes
 its `api.port` and `api.token`. Ending the task in Task Scheduler terminates the process instead; the next
 `switchyard` command then removes the stale files.
+
+## 11. Security notes (H3 evaluation)
+
+**H3-26: Challenge context versioning.** The API challenge-response proof uses a static context string (`switchyard-api-v1:`). If the proof format ever changes, the context string will be versioned (e.g., `switchyard-api-v2:`). Clients should not hardcode the context string.
+
+**H3-27: Unix environment variable hardening.** The process broker blocks dangerous environment variables on both Windows and Unix. On Unix, variables like `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `PYTHONPATH`, `PYTHONHOME`, `JAVA_TOOL_OPTIONS`, and variables with prefixes `LD_`, `DYLD_`, `PYTHON`, `SSH_`, `GPG_`, `PINENTRY_` are refused. See `src/switchyard/process.py` for the complete list.

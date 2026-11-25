@@ -1,6 +1,6 @@
 # Deploy Hermes plugin on a workstation
 
-> **Type:** deployment · **Applies to:** v1.0.0 · **Last checked:** 2026-11-20 · **Status:** current
+> **Type:** deployment · **Applies to:** v1.0.0 · **Last checked:** 2026-11-24 · **Status:** current
 
 **Fits when:** one person uses Hermes (desktop, TUI or CLI) on their own machine and wants Switchyard to manage
 models, skills and spend for those sessions.
@@ -19,6 +19,10 @@ models, skills and spend for those sessions.
 ```bash
 hermes plugins install vicberger-com/hermes-switchyard --ref <40-character commit SHA of v1.0.0>
 ```
+
+Always install by owner/repository: the Hermes catalog's `hermes-switchyard` entry is an unrelated project.
+The install warns that the source is custom (unreviewed); that is expected for a plugin outside the catalog.
+Start a new chat after `hermes plugins enable switchyard`: the model tools reach new sessions only.
 
 Verify the release first if you install from the wheel:
 
@@ -49,6 +53,9 @@ switchyard audit verify
 switchyard report show --kind health
 ```
 
+While Hermes hosts the modules, run reports and other `[daemon]` commands in a chat (`/switchyard report show
+--kind health`), or enable the API and restart Hermes ([user guide](https://github.com/vicberger-com/hermes-switchyard/blob/main/docs/USER-GUIDE.md) section 2).
+
 ## Operate
 
 - Weekly: `switchyard report show --kind usage` and `--kind security`; read the inbox.
@@ -66,8 +73,12 @@ Read [[Releases]] for changes you must act on (for 1.0.0: grant `core.read` to `
 ## Remove
 
 ```bash
+hermes plugins disable switchyard
 hermes plugins remove switchyard
 ```
+
+`disable` makes the running gateway unload Switchyard (modules stop, the API closes, the data directory is
+released). If it says the gateway refused or did not answer, run `hermes gateway restart` before `remove`.
 
 The data directory (audit log, state, logs, `config.toml`) stays; delete it yourself if you do not need the
 audit history.
