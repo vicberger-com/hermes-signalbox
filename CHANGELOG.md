@@ -17,12 +17,24 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   API stops and `api.port` / `api.token` are removed, and the host lock is released. Before, all of it stayed
   alive in the gateway until the gateway was restarted. A stop step that fails no longer keeps the host lock.
 
+- R1-F9 (Medium): `module mode` from the command line now reaches the process that hosts the modules. The host
+  reads a module's mode from the state store before it acts on it (activation, `auto` start, the model's
+  `auto`-only rule, `module show`), and its tick stops a running module another process set to `disabled`
+  (`module.deactivated` reason `disabled`). Before, the host kept the mode it read at load, ignored the change
+  and wrote its old mode back on the next activation. Each write to the `modules` table now touches only its
+  own columns, so a command-line call no longer resets the `state` column of modules the host runs, and a
+  process that starts hosting writes the true state of every module.
+
 ### Changed
 
 - `config show` prints `hosting.here` and `hosting.pid`; `module show` and `module health` carry `host_pid`
   (the process that hosts the data directory, `None` when nobody does). Scripts that compared the whole
   `module health` result must read `ok` and `detail`.
 - New audit action `core.hosting_acquired` (one record each time a Hermes process starts hosting).
+- `module remove` from the command line is refused (exit 1) while another process hosts the data directory,
+  naming that process: the host would keep running the module on grants and data the command just dropped.
+  Remove it where it runs (`/switchyard module remove <id>` in a Hermes chat), or stop that process first.
+  With `switchyard api serve` the command goes through the daemon as before.
 
 
 ## [1.0.2] - 2026-11-24
