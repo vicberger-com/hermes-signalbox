@@ -4,6 +4,24 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-11-24
+
+Maintenance release from phase H4: fixes every finding of the first install acceptance of v1.0.2 on a real
+Hermes Desktop baseline ([Q&A](docs/qa/18-h4-prework.md), [ADR-0014](docs/adr/0014-hermes-hosting-process.md)).
+
+### Upgrading from 1.0.2
+
+- Install by owner/repository and commit (`hermes plugins install vicberger-com/hermes-switchyard --force --ref
+  <SHA>`), never by the catalog name `hermes-switchyard`, which is an unrelated project.
+- Restart Hermes once after the upgrade (`hermes gateway restart`) so the gateway hosts the modules under the new
+  hosting rule; `hermes -p <profile> switchyard config show` then prints `hosting.pid` = the gateway's pid.
+- Delete `plugin-data/switchyard` in the Hermes home if 1.0.2's dashboard tab created it; it is unused.
+- Remove a module while Hermes runs with `/switchyard module remove <id>` in a chat; the command line refuses
+  while another process hosts.
+- Uninstall: `hermes plugins disable switchyard`, then `hermes plugins remove switchyard` (user guide section 9).
+- Scripts: `module grant` to an unknown module exits 2 (was 3); read `ok` and `detail` from `module health`
+  rather than comparing the whole result (it now carries `host_pid`).
+
 ### Fixed
 
 - R1-F8 (High): inside Hermes, only the gateway (or, without one, a process that runs turns) hosts the modules.
@@ -108,8 +126,6 @@ Maintenance release from phase H3: audit noise reduction, process hardening, API
 - No breaking changes. Configurable API limits use safe defaults.
 - New error classes are subclasses of `NotAvailable`; existing `except NotAvailable` handlers still catch them.
 - Unix env var hardening only affects spawned subprocesses; no impact on in-process modules.
-
-## [1.0.1] - 2026-11-20
 
 ## [1.0.1] - 2026-11-20
 
@@ -543,7 +559,9 @@ Repository bootstrap (phase P0). No runtime code.
 - Tooling is installed from a hash-pinned `requirements-dev.txt`; `ci-required` and `security-required` gate jobs added.
 - Secret scanning runs the pinned gitleaks CLI. Repository moved to the `vicberger-com` organization.
 
-[Unreleased]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.13.0...v1.0.0
 [0.13.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.12.0...v0.13.0

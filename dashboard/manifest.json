@@ -3,7 +3,7 @@
   "label": "Switchyard",
   "description": "Switchyard modules, health, inbox and reports.",
   "icon": "Shield",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "tab": { "path": "/switchyard", "position": "end" },
   "entry": "dist/index.js",
   "css": "dist/style.css",

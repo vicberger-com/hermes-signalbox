@@ -63,14 +63,35 @@ One pull request each, in this order. Tests first: each finding gets a regressio
 
 ## 5. Acceptance (written before code)
 
-- [ ] Every `must` and `should` finding has a regression test named `test_h4_<id>_...` that failed before its fix
-- [ ] `tests/test_doc_links.py` and `tools/guide_walkthrough.py` pass on the corrected guide
-- [ ] All existing tests pass on Linux, Windows and macOS; coverage >= 90% core, >= 85% modules
-- [ ] ruff, mypy strict, bandit, pip-audit clean; `hermes-integration` job green
-- [ ] Security review of `git diff v1.0.2..HEAD` by fresh read-only reviewers, every finding re-verified
+- [x] Every `must` and `should` finding has a regression test named `test_h4_<id>_...` that failed before its fix
+- [x] `tests/test_doc_links.py` and `tools/guide_walkthrough.py` pass on the corrected guide
+- [x] All existing tests pass on Linux, Windows and macOS; coverage >= 90% core, >= 85% modules
+- [x] ruff, mypy strict, bandit, pip-audit clean; `hermes-integration` job green
+- [x] Security review of `git diff v1.0.2..HEAD` by fresh read-only reviewers, every finding re-verified
 - [ ] Release-candidate rehearsal on the baseline: the sections that failed in the v1.0.2 run pass, and the
       uninstall leaves the baseline snapshot unchanged
 - [ ] Release through the `verify` job; tag `v1.0.3`
+
+Close notes:
+
+- Regression tests: `tests/core/test_h4_hosting.py`, `test_h4_unload.py`, `test_h4_mode.py`, `test_h4_revoke.py`,
+  `test_h4_dashboard.py`, `test_h4_cli_polish.py`, `tests/test_h4_guide.py`, and the dashboard test in
+  `tests/integration/test_real_hermes.py`. Each PR body records its red run; WP6 was proven against unchanged
+  `main` in a worktree. `tests/acceptance/test_h4_acceptance.py` checks that every ID in section 6 is fixed and has
+  a `test_h4_<id>_` test.
+- Platforms and gates: the CI matrix (Linux, Windows, macOS x Python 3.11 to 3.14), ruff, mypy strict, bandit,
+  pip-audit, CodeQL, gitleaks and `hermes-integration`, green on every H4 pull request and on the release PR.
+- Security review: two fresh read-only reviewers over `git diff v1.0.2..HEAD` (area 1: hosting, host lock, unload,
+  mode and revoke; area 2: dashboard data directory, API and CLI routing, reports), 3 and 6 probe scripts. Both
+  confirmed each fix. Their two findings were re-checked against the code: see the table below. The maintainer
+  re-read the retry-versus-unload path (`HermesAdapter.close` sets `_closing` under `_host_mutex`, which
+  `_host_if_allowed` checks under the same mutex; `Core.acquire_hosting` refuses once closed).
+- The rehearsal and the tag are proven only by the release itself; their lines stay unticked until then.
+
+| Review finding | Disposition | Reason |
+|---|---|---|
+| `SWITCHYARD_DATA_DIR` can point the dashboard backend at another directory | By design | Same precedence as the core since H1; setting the Hermes process environment needs the operator's own OS user (DESIGN trust model). Port and token come from the same directory, so the real token is not sent, and the H1 token proof refuses a listener that does not hold it |
+| Health cell shows module text without redaction | Not reproduced | The dashboard reads `module health` through the loopback API, whose `_dispatch` redacts every result; the cell is operator-facing, not model input |
 
 ## 6. Dispositions (filled in as each fix merges)
 
@@ -97,3 +118,8 @@ One pull request each, in this order. Tests first: each finding gets a regressio
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| "The guide walkthrough proves the install" (H1 retro already said this) | The walkthrough runs the standalone daemon; the v1.0.2 run failed only in the hosted (gateway) setup. The release-candidate rehearsal on the baseline is now a step before the tag | Phase close |
+| `HermesAdapter.close()` never closed the core (R1-F14 root-cause note) | Not reproduced: the missing `on_unload` callback was the whole cause. A root-cause note is a hypothesis until a test pins it | Maintenance triage |
+| The hosting process may keep a module's mode and status in memory | Another process (the command line) writes them; the host reads mode and grants from the store before each decision, and each writer touches only its own columns (R1-F9, H4-N1) | Core, every offline operation |
+| An unknown name on `grant` is a denial | REFERENCE's exit-code table calls an unknown name a usage error; the reference is the contract (Q&A question 5) | CLI, API, model tool errors |
+| A timing test bounded `<= 1.0` on a deadline of 1.0 is safe | On Windows the monotonic clock may not tick between setting the deadline and the first read; bound with a small float tolerance | Tests |
