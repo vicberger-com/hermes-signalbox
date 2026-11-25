@@ -148,9 +148,11 @@ def _run(operation: Operation, params: dict[str, Any], data_dir: Path | None) ->
         from switchyard.paths import resolve_data_dir
 
         resolved = resolve_data_dir()
+    hosted = False
     try:
         if clear_stale_files(resolved):  # nobody hosts this directory: no daemon to talk to (H1 D-9)
             raise ApiUnavailable(f"no running daemon for {resolved}")
+        hosted = True
         return ApiClient.from_data_dir(resolved).request(operation.noun, operation.verb, params)
     except ApiRestricted:
         # 1.1 S-4: Hermes hosts this directory with the restricted API. Commands that need no daemon run on
@@ -159,13 +161,25 @@ def _run(operation: Operation, params: dict[str, Any], data_dir: Path | None) ->
             raise
     except ApiUnavailable:
         if not operation.offline:
-            name = f"{operation.noun} {operation.verb}"
-            raise SwitchyardError(
-                f"'{name}' needs the running daemon: start it with 'switchyard api serve'"
-            ) from None
+            raise SwitchyardError(_needs_host(operation, params, hosted)) from None
     # data_dir None: Core resolves the same directory itself, so config show reports the right source
     with Core(data_dir=data_dir, hosting=False) as core:
         return core.run(operation.noun, operation.verb, params, actor="cli")
+
+
+def _needs_host(operation: Operation, params: dict[str, Any], hosted: bool) -> str:
+    name = f"{operation.noun} {operation.verb}"
+    if not hosted:
+        return f"'{name}' needs the running daemon: start it with 'switchyard api serve'"
+    # H4 R1-F5: another process (usually the Hermes gateway) hosts this directory with the API off, so
+    # 'switchyard api serve' cannot start; name the steps that work in that setup
+    target = params.get("id")
+    chat = f"/switchyard {name}" + (f" {target}" if isinstance(target, str) else "")
+    return (
+        f"'{name}' runs in the process that hosts this data directory, and its API is off: run "
+        f"'{chat}' in a Hermes chat, or set '[api] enabled = true' in config.toml in the data "
+        "directory and restart Hermes"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

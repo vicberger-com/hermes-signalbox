@@ -505,6 +505,8 @@ def test_h1_b14_send_counts_against_the_call_deadline(tmp_path: Path) -> None:
         channel.request("health", {}, timeout=1.0)
     # The call's deadline is already running when the first send starts (before H1 it began after the send,
     # so a slow write did not count). Checked on the mechanism, not on wall-clock time, which CI jitter blurs.
-    assert sent and sent[0] is not None and 0.5 < sent[0] <= 1.0
+    # The bound allows float rounding: on Windows the monotonic clock may not tick between setting the
+    # deadline and the first send, and deadline - now then comes out a few ULPs above the timeout.
+    assert sent and sent[0] is not None and 0.5 < sent[0] <= 1.0 + 1e-6
     assert all(later is not None and later < sent[0] for later in sent[1:])
     assert time.monotonic() - start < 4.0  # hang guard only

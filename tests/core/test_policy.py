@@ -6,7 +6,7 @@ import pytest
 from sy_testing import ManifestFactory, RecordingAudit
 
 from switchyard.capabilities import CAPABILITIES, MemoryGrantStore, PolicyEngine
-from switchyard.errors import CapabilityDenied, ManifestError
+from switchyard.errors import CapabilityDenied, ManifestError, UsageError
 from switchyard.manifest import load_schema
 
 
@@ -67,8 +67,10 @@ def test_unknown_capability_cannot_be_granted(make_manifest: ManifestFactory, au
 
 def test_unregistered_module_is_denied(audit: RecordingAudit) -> None:
     engine, _ = _engine(audit)
-    with pytest.raises(CapabilityDenied, match="not registered"):
+    # H4 R1-F4: granting to an unknown module is a usage error (exit 2), still audited as a refusal
+    with pytest.raises(UsageError, match="unknown module 'ghost'"):
         engine.grant("ghost", "ui.panel", actor="user")
+    assert audit.actions()[-1] == "policy.grant_refused"
     with pytest.raises(CapabilityDenied):
         engine.require("ghost", "ui.panel")
     assert engine.granted("ghost") == frozenset()

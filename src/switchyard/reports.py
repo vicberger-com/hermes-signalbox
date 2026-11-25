@@ -34,16 +34,23 @@ def build(run: Callable[[str, str, dict[str, Any]], Any], kind: str) -> dict[str
         }
     if kind == "usage":
         out: dict[str, Any] = {"kind": kind}
+        status = {m["id"]: m.get("status") for m in run("module", "list", {})}
         for module, action in (
             ("meter", "summary"),
             ("router", "status"),
             ("trimmer", "report"),
             ("workers", "report"),
         ):
-            try:
-                out[module] = run("module", "action", {"id": module, "action": action, "args": {}})
-            except Exception as exc:  # module not running: say so, do not fail the report
-                out[module] = {"unavailable": type(exc).__name__}
+            # H4 R1-F12: say why a section is missing, in words, instead of an exception class name
+            if module not in status:
+                out[module] = {"unavailable": "not installed"}
+            elif status[module] != "active":
+                out[module] = {"unavailable": "not active"}
+            else:
+                try:
+                    out[module] = run("module", "action", {"id": module, "action": action, "args": {}})
+                except Exception:  # stopped meanwhile, or the action failed: do not fail the report
+                    out[module] = {"unavailable": "action failed"}
         return out
     if kind == "security":
         tail = run("audit", "tail", {"n": 500})
