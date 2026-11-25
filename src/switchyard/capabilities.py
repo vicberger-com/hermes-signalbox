@@ -20,7 +20,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
-from switchyard.errors import CapabilityDenied, ManifestError
+from switchyard.errors import CapabilityDenied, ManifestError, UsageError
 from switchyard.manifest import Manifest
 
 CAPABILITIES: frozenset[str] = frozenset({
@@ -165,13 +165,16 @@ class PolicyEngine:
     # grants -------------------------------------------------------------------------------------------
 
     def _refuse(self, module_id: str, capability: str, actor: str, reason: str) -> CapabilityDenied:
+        self._audit_refusal(module_id, capability, actor, reason)
+        return CapabilityDenied(f"cannot grant {capability[:100]!r} to {module_id!r}: {reason}")
+
+    def _audit_refusal(self, module_id: str, capability: str, actor: str, reason: str) -> None:
         self._audit.append(
             actor=actor,
             action="policy.grant_refused",
             module=module_id,
             detail=_clip({"capability": capability, "reason": reason}),
         )
-        return CapabilityDenied(f"cannot grant {capability[:100]!r} to {module_id!r}: {reason}")
 
     def grant(self, module_id: str, capability: str, *, actor: str) -> None:
         with self._lock:
@@ -179,7 +182,9 @@ class PolicyEngine:
             if capability not in CAPABILITIES:
                 raise self._refuse(module_id, capability, actor, "unknown capability")
             if reg is None:
-                raise self._refuse(module_id, capability, actor, "module not registered")
+                # H4 R1-F4: an unknown name is a usage error (exit 2), not a denial; still audited
+                self._audit_refusal(module_id, capability, actor, "module not registered")
+                raise UsageError(f"unknown module {module_id[:100]!r}")
             if capability not in reg.requested:
                 raise self._refuse(module_id, capability, actor, "not requested in the manifest")
             if capability in reg.denied:

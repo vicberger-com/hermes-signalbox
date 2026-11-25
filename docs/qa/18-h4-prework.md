@@ -81,10 +81,10 @@ One pull request each, in this order. Tests first: each finding gets a regressio
 | R1-F9 | Medium | fixed | #199 | `module mode` from the command line wrote only the state store; the hosting process kept the mode it had read at load, ignored the change and wrote its old mode back on its next activation, and every command-line call reset the `state` column of running modules. The host now reads the mode from the store for every decision and its tick stops a module set to `disabled`; each write touches only its own columns; offline `module remove` is refused while another process hosts ([ADR-0014](../adr/0014-hermes-hosting-process.md), "Mode") |
 | R1-F10 | High | fixed | #200 | The dashboard backend looked for the loopback API in `plugin-data/switchyard`, a directory it created, while the plugin uses the directory Hermes gives it (`plugin-data/agent-plugin-switchyard-<digest>`), so the tab said "API is off". It now resolves the directory with Hermes's `PluginState` naming and the core's precedence (`switchyard.hermes.dashboard`) and creates nothing; a real-Hermes test compares it with the loaded plugin's directory |
 | R1-F11 | Low | fixed | #200 | Module list rows carried no health; the backend now fills the Health column from each running module's check (`ok`, `failing: <detail>`, `unknown`) |
-| R1-F4 | Low | open | - | - |
-| R1-F5 | Low | open | - | - |
-| R1-F7 | Low | open | - | - |
-| R1-F12 | Low | open | - | - |
+| R1-F4 | Low | fixed | WP5 | `module grant` to an unknown module was refused as a policy denial (exit 3, API 403); it is now a usage error (exit 2, API 400) as REFERENCE's exit-code table says, and still audited as `policy.grant_refused` |
+| R1-F5 | Low | fixed | WP5 | A live command run while the gateway hosts with the API off told the operator to start `switchyard api serve`, which cannot start there; it now names `/switchyard <command>` in a chat, or `[api] enabled = true` plus a Hermes restart |
+| R1-F7 | Low | fixed | WP5 | Setting the mode a module already has recorded `module.mode_changed`; it now records nothing (the mode is compared with the stored one) |
+| R1-F12 | Low | fixed | WP5 | The usage report printed an exception class name (`unavailable: UsageError`) for a module that was not running; it now says `not installed`, `not active` or `action failed` |
 | R1-F1 | Documentation | open | - | - |
 | R1-F2 | Documentation | open | - | - |
 | R1-F3 | Documentation | open | - | - |

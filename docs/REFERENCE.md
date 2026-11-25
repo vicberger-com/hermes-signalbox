@@ -33,6 +33,9 @@ CLI exit codes: 0 success; 1 operation error, or a result that reports failure (
 2 usage error (an unknown name or an invalid value, including an unknown capability name); 3 refused by policy
 (a capability not granted, or something the module's manifest does not declare).
 
+`report show --kind usage` has one section per usage module (`meter`, `router`, `trimmer`, `workers`); a
+module that cannot report shows `unavailable` with the reason `not installed`, `not active` or `action failed`.
+
 | Command | Parameters | What it does | Model | Dashboard |
 |---|---|---|---|---|
 | `audit ack` |  | Acknowledge a recorded audit-chain failure after investigating it (operator only). |  |  |

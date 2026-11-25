@@ -125,7 +125,7 @@ def test_reports(core: Core) -> None:
     health = core.run("report", "show", {"kind": "health"}, actor="t")
     assert any(m["id"] == "inbox" for m in health["modules"]) and health["failed"] == []
     usage = core.run("report", "show", {"kind": "usage"}, actor="hermes")
-    assert usage["meter"] == {"unavailable": "SwitchyardError"} or "unavailable" in usage["meter"]
+    assert usage["meter"] == {"unavailable": "not active"}  # H4 R1-F12: a reason, not a class name
     security = core.run("report", "show", {"kind": "security"}, actor="t")
     assert security["audit"]["ok"] is True
     core.run("module", "grant", {"id": "meter", "capability": "ui.panel"}, actor="t")

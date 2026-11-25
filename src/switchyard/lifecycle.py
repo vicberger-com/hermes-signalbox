@@ -312,9 +312,12 @@ class ModuleManager(ModuleDirectory):
             raise UsageError(f"invalid mode {mode!r}; expected one of {sorted(MODES)}")
         with self._lock:
             e = self._entry(module_id)
+            unchanged = self._current_mode(e) == mode  # H4 R1-F7: as the store has it now
             if mode == "disabled" and e.status is ModuleStatus.ACTIVE:
                 self.deactivate(module_id, actor=actor, reason="disabled")
             e.mode = mode
+            if unchanged:
+                return  # H4 R1-F7: nothing changed, so nothing to record
             self._persist_mode(e)  # H4 R1-F9: the mode column only; the hosting process owns ``state``
         self._record("module.mode_changed", module_id, actor, mode=mode)
 

@@ -41,6 +41,14 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   `revoked <capability>`), within 15 s in Hermes and 1 s for the daemon. Optional capabilities are still
   checked when used.
 
+- R1-F5 (Low): a live command (`module activate`, `health`, `panel`, ...) run while another process, usually the
+  Hermes gateway, hosts the data directory with the API off no longer says to start `switchyard api serve`, which
+  cannot start there. It names the steps that work: `/switchyard <command>` in a Hermes chat, or
+  `[api] enabled = true` in the data directory's `config.toml` and a Hermes restart.
+- R1-F7 (Low): setting the mode a module already has no longer records `module.mode_changed`.
+- R1-F12 (Low): the usage report says why a module's section is missing (`unavailable: not installed`,
+  `not active` or `action failed`) instead of printing an exception class name such as `UsageError`.
+
 ### Changed
 
 - `config show` prints `hosting.here` and `hosting.pid`; `module show` and `module health` carry `host_pid`
@@ -51,6 +59,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   naming that process: the host would keep running the module on grants and data the command just dropped.
   Remove it where it runs (`/switchyard module remove <id>` in a Hermes chat), or stop that process first.
   With `switchyard api serve` the command goes through the daemon as before.
+- R1-F4 (Low): `module grant` to an unknown module exits 2 (usage error), as the exit-code table in
+  `docs/REFERENCE.md` says for an unknown name; it exited 3 (denied). The API answers 400 instead of 403, and
+  the model sees `UsageError` instead of `CapabilityDenied`. The attempt is still audited as
+  `policy.grant_refused` (reason `module not registered`). Scripts that treated exit 3 as "unknown module" must
+  check for 2.
 
 
 ## [1.0.2] - 2026-11-24
