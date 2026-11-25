@@ -338,8 +338,8 @@ class ModuleManager(ModuleDirectory):
             self._entry(module_id).last_used = self._clock()
 
     def tick(self) -> None:
-        """Stop modules another process set to ``disabled`` (H4 R1-F9), and ``auto`` modules idle for
-        ``idle_stop_seconds``."""
+        """Stop modules another process set to ``disabled`` (H4 R1-F9) or whose required grants it revoked
+        (H4-N1), and ``auto`` modules idle for ``idle_stop_seconds``."""
         now = self._clock()
         for module_id in self.ids():
             e = self._entries[module_id]
@@ -348,6 +348,13 @@ class ModuleManager(ModuleDirectory):
             mode = self._current_mode(e)
             if mode == "disabled":
                 self.deactivate(module_id, actor=CORE_ACTOR, reason="disabled")
+                continue
+            # H4-N1: grants are read from the store, so a revoke made by another process (the offline CLI) is
+            # seen here. Its hooks, gates and jobs were registered under the old grant; stopping the module
+            # removes them all, as ``module revoke`` does in the process that runs it.
+            missing = sorted(e.manifest.requested - e.manifest.optional - self._policy.granted(module_id))
+            if missing:
+                self.deactivate(module_id, actor=CORE_ACTOR, reason=f"revoked {','.join(missing)}")
                 continue
             idle = e.manifest.idle_stop_seconds
             if mode == "auto" and idle > 0 and now - e.last_used >= idle:
