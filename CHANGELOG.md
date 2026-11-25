@@ -25,6 +25,15 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   own columns, so a command-line call no longer resets the `state` column of modules the host runs, and a
   process that starts hosting writes the true state of every module.
 
+- R1-F10 (High): the dashboard tab now reaches the plugin's loopback API. Its backend looked for the API in
+  `plugin-data/switchyard` (and created that directory), while the plugin keeps its data in the directory Hermes
+  gives it (`plugin-data/agent-plugin-switchyard-<digest>`), so the tab said "API is off" although it was on. The
+  backend now resolves the directory with the plugin's own rule (the plugin's `data_dir` setting, then
+  `SWITCHYARD_DATA_DIR`, then Hermes's plugin data directory) and creates nothing. A `plugin-data/switchyard`
+  directory left by v1.0.2 is unused and can be deleted.
+- R1-F11 (Low): the dashboard's Health column is filled: `ok`, `failing: <detail>`, or `unknown` for each running
+  module, empty for modules that are not running.
+
 ### Changed
 
 - `config show` prints `hosting.here` and `hosting.pid`; `module show` and `module health` carry `host_pid`

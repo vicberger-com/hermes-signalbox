@@ -150,6 +150,32 @@ def test_dashboard_api_imports_against_hermes(monkeypatch: pytest.MonkeyPatch) -
     assert module.router.routes
 
 
+def test_h4_r1_f10_dashboard_finds_the_plugins_data_dir_in_real_hermes(hermes: Any) -> None:
+    """With Hermes's own ``PluginState`` naming, the dashboard backend resolves the directory the loaded
+    plugin uses, and resolving it or reading with the API off creates nothing under ``plugin-data``."""
+    import asyncio
+    import importlib.util
+
+    pytest.importorskip("fastapi")
+    import switchyard.hermes as adapter
+
+    plugin_dir = adapter.current().core.data_dir
+    root = plugin_dir.parent
+    before = sorted(p.name for p in root.iterdir())
+    path = Path(__file__).resolve().parents[2] / "dashboard" / "plugin_api.py"
+    spec = importlib.util.spec_from_file_location("switchyard_dashboard_api_h4", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module._data_dir() == plugin_dir
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:  # [api] is off by default: 503, and no stray directory
+        asyncio.run(module.modules())
+    assert exc.value.status_code == 503
+    assert sorted(p.name for p in root.iterdir()) == before
+
+
 def test_hermes_installs_nothing_for_the_plugin() -> None:
     """1.1 S-1: Hermes's own reader sees no packages to put into its shared environment (a sealed desktop
     install reports 'install out of sync' when a plugin's package lands there)."""
