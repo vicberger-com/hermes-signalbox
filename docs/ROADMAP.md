@@ -94,5 +94,5 @@
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for coding, Git, documentation, and SBOM standards.  
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for coding, Git, documentation, and SBOM standards.  
 Each phase has pre-work Q&A in `docs/qa/` — review before starting.
