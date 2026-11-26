@@ -9,6 +9,10 @@ version = "0.1.0"
 license = "Apache-2.0"
 license_class = "open"            # open | proprietary-connector
 summary = "Template module that shows the full contract and does nothing else."
+# Optional links shown to the operator (1.1). Plain https URLs only: no credentials, spaces or quotes.
+# homepage = "https://example.com/my-module"
+# docs = "https://example.com/my-module/docs"
+# based_on = [{name = "upstream-project", url = "https://example.org/upstream", license = "MIT"}]
 requires_core = ">=1.0,<2"        # core versions it runs on; enforced: a mismatch refuses the module
 isolation = "in-process"          # in-process (this repository only) | subprocess
 entry = "example:ExampleModule"

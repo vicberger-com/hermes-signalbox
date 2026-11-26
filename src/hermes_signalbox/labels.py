@@ -203,6 +203,25 @@ def module_state(row: Mapping[str, Any]) -> str:
     return "Ready, starts with Hermes"
 
 
+def update_state(update: Mapping[str, Any]) -> str:
+    """The update state of a module in plain words, from the ``update`` part of ``module show``."""
+    state = update.get("state")
+    if state == "bundled":
+        return "Updates with Signalbox"
+    if state == "not_checked":
+        return "Not checked: start the updates module to check"
+    minutes = update.get("checked_minutes_ago")
+    when = " (checked just now)" if minutes == 0 else f" (checked {minutes} min ago)" if minutes else ""
+    if state == "up_to_date":
+        return f"Up to date{when}"
+    if state == "available":
+        old, new = str(update.get("installed") or "?")[:7], str(update.get("available") or "?")[:7]
+        return f"Update available: {old} \u2192 {new}{when}"
+    if state == "check_failed":
+        return f"The last check failed{when}"
+    return "Unknown"
+
+
 def glossary() -> dict[str, dict[str, dict[str, str]]]:
     """Every table as plain data, for the API, the dashboard and the user guide."""
     tables = {

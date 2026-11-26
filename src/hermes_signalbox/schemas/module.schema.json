@@ -19,6 +19,9 @@
         "license": {"type": "string", "description": "SPDX identifier, or 'Proprietary' for a closed-source connector target."},
         "license_class": {"type": "string", "enum": ["open", "proprietary-connector"]},
         "summary": {"type": "string"},
+        "homepage": {"type": "string", "pattern": "^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:[/?#][A-Za-z0-9._~:/?#@!$&'()*+,;=%-]*)?$"},
+        "docs": {"type": "string", "pattern": "^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:[/?#][A-Za-z0-9._~:/?#@!$&'()*+,;=%-]*)?$"},
+        "based_on": {"type": "array", "items": {"type": "object", "required": ["name", "url"], "additionalProperties": false, "properties": {"name": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._+-]{0,63}$"}, "url": {"type": "string", "pattern": "^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:[/?#][A-Za-z0-9._~:/?#@!$&'()*+,;=%-]*)?$"}, "license": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 .()+-]{0,63}$"}}}},
         "requires_core": {"type": "string"},
         "isolation": {"type": "string", "enum": ["in-process", "subprocess"]},
         "entry": {"type": "string", "pattern": "^[a-z_][a-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$"}

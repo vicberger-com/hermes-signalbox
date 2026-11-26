@@ -129,6 +129,42 @@ def _info(core: Core, module_id: str) -> dict[str, Any]:
     }
 
 
+def _source(core: Core, module_id: str) -> dict[str, Any]:
+    """Where a module comes from (H5 WP3, #210)."""
+    manifest = core.manager.manifest(module_id)
+    if manifest.update_source != "git":
+        return {"kind": "bundled"}
+    return {
+        "kind": "git",
+        "url": manifest.update_url,
+        "ref": core.updates.installed_ref(module_id),
+        "channel": manifest.update_channel,
+    }
+
+
+def _update_state(core: Core, module_id: str) -> dict[str, Any]:
+    """Whether an update is known, from the last check only. It never contacts the network: checks are made
+    by the ``updates`` module or ``module check_updates`` (H5 WP3, #210)."""
+    if core.manager.manifest(module_id).update_source != "git":
+        return {"state": "bundled"}  # updates together with Signalbox
+    installed = core.updates.installed_ref(module_id)
+    last = core.updates.last_check(module_id)
+    if last is None:
+        return {"state": "not_checked", "installed": installed}
+    age, row = last
+    out: dict[str, Any] = {
+        "state": "up_to_date",
+        "installed": installed,
+        "checked_minutes_ago": int(age // 60),
+    }
+    if "available" not in row or row.get("error"):
+        out["state"] = "check_failed"
+    elif row["available"] != installed:
+        out["state"] = "available"
+        out["available"] = row["available"]
+    return out
+
+
 def _known_capability(name: str) -> str:
     """An unknown capability name is a usage error (exit 2), not a denial (H1 D-26)."""
     if name not in CAPABILITIES:
@@ -154,6 +190,11 @@ def _module_show(core: Core, p: dict[str, Any], actor: str) -> Any:
         **_info(core, p["id"]),
         "summary": manifest.summary,
         "license": manifest.license,
+        # H5 WP3 (#210): where it comes from, its links (https only, by schema), the last known update state
+        "source": _source(core, p["id"]),
+        "links": {k: v for k, v in (("homepage", manifest.homepage), ("docs", manifest.docs)) if v},
+        "based_on": [dict(entry) for entry in manifest.based_on],
+        "update": _update_state(core, p["id"]),
         "contributes": {k: list(v) for k, v in manifest.contributes.items()},
         "net_hosts": list(manifest.net_hosts),
         "secrets": list(manifest.secrets),

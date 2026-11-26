@@ -21,6 +21,13 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   fails when one is missing.
 - **Report summaries** (#207): every `report show` result now carries `purpose` (the question the report
   answers) and `summary` (`headline`, `counts`, `lines`), computed from the report data alone.
+- **Module details** (#210): `module show` reports `source` (bundled, or the git repository, installed commit
+  and channel), `links`, `based_on` and `update` (the last known update state; it never contacts the
+  network). The dashboard's module rows carry the same details plus each module's description and its state
+  in plain words.
+- **Optional manifest links** (#210): `[module] homepage`, `docs` and `based_on = [{name, url, license}]`.
+  Plain `https://` URLs only; a manifest with any other link (http, `javascript:`, credentials, spaces,
+  quotes) fails to load.
 - **Label glossary for the dashboard** (#208): `GET /labels` in the dashboard backend serves the label tables.
   It is static and makes no call to the core.
 

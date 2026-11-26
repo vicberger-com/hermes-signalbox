@@ -356,6 +356,11 @@ class Manifest:
     programs: tuple[str, ...] | None = None
     # SHA-256 of the manifest bytes this object was loaded from (1.1 acceptance S1-6).
     digest: str = ""
+    # H5 WP3 (#210): optional links shown to the operator. The schema accepts plain https URLs only (no
+    # credentials, spaces, quotes or angle brackets), because a manifest is third-party text.
+    homepage: str | None = None
+    docs: str | None = None
+    based_on: tuple[Mapping[str, str], ...] = ()
 
 
 def _entry_file(directory: Path, entry_module: str) -> Path:
@@ -441,4 +446,7 @@ def load_manifest(path: Path) -> Manifest:
         update_url=update.get("url"),
         update_ref=update.get("ref"),
         update_channel=update.get("channel", "main"),
+        homepage=module.get("homepage"),
+        docs=module.get("docs"),
+        based_on=tuple(MappingProxyType(dict(entry)) for entry in module.get("based_on", ())),
     )
