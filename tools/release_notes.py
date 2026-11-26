@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 CHANGELOG = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
-REPO = "https://github.com/vicberger-com/hermes-switchyard"
+REPO = "https://github.com/vicberger-com/hermes-signalbox"
 
 
 def section(text: str, version: str) -> str:

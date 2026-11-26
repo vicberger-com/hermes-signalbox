@@ -12,12 +12,12 @@ from pathlib import Path
 import pytest
 from sy_testing import ManifestFactory, RecordingAudit, write_module
 
-import switchyard
-from switchyard.errors import ManifestError
-from switchyard.manifest import core_compatibility, load_manifest
+import hermes_signalbox
+from hermes_signalbox.errors import ManifestError
+from hermes_signalbox.manifest import core_compatibility, load_manifest
 
 ROOT = Path(__file__).resolve().parents[2]
-BUNDLED = ROOT / "src" / "switchyard" / "modules"
+BUNDLED = ROOT / "src" / "hermes_signalbox" / "modules"
 
 
 @pytest.mark.parametrize(
@@ -46,12 +46,12 @@ def test_h1_a20_an_unreadable_spec_is_a_manifest_error(make_manifest: ManifestFa
 
 
 def _manager(tmp_path: Path, audit: RecordingAudit):  # type: ignore[no-untyped-def]
-    from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-    from switchyard.context import MemoryPanelRegistry
-    from switchyard.events import EventBus
-    from switchyard.lifecycle import ModuleManager
-    from switchyard.logs import JsonlLogSink
-    from switchyard.scheduler import Scheduler
+    from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+    from hermes_signalbox.context import MemoryPanelRegistry
+    from hermes_signalbox.events import EventBus
+    from hermes_signalbox.lifecycle import ModuleManager
+    from hermes_signalbox.logs import JsonlLogSink
+    from hermes_signalbox.scheduler import Scheduler
 
     trusted = tmp_path / "trusted"
     trusted.mkdir()
@@ -85,7 +85,7 @@ def test_h1_a20_an_old_template_module_loads_with_a_warning(tmp_path: Path, audi
 
 @pytest.mark.bundled_modules
 def test_h1_a20_module_show_carries_the_note(tmp_path: Path) -> None:
-    from switchyard.core import Core
+    from hermes_signalbox.core import Core
 
     data = tmp_path / "data"
     write_module(data / "modules", "legacy", requires_core=">=0.1,<1", isolation="subprocess")
@@ -105,5 +105,5 @@ def test_h1_a20_bundled_modules_and_the_template_declare_the_1x_range() -> None:
     for d in dirs:
         m = load_manifest(d)
         assert m.requires_core == ">=1.0,<2", d.name
-        assert core_compatibility(m.requires_core, switchyard.__version__)[0] == "ok"
+        assert core_compatibility(m.requires_core, hermes_signalbox.__version__)[0] == "ok"
     assert 'requires_core = ">=1.0,<2"' in (ROOT / "templates" / "module" / "module.toml").read_text("utf-8")

@@ -1,10 +1,10 @@
 # Reference
 
-Written by hand against the code (operations table: `switchyard.ops.OPERATIONS`; a test checks that every
+Written by hand against the code (operations table: `hermes_signalbox.ops.OPERATIONS`; a test checks that every
 operation is listed here). How to use them: [USER-GUIDE.md](USER-GUIDE.md).
 
 Global CLI options, before the noun: `--json` (print results as JSON) and `--data-dir PATH` (use this data
-directory; it wins over `SWITCHYARD_DATA_DIR`).
+directory; it wins over `SIGNALBOX_DATA_DIR`).
 
 Module states: `verified` (manifest valid, not running), `active` (running), `stopped` (deactivated or idle-stopped)
 and `failed` (activation, health or a hook failed; `error` names the exception class). Modes: `manual` (only the
@@ -13,15 +13,15 @@ A bundled module's default mode is its manifest's `lifecycle.activation`.
 
 ## Operations
 
-The same operations run from the CLI (`switchyard <noun> <verb>`), the `/switchyard` slash command in Hermes,
+The same operations run from the CLI (`signalbox <noun> <verb>`), the `/signalbox` slash command in Hermes,
 and the loopback API (`POST /v1/<noun>/<verb>` with a JSON body). "Model" marks what the `hermes` actor (the
 model's tools) may run; the core refuses everything else for it. "Dashboard" marks what the dashboard's API
-profile accepts. Also: `switchyard version`, `switchyard api serve [--port N]` (run the hosting daemon and API;
+profile accepts. Also: `hermes-signalbox version`, `hermes-signalbox api serve [--port N]` (run the hosting daemon and API;
 SIGTERM, Ctrl+C and Ctrl+Break stop it and remove `api.port` and `api.token`).
 
 Operations that need a running module instance (`module activate`, `deactivate`, `health`, `panel`,
 `action`, `update`, `preview`, `rollback`, `check_updates`, `report show`) need the hosting process for the
-data directory and are marked `[daemon]` in `switchyard <noun> --help`. `module list` and `module show` include
+data directory and are marked `[daemon]` in `signalbox <noun> --help`. `module list` and `module show` include
 `missing_grants` (capabilities needed to start that are not granted). `config show` prints `data_dir` and
 `data_dir_source` (why that directory was chosen) and nested settings as `section.key: value`.
 
@@ -64,16 +64,16 @@ module that cannot report shows `unavailable` with the reason `not installed`, `
 
 | Name | Arguments | Notes |
 |---|---|---|
-| `switchyard_modules` | `action`: list, show, activate, health, run; `id`; `name` and `args` for run | `run` reaches read-only module actions only; results are wrapped as `{"untrusted_data": ..., "note": ...}` |
-| `switchyard_audit` | `action`: verify, tail; `n` | |
-| `switchyard_host` | none | Host profile |
-| `/switchyard <noun> <verb> [args]` | as the CLI, `key=value` arguments | Runs as the operator (`user` actor) |
+| `signalbox_modules` | `action`: list, show, activate, health, run; `id`; `name` and `args` for run | `run` reaches read-only module actions only; results are wrapped as `{"untrusted_data": ..., "note": ...}` |
+| `signalbox_audit` | `action`: verify, tail; `n` | |
+| `signalbox_host` | none | Host profile |
+| `/signalbox <noun> <verb> [args]` | as the CLI, `key=value` arguments | Runs as the operator (`user` actor) |
 
 ## Core settings (`<data_dir>/config.toml`)
 
 | Key | Default | Meaning |
 |---|---|---|
-| `data_dir` | plugin data directory | Absolute path for all state (also `SWITCHYARD_DATA_DIR`) |
+| `data_dir` | plugin data directory | Absolute path for all state (also `SIGNALBOX_DATA_DIR`) |
 | `[api] enabled` | `false` | Start the loopback control API in the hosting process (needed by the dashboard) |
 | `[api] port` | `0` | Port; `0` picks a free one (written to `api.port`) |
 | `[log] level` | `INFO` | DEBUG, INFO, WARNING, ERROR |
@@ -85,7 +85,7 @@ module that cannot report shows `unavailable` with the reason `not installed`, `
 
 Core actions (detail values are redacted before writing):
 
-`api.start_failed`, `audit.acknowledged`, `audit.verify_failed`, `core.hosting_acquired`, `core.not_hosting`, `core.tick_failed`, `event.depth_exceeded`, `event.handler_failed`, `fs.read`, `fs.read_failed`, `hermes.config.rollback`, `hermes.config.write`, `module.action`, `module.activated`, `module.auto_skipped`, `module.deactivate_failed`, `module.deactivated`, `module.delegation_failed`, `module.delegation_refused`, `module.failed`, `module.gate_blocked`, `module.gate_rejected`, `module.hook_failed`, `module.hook_timeout`, `module.job_skipped`, `module.job_timeout`, `module.middleware_rejected`, `module.mode_changed`, `module.notify`, `module.rejected`, `module.reloaded`, `module.removed`, `module.rolled_back`, `module.transform_paused`, `module.update_check_failed`, `module.update_previewed`, `module.update_rejected`, `module.updated`, `module.verified`, `net.request`, `policy.denied`, `policy.grant_refused`, `policy.granted`, `policy.grants_removed`, `policy.revoked`, `process.spawned`, `secret.backend_added`, `secret.backend_removed`, `secret.leak_blocked`, `secret.unavailable`, `secret.used`, `trigger.failed`.
+`api.start_failed`, `audit.acknowledged`, `audit.verify_failed`, `core.hosting_acquired`, `core.migrated`, `core.not_hosting`, `core.tick_failed`, `event.depth_exceeded`, `event.handler_failed`, `fs.read`, `fs.read_failed`, `hermes.config.rollback`, `hermes.config.write`, `module.action`, `module.activated`, `module.auto_skipped`, `module.deactivate_failed`, `module.deactivated`, `module.delegation_failed`, `module.delegation_refused`, `module.failed`, `module.gate_blocked`, `module.gate_rejected`, `module.hook_failed`, `module.hook_timeout`, `module.job_skipped`, `module.job_timeout`, `module.middleware_rejected`, `module.mode_changed`, `module.notify`, `module.rejected`, `module.reloaded`, `module.removed`, `module.rolled_back`, `module.transform_paused`, `module.update_check_failed`, `module.update_previewed`, `module.update_rejected`, `module.updated`, `module.verified`, `net.request`, `policy.denied`, `policy.grant_refused`, `policy.granted`, `policy.grants_removed`, `policy.revoked`, `process.spawned`, `secret.backend_added`, `secret.backend_removed`, `secret.leak_blocked`, `secret.unavailable`, `secret.used`, `trigger.failed`.
 
 Module actions are recorded as `module.<id>.<name>`:
 

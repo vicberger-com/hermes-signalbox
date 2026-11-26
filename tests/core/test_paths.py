@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from switchyard.errors import ConfigError
-from switchyard.paths import SUBDIRS, default_data_dir, ensure_data_dir, resolve_data_dir
+from hermes_signalbox.errors import ConfigError
+from hermes_signalbox.paths import SUBDIRS, default_data_dir, ensure_data_dir, resolve_data_dir
 
 
 def test_env_override_beats_hermes_but_not_an_explicit_dir(tmp_path: Path) -> None:
-    env = {"SWITCHYARD_DATA_DIR": str(tmp_path / "env")}
+    env = {"SIGNALBOX_DATA_DIR": str(tmp_path / "env")}
     assert resolve_data_dir(env=env, hermes_dir=tmp_path / "hermes") == tmp_path / "env"
     got = resolve_data_dir(env=env, configured=tmp_path / "cfg", hermes_dir=tmp_path / "hermes")
     assert got == tmp_path / "cfg"  # H1 A-1
@@ -31,23 +31,23 @@ def test_hermes_dir_beats_platform_default(tmp_path: Path) -> None:
 
 def test_relative_paths_are_refused(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="absolute"):
-        resolve_data_dir(env={"SWITCHYARD_DATA_DIR": "relative/dir"})
+        resolve_data_dir(env={"SIGNALBOX_DATA_DIR": "relative/dir"})
     with pytest.raises(ConfigError, match="absolute"):
         resolve_data_dir(env={}, configured=Path("rel"))
 
 
 def test_empty_env_value_is_ignored(tmp_path: Path) -> None:
-    assert resolve_data_dir(env={"SWITCHYARD_DATA_DIR": ""}, configured=tmp_path) == tmp_path
+    assert resolve_data_dir(env={"SIGNALBOX_DATA_DIR": ""}, configured=tmp_path) == tmp_path
 
 
 @pytest.mark.parametrize(
     ("platform", "env", "expected_parts"),
     [
-        ("win32", {"LOCALAPPDATA": "LAD"}, ("LAD", "switchyard")),
-        ("win32", {}, ("HOME", "AppData", "Local", "switchyard")),
-        ("darwin", {}, ("HOME", "Library", "Application Support", "switchyard")),
-        ("linux", {"XDG_DATA_HOME": "XDG"}, ("XDG", "switchyard")),
-        ("linux", {}, ("HOME", ".local", "share", "switchyard")),
+        ("win32", {"LOCALAPPDATA": "LAD"}, ("LAD", "signalbox")),
+        ("win32", {}, ("HOME", "AppData", "Local", "signalbox")),
+        ("darwin", {}, ("HOME", "Library", "Application Support", "signalbox")),
+        ("linux", {"XDG_DATA_HOME": "XDG"}, ("XDG", "signalbox")),
+        ("linux", {}, ("HOME", ".local", "share", "signalbox")),
     ],
 )
 def test_platform_defaults(
@@ -61,7 +61,7 @@ def test_platform_defaults(
 
 def test_relative_xdg_is_ignored(tmp_path: Path) -> None:
     got = default_data_dir(platform="linux", env={"XDG_DATA_HOME": "rel"}, home=tmp_path)
-    assert got == tmp_path / ".local" / "share" / "switchyard"
+    assert got == tmp_path / ".local" / "share" / "signalbox"
 
 
 def test_ensure_creates_layout(tmp_path: Path) -> None:

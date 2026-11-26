@@ -14,7 +14,7 @@
 
 - <Effect.>
 
-Full record: [ADR-0012](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0012-compaction-deferred.md)
+Full record: [ADR-0012](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0012-compaction-deferred.md)
 
 ---
-**Sources:** [ADR-0012](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0012-compaction-deferred.md)
+**Sources:** [ADR-0012](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0012-compaction-deferred.md)

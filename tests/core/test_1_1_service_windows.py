@@ -2,7 +2,7 @@
 
 Task Scheduler starts programs in ``C:\\Windows\\System32``. ``shutil.which`` then finds ``icacls`` as
 ``.\\icacls.EXE`` in the working directory, ``find_program`` refuses it (H1 D-15), the API token could not be
-restricted, and ``switchyard api serve`` died with a traceback. Windows system tools now come from
+restricted, and ``hermes-signalbox api serve`` died with a traceback. Windows system tools now come from
 ``%SystemRoot%\\System32`` directly, and a start failure is a clean error.
 """
 
@@ -14,8 +14,8 @@ from typing import Any
 
 import pytest
 
-from switchyard import api, process
-from switchyard.errors import SwitchyardError
+from hermes_signalbox import api, process
+from hermes_signalbox.errors import SignalboxError
 
 
 @pytest.fixture
@@ -74,12 +74,12 @@ def test_kill_tree_uses_the_system_taskkill(system32: Path, monkeypatch: pytest.
 def test_serve_start_failure_is_a_clean_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from switchyard import cli
+    from hermes_signalbox import cli
 
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
     def refuse(self: Any) -> None:
-        raise SwitchyardError("could not restrict access to api.token: OSError")
+        raise SignalboxError("could not restrict access to api.token: OSError")
 
     monkeypatch.setattr(api.ControlServer, "start", refuse)
     code = cli.main(["--data-dir", str(tmp_path / "data"), "api", "serve"])

@@ -1,0 +1,540 @@
+"""Loopback control API and its bounded client (spec section 3, Control API; DESIGN.md section 4, control 7).
+
+Server: ``ThreadingHTTPServer`` bound to ``127.0.0.1`` only. Every request is checked in this order:
+
+1. ``Host`` must be ``127.0.0.1:<port>`` or ``localhost:<port>`` (defeats DNS rebinding);
+2. any ``Origin`` header is refused (the CLI is the only client; browsers send one cross-origin), and no
+   CORS header is ever sent;
+3. ``GET /v1/health`` is answered without a token; everything else is ``POST /v1/<noun>/<verb>``. A health
+   request with a ``X-Signalbox-Challenge`` header (32-128 hex characters) gets ``proof``, the HMAC-SHA256 of
+   the challenge keyed with the token: the client checks it before it sends the token (H1 B-8);
+4. ``Authorization: Bearer <token>`` compared with ``hmac.compare_digest``; the token is random per start and
+   written to ``<data_dir>/api.token`` with user-only permissions;
+5. ``Content-Type: application/json``, no ``Transfer-Encoding``, ``Content-Length`` <= ``MAX_BODY_BYTES``
+   (checked before reading), body a JSON object.
+
+Responses use fixed headers only; ``safe_header`` rejects CR/LF (CPython's ``send_header`` does not). The
+``Server`` header does not reveal the Python version. Request lines are never logged. At most
+``MAX_CONNECTIONS`` handler threads run at once (further connections are closed), and each request must arrive
+whole within ``REQUEST_READ_DEADLINE_S`` (H1 B-7). The token file is restricted before the token is written
+into it (H1 B-17).
+
+Client: reads ``api.port`` and ``api.token``, talks to ``127.0.0.1`` only, and reads at most
+``MAX_RESPONSE_BYTES`` (an unbounded read trusts ``Content-Length``; CVE-2025-13836 class). It sends the token
+only after the listener proved it holds it (``ApiUntrusted`` otherwise). A failure before the operation was
+sent is ``ApiUnavailable`` (the CLI may run it locally); a failure after it is ``ApiOutcomeUnknown`` (the
+daemon may have applied it; nothing runs again, H1 B-9).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import http.client
+import io
+import json
+import os
+import re
+import secrets
+import socket
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+
+from hermes_signalbox.errors import CapabilityDenied, NotAvailable, PolicyRefused, SignalboxError, UsageError
+
+MAX_BODY_BYTES = 64 * 1024
+MAX_RESPONSE_BYTES = 1024 * 1024
+SOCKET_TIMEOUT_S = 10.0
+CLIENT_TIMEOUT_S = 60.0
+CONNECT_TIMEOUT_S = 0.5  # loopback: a refused or dead port must not cost seconds (H1 D-9)
+# H3-20: MAX_CONNECTIONS and REQUEST_READ_DEADLINE_S are now configurable
+# via api.max_connections and api.request_read_deadline_s
+# Defaults (used as fallback when config is not available):
+DEFAULT_MAX_CONNECTIONS = 16  # handler threads at once; further connections are closed at once (H1 B-7)
+DEFAULT_REQUEST_READ_DEADLINE_S = 10.0  # the whole request (head and body) must arrive within this (H1 B-7)
+LOOPBACK = "127.0.0.1"
+_ROUTE = re.compile(r"/v1/([a-z]+)/([a-z_]+)\Z")
+CHALLENGE_HEADER = "X-Signalbox-Challenge"
+_CHALLENGE = re.compile(r"[0-9a-f]{32,128}\Z")
+_PROOF_CONTEXT = "signalbox-api-v1:"
+_STATUS_ERRORS: dict[int, type[SignalboxError]] = {400: UsageError, 403: CapabilityDenied, 503: NotAvailable}
+
+
+class ApiUnavailable(NotAvailable):
+    """No running daemon could be reached."""
+
+
+class ApiUntrusted(SignalboxError):
+    """The listener on the daemon's port could not prove it holds the token (H1 B-8); the token was not
+    sent."""
+
+
+class ApiOutcomeUnknown(SignalboxError):
+    """The request was sent but no answer came back: the daemon may have applied it (H1 B-9)."""
+
+
+def token_proof(token: str, challenge: str) -> str:
+    return hmac.new(
+        token.encode("utf-8"), (_PROOF_CONTEXT + challenge).encode("ascii"), hashlib.sha256
+    ).hexdigest()
+
+
+class ApiRestricted(CapabilityDenied):
+    """The hosting process's API does not serve this operation (the restricted profile Hermes runs)."""
+
+
+def safe_header(key: str, value: str) -> tuple[str, str]:
+    if any(c in key or c in value for c in "\r\n"):
+        raise ValueError("header contains a line break")
+    return key, value
+
+
+def _write_private(path: Path, text: str) -> None:
+    """Write ``text`` to a file only this user can read. The file is restricted while still empty, and only
+    then written (H1 B-17); a leftover file is truncated first."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
+    fd = os.open(path, flags, 0o600)
+    os.close(fd)
+    if os.name == "posix":
+        os.chmod(path, 0o600)
+    else:
+        _restrict_windows_acl(path)  # deletes the file and raises if it cannot
+    fd = os.open(path, os.O_WRONLY | os.O_TRUNC | getattr(os, "O_BINARY", 0))
+    try:
+        os.write(fd, text.encode("utf-8"))
+    finally:
+        os.close(fd)
+
+
+def _restrict_windows_acl(path: Path) -> None:
+    """Drop the inherited ACL; only this user (plus SYSTEM/Administrators, if set explicitly) keeps access.
+
+    Fails closed: the token file is deleted.
+    """
+    import getpass
+    import subprocess  # nosec B404
+
+    user = getpass.getuser()
+    from hermes_signalbox.process import system_program
+
+    exe = system_program("icacls")
+    try:
+        if exe is None:
+            raise OSError("icacls not found")
+        # Fixed argv, no shell; the user name comes from this process's own account.
+        subprocess.run(  # noqa: S603 # nosec B603
+            # Drop inherited entries, grant this user, and remove broad groups (Everyone, Authenticated Users,
+            # Users) in case they were set explicitly. SYSTEM and Administrators can read any file anyway.
+            [exe, str(path), "/inheritance:r", "/grant:r", f"{user}:F",
+             "/remove:g", "*S-1-1-0", "*S-1-5-11", "*S-1-5-32-545"],
+            capture_output=True, timeout=30, check=True,
+        )  # fmt: skip
+    except (OSError, subprocess.SubprocessError) as exc:
+        path.unlink(missing_ok=True)
+        raise SignalboxError(f"could not restrict access to {path.name}: {type(exc).__name__}") from None
+
+
+class _DeadlineReader(io.RawIOBase):
+    """Socket reads that share one deadline for the whole request (H1 B-7): ``SOCKET_TIMEOUT_S`` alone is per
+    read, so a client sending a byte at a time could hold a handler thread for ever."""
+
+    def __init__(self, sock: socket.socket, deadline: float) -> None:
+        self._sock = sock
+        self._deadline = deadline
+        self.read_timeout = SOCKET_TIMEOUT_S  # per read; lowered while discarding an unwanted body
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("request not received within the deadline")
+        self._sock.settimeout(min(remaining, self.read_timeout))
+        return self._sock.recv_into(buffer)
+
+
+class _Handler(BaseHTTPRequestHandler):
+    server_version = "signalbox"
+    sys_version = ""
+    timeout = SOCKET_TIMEOUT_S
+    control: ControlServer  # set on the subclass created per server
+
+    def setup(self) -> None:
+        super().setup()
+        deadline = time.monotonic() + self.control.request_read_deadline_s
+        self.rfile = io.BufferedReader(_DeadlineReader(self.connection, deadline))
+
+    def log_message(self, format: str, *args: Any) -> None:  # request lines can carry data; never log them
+        pass
+
+    def version_string(self) -> str:
+        return self.server_version
+
+    def send_header(self, keyword: str, value: str) -> None:
+        super().send_header(*safe_header(keyword, value))
+
+    def _reply(self, status: int, payload: Any) -> None:
+        body = json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _fail(self, status: int, error: str, message: str = "") -> None:
+        self._drain()
+        self._reply(status, {"ok": False, "error": error, "message": message})
+
+    def _drain(self) -> None:
+        """Discard an unread request body within the size limit before an early reply; replying with unread
+        bytes in the socket makes some stacks (Windows) reset the connection before the client reads."""
+        if getattr(self, "_body_read", False):
+            return
+        self._body_read = True
+        if "Transfer-Encoding" not in self.headers:
+            try:
+                length = int(self.headers.get("Content-Length", ""))
+            except ValueError:
+                return
+            if 0 < length <= MAX_BODY_BYTES:
+                self.rfile.read(length)
+        else:  # unknown length (usually no Content-Length at all): discard what arrives, briefly, bounded
+            raw = getattr(self.rfile, "raw", None)
+            if isinstance(raw, _DeadlineReader):
+                raw.read_timeout = 0.5
+            else:
+                self.connection.settimeout(0.5)
+            remaining = MAX_BODY_BYTES
+            try:
+                while remaining > 0:
+                    chunk = self.rfile.read1(min(65536, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+            except OSError:
+                pass  # timed out: nothing more is coming
+
+    def _origin_ok(self) -> bool:
+        port = self.control.port
+        if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+            self._fail(403, "forbidden", "unexpected Host header")
+            return False
+        if "Origin" in self.headers:
+            self._fail(403, "forbidden", "cross-origin requests are not accepted")
+            return False
+        return True
+
+    def _unsupported(self) -> None:
+        if self._origin_ok():  # every request is checked, whatever the method (H1 B-20)
+            self._fail(501, "not_implemented")
+
+    do_PUT = do_PATCH = do_DELETE = do_OPTIONS = _unsupported  # drain the body, reply 501 as JSON
+
+    def do_GET(self) -> None:
+        if not self._origin_ok():
+            return
+        if self.path == "/v1/health":
+            challenge = self.headers.get(CHALLENGE_HEADER)
+            if challenge is None:
+                self._reply(200, {"ok": True})
+            elif _CHALLENGE.match(challenge):
+                self._reply(200, {"ok": True, "proof": self.control.proof(challenge)})
+            else:
+                self._fail(400, "bad_request", "challenge must be 32-128 lowercase hex characters")
+        else:
+            self._fail(404, "not_found")
+
+    def do_POST(self) -> None:
+        if not self._origin_ok():
+            return
+        auth = self.headers.get("Authorization", "")
+        expected = f"Bearer {self.control.token}"
+        if not hmac.compare_digest(auth.encode("utf-8", "replace"), expected.encode("utf-8")):
+            self._fail(401, "unauthorized")
+            return
+        if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
+            self._fail(415, "unsupported_media_type", "use application/json")
+            return
+        if "Transfer-Encoding" in self.headers:
+            self._fail(400, "bad_request", "Transfer-Encoding is not accepted; send Content-Length")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            self._fail(411, "length_required")
+            return
+        if not 0 <= length <= MAX_BODY_BYTES:
+            self._fail(413, "too_large", f"body limit is {MAX_BODY_BYTES} bytes")
+            return
+        route = _ROUTE.match(self.path)
+        if route is None:
+            self._fail(404, "not_found")
+            return
+        self._body_read = True
+        try:
+            params = json.loads(self.rfile.read(length) or b"{}")
+        except (UnicodeDecodeError, ValueError):
+            self._fail(400, "bad_request", "body is not valid JSON")
+            return
+        if not isinstance(params, dict):
+            self._fail(400, "bad_request", "body must be a JSON object")
+            return
+        self._dispatch(route.group(1), route.group(2), params)
+
+    def _dispatch(self, noun: str, verb: str, params: dict[str, Any]) -> None:
+        core = self.control.core
+        redact = core.redactor.redact
+        actor = self.control.actor_for(noun, verb, params)
+        if actor is None:
+            # 1.1 S-4: the restricted profile runs inside Hermes; name the routes that do work.
+            self._fail(
+                403,
+                NOT_SERVED,
+                (
+                    f"'{noun} {verb}' is not served by the Signalbox API inside Hermes: run it as "
+                    f"/signalbox {noun} {verb} in a Hermes chat, "
+                    "or stop Hermes and use 'hermes-signalbox api serve'"
+                ),
+            )
+            return
+        try:
+            result = core.redactor.redact_obj(core.run(noun, verb, params, actor=actor))  # M9: panels too
+        except UsageError as exc:
+            self._fail(400, "usage", redact(str(exc)))
+        except CapabilityDenied as exc:
+            self._fail(403, "capability_denied", redact(str(exc)))
+        except PolicyRefused as exc:
+            self._fail(403, "policy_refused", redact(str(exc)))
+        except NotAvailable as exc:
+            self._fail(503, "not_available", redact(str(exc)))
+        except SignalboxError as exc:
+            self._fail(409, type(exc).__name__, redact(str(exc)))
+        except Exception as exc:  # never echo unexpected messages: they may carry data
+            self._fail(500, type(exc).__name__)
+        else:
+            self._reply(200, {"ok": True, "result": result})
+
+
+# Operations the dashboard profile serves (M9 review): reads, module lifecycle on/off, reports, and the inbox
+# actions. Grants, modes, installs, updates, removal and config are CLI-only. Any other module action runs as
+# the model actor, so only read-only actions succeed.
+DASHBOARD_OPS = frozenset({
+    ("module", "list"), ("module", "show"), ("module", "panel"), ("module", "activate"),
+    ("module", "deactivate"), ("module", "action"), ("report", "show"), ("audit", "tail"),
+    ("audit", "verify"), ("host", "profile"), ("module", "health"),
+})  # fmt: skip
+NOT_SERVED = "not_served"
+DASHBOARD_ACTIONS = frozenset({("inbox", "list"), ("inbox", "ack"), ("inbox", "ack_all")})
+
+
+class _Server(ThreadingHTTPServer):
+    allow_reuse_address = False  # Windows SO_REUSEADDR would let a second socket bind a held port (M9 review)
+
+    def __init__(
+        self,
+        address: tuple[str, int],
+        handler: type[BaseHTTPRequestHandler],
+        max_connections: int = DEFAULT_MAX_CONNECTIONS,
+    ) -> None:
+        self._slots = threading.BoundedSemaphore(max_connections)
+        super().__init__(address, handler)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self._slots.acquire(blocking=False):  # full: close at once instead of starting a thread (B-7)
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        """No tracebacks (H1 B-24): a dropped connection is normal; anything else is one line, class only."""
+        exc = sys.exc_info()[1]
+        if exc is None or isinstance(exc, ConnectionError | TimeoutError):
+            return
+        sys.stderr.write(f"signalbox API: request failed ({type(exc).__name__})\n")
+
+
+class ControlServer:
+    def __init__(self, core: Any, *, port: int = 0, host: str = LOOPBACK, profile: str = "full") -> None:
+        if host != LOOPBACK:
+            raise SignalboxError("the control API binds to loopback (127.0.0.1) only")
+        if profile not in ("full", "dashboard"):
+            raise UsageError("profile must be 'full' or 'dashboard'")
+        self.core = core
+        self.host = host
+        self.profile = profile
+        # H3-20: read max_connections and request_read_deadline_s from config
+        self.max_connections = (
+            core.config.api.max_connections if core.config and core.config.api else DEFAULT_MAX_CONNECTIONS
+        )
+        self.request_read_deadline_s = (
+            core.config.api.request_read_deadline_s
+            if core.config and core.config.api
+            else DEFAULT_REQUEST_READ_DEADLINE_S
+        )
+        self.token = secrets.token_urlsafe(32)
+        handler = type("Handler", (_Handler,), {"control": self})
+        self._httpd = _Server((host, port), handler, max_connections=self.max_connections)
+        self._httpd.daemon_threads = True
+        self.port: int = self._httpd.server_address[1]
+        self._thread: threading.Thread | None = None
+
+    def actor_for(self, noun: str, verb: str, params: dict[str, Any]) -> str | None:
+        """Who a request runs as, or ``None`` when this server does not offer it.
+
+        ``hermes-signalbox serve`` (full) is the operator's own CLI transport; the copy
+        Hermes starts for the dashboard is ``dashboard``: a token reachable from inside
+        Hermes must not grant capabilities or change config (M9 review)."""
+        if self.profile == "full":
+            return "api"
+        if (noun, verb) not in DASHBOARD_OPS:
+            return None
+        if (noun, verb) == ("module", "action"):
+            return "api" if (params.get("id"), params.get("action")) in DASHBOARD_ACTIONS else "hermes"
+        return "api"
+
+    def proof(self, challenge: str) -> str:
+        return token_proof(self.token, challenge)
+
+    def _files(self) -> tuple[Path, Path]:
+        return self.core.data_dir / "api.port", self.core.data_dir / "api.token"
+
+    def start(self) -> None:
+        port_file, token_file = self._files()
+        _write_private(token_file, self.token)
+        _write_private(port_file, str(self.port))
+        self._thread = threading.Thread(
+            target=self._httpd.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
+        )
+        self._thread.start()
+
+    def shutdown(self) -> None:
+        self._httpd.shutdown()
+        self._httpd.server_close()
+        for path in self._files():
+            path.unlink(missing_ok=True)
+
+
+def clear_stale_files(data_dir: Path) -> bool:
+    """True when no process hosts ``data_dir`` (nobody holds ``host.lock``); leftover ``api.port`` and
+    ``api.token`` from a daemon that died are then removed, under the lock, so no client sends the token to
+    whatever listens on that port now (H1 D-9). False when a hosting process runs."""
+    from hermes_signalbox.hostlock import HostLock
+
+    if not data_dir.is_dir():
+        return True
+    lock = HostLock(data_dir / "host.lock")
+    try:
+        if not lock.acquire():
+            return False
+    except OSError:
+        return False  # cannot tell: leave the files alone
+    try:
+        for name in ("api.port", "api.token"):
+            (data_dir / name).unlink(missing_ok=True)
+    finally:
+        lock.release()
+    return True
+
+
+class ApiClient:
+    def __init__(self, port: int, token: str) -> None:
+        self.port = port
+        self._token = token
+
+    @classmethod
+    def from_data_dir(cls, data_dir: Path) -> ApiClient:
+        try:
+            port = int((data_dir / "api.port").read_text(encoding="utf-8").strip())
+            token = (data_dir / "api.token").read_text(encoding="utf-8").strip()
+        except (OSError, ValueError) as exc:
+            raise ApiUnavailable(f"no running daemon for {data_dir}") from exc
+        return cls(port, token)
+
+    def _connect(self) -> http.client.HTTPConnection:
+        conn = http.client.HTTPConnection(LOOPBACK, self.port, timeout=CONNECT_TIMEOUT_S)
+        try:
+            conn.connect()
+        except OSError as exc:  # nothing was sent: safe to fall back
+            conn.close()
+            raise ApiUnavailable(
+                f"daemon on port {self.port} is not reachable: {type(exc).__name__}"
+            ) from None
+        if conn.sock is not None:
+            conn.sock.settimeout(CLIENT_TIMEOUT_S)
+        return conn
+
+    def _verify_daemon(self) -> None:
+        """Ask the listener to prove it holds the token before the token is sent (H1 B-8)."""
+        challenge = secrets.token_hex(32)
+        conn = self._connect()
+        try:
+            headers = {"Host": f"{LOOPBACK}:{self.port}", CHALLENGE_HEADER: challenge}
+            conn.request("GET", "/v1/health", headers=headers)
+            resp = conn.getresponse()
+            raw = resp.read(4096 + 1)
+        except OSError as exc:  # only the challenge was sent; the operation was not
+            raise ApiUnavailable(
+                f"daemon on port {self.port} is not reachable: {type(exc).__name__}"
+            ) from None
+        finally:
+            conn.close()
+        try:
+            proof = json.loads(raw).get("proof") if len(raw) <= 4096 else None
+        except (ValueError, AttributeError):
+            proof = None
+        if not isinstance(proof, str) or not hmac.compare_digest(proof, token_proof(self._token, challenge)):
+            raise ApiUntrusted(
+                f"the listener on port {self.port} is not this data directory's Signalbox daemon; "
+                "token not sent (restart the daemon with 'hermes-signalbox api serve')"
+            )
+
+    def request(self, noun: str, verb: str, params: dict[str, Any]) -> Any:
+        body = json.dumps(params).encode("utf-8")
+        self._verify_daemon()
+        conn = self._connect()
+        try:
+            conn.request("POST", f"/v1/{noun}/{verb}", body=body, headers={
+                "Host": f"{LOOPBACK}:{self.port}", "Authorization": f"Bearer {self._token}",
+                "Content-Type": "application/json",
+            })  # fmt: skip
+            resp = conn.getresponse()
+            raw = resp.read(MAX_RESPONSE_BYTES + 1)
+        except (OSError, http.client.HTTPException) as exc:
+            # Sent (at least in part), no answer: the daemon may have applied it. Never re-run (H1 B-9).
+            raise ApiOutcomeUnknown(
+                f"'{noun} {verb}' was sent to the daemon but no answer came back "
+                f"({type(exc).__name__}); it may have been applied: check before retrying"
+            ) from None
+        finally:
+            conn.close()
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise SignalboxError(f"API response too large (limit {MAX_RESPONSE_BYTES} bytes)")
+        try:
+            payload = json.loads(raw)
+        except ValueError:
+            raise SignalboxError(f"API returned HTTP {resp.status} with a non-JSON body") from None
+        if isinstance(payload, dict) and payload.get("ok") is True:
+            return payload.get("result")
+        message = str(payload.get("message", "")) if isinstance(payload, dict) else ""
+        if resp.status == 403 and isinstance(payload, dict) and payload.get("error") == NOT_SERVED:
+            raise ApiRestricted(message)
+        if resp.status == 403 and isinstance(payload, dict) and payload.get("error") == "policy_refused":
+            raise PolicyRefused(message or "refused by policy")
+        raise _STATUS_ERRORS.get(resp.status, SignalboxError)(message or f"API error HTTP {resp.status}")

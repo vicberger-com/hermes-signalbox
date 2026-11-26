@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from switchyard import context
+from hermes_signalbox import context
 
 SRC = Path(context.__file__).resolve().parent
 

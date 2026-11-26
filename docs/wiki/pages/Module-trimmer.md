@@ -10,7 +10,7 @@
 | **Default activation** | manual |
 | **Requests** | [[Capability hermes.output]], [[Capability ui.panel]] |
 | **Optional** | — |
-| **Spec** | [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/trimmer/README.md) |
+| **Spec** | [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/trimmer/README.md) |
 
 ## What it does
 
@@ -26,9 +26,9 @@
 ## Turn it on
 
 ```bash
-switchyard module grant trimmer --capability hermes.output
-switchyard module grant trimmer --capability ui.panel
-switchyard module activate trimmer
+hermes-signalbox module grant trimmer --capability hermes.output
+hermes-signalbox module grant trimmer --capability ui.panel
+hermes-signalbox module activate trimmer
 ```
 
 ## Settings (`[modules.trimmer]`)
@@ -44,11 +44,11 @@ switchyard module activate trimmer
 
 ## Events and audit records
 
-<From [Reference](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/REFERENCE.md).>
+<From [Reference](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/REFERENCE.md).>
 
 ## Security notes
 
 <Summary; link the "Security review" table in the README.>
 
 ---
-**Sources:** [module README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/trimmer/README.md) · [module.toml](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/trimmer/module.toml)
+**Sources:** [module README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/trimmer/README.md) · [module.toml](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/trimmer/module.toml)

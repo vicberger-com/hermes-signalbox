@@ -9,13 +9,13 @@ from typing import Any
 import pytest
 from sy_testing import ManifestFactory, RecordingAudit
 
-from switchyard.audit import AuditLog
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.context import ContextServices, MemoryPanelRegistry, ModuleContext
-from switchyard.errors import CapabilityDenied, SwitchyardError
-from switchyard.events import EventBus
-from switchyard.logs import JsonlLogSink
-from switchyard.secrets import (
+from hermes_signalbox.audit import AuditLog
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.context import ContextServices, MemoryPanelRegistry, ModuleContext
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError
+from hermes_signalbox.events import EventBus
+from hermes_signalbox.logs import JsonlLogSink
+from hermes_signalbox.secrets import (
     MemoryBackend,
     Redactor,
     SecretLeak,
@@ -68,7 +68,7 @@ def test_secret_ref_parsing() -> None:
         "https://x",
         "secret://" + "a" * 70,
     ):
-        with pytest.raises(SwitchyardError, match="secret"):
+        with pytest.raises(SignalboxError, match="secret"):
             SecretRef.parse(bad)
 
 
@@ -105,7 +105,7 @@ def test_exception_messages_from_fn_are_dropped(
     def boom(v: str) -> None:
         raise RuntimeError(f"upstream rejected key {v}")
 
-    with pytest.raises(SwitchyardError) as info:
+    with pytest.raises(SignalboxError) as info:
         broker.use("demo", "secret://provider.key", boom)
     assert CANARY not in str(info.value) and "RuntimeError" in str(info.value)
     assert info.value.__cause__ is None and info.value.__context__ is None
@@ -227,7 +227,7 @@ def test_canary_never_in_any_output(tmp_path: Path, make_manifest: ManifestFacto
     status = facade.use("secret://provider.key", lambda v: "ok" if v else "missing")  # type: ignore[attr-defined]
     assert status == "ok"
     ctx.log("demo", "called", note=f"the key was {CANARY}")  # a careless module
-    with pytest.raises(SwitchyardError) as info:
+    with pytest.raises(SignalboxError) as info:
         facade.use("secret://provider.key", lambda v: v)  # type: ignore[attr-defined]
     everything = "".join(p.read_text(encoding="utf-8") for p in tmp_path.rglob("*.jsonl")) + str(info.value)
     assert CANARY not in everything
@@ -249,7 +249,7 @@ def test_r1_transformed_values_trip_the_guard(make_manifest: ManifestFactory, au
 
 
 def test_r1_short_secrets_do_not_trip_on_ordinary_text() -> None:
-    from switchyard.secrets import _contains
+    from hermes_signalbox.secrets import _contains
 
     assert not _contains("the password reset is complete", "Pass")  # case-folding only for long values
     assert not _contains("the correct horse is in the stable", "correct horse battery staple")

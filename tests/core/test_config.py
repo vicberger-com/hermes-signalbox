@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from switchyard.config import MAX_CONFIG_BYTES, CoreConfig, load_config, parse_config
-from switchyard.errors import ConfigError
+from hermes_signalbox.config import MAX_CONFIG_BYTES, CoreConfig, load_config, parse_config
+from hermes_signalbox.errors import ConfigError
 
 
 def test_missing_file_gives_defaults(tmp_path: Path) -> None:
@@ -67,8 +67,8 @@ def test_oversize_file_is_refused(tmp_path: Path) -> None:
 
 
 def test_h1_d2_tools_git_must_be_absolute() -> None:
-    from switchyard.config import parse_config
-    from switchyard.errors import ConfigError
+    from hermes_signalbox.config import parse_config
+    from hermes_signalbox.errors import ConfigError
 
     absolute = str(Path(__file__).resolve())
     assert parse_config({"tools": {"git": absolute}}).git == absolute

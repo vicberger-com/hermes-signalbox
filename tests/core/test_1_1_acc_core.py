@@ -10,19 +10,19 @@ from types import SimpleNamespace
 import pytest
 from sy_testing import ManifestFactory, RecordingAudit, write_module
 
-from switchyard.audit import AuditLog
-from switchyard.errors import AuditError, ManifestError, SwitchyardError
-from switchyard.host_t2 import T2Module
-from switchyard.manifest import load_manifest
+from hermes_signalbox.audit import AuditLog
+from hermes_signalbox.errors import AuditError, ManifestError, SignalboxError
+from hermes_signalbox.host_t2 import T2Module
+from hermes_signalbox.manifest import load_manifest
 
 
 def _manager(tmp_path: Path, audit: RecordingAudit):  # type: ignore[no-untyped-def]
-    from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-    from switchyard.context import MemoryPanelRegistry
-    from switchyard.events import EventBus
-    from switchyard.lifecycle import ModuleManager
-    from switchyard.logs import JsonlLogSink
-    from switchyard.scheduler import Scheduler
+    from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+    from hermes_signalbox.context import MemoryPanelRegistry
+    from hermes_signalbox.events import EventBus
+    from hermes_signalbox.lifecycle import ModuleManager
+    from hermes_signalbox.logs import JsonlLogSink
+    from hermes_signalbox.scheduler import Scheduler
 
     trusted = tmp_path / "trusted"
     trusted.mkdir()
@@ -81,7 +81,7 @@ def test_s1_8_t2_create_table_rejects_malformed_columns() -> None:
     calls: list[object] = []
     ctx = SimpleNamespace(state=SimpleNamespace(create_table=lambda *a, **k: calls.append((a, k))))
     for bad in (["ab"], [["a", "b", "c"]], [["a"]], [5]):
-        with pytest.raises(SwitchyardError, match="column"):
+        with pytest.raises(SignalboxError, match="column"):
             T2Module._state(ctx, "create_table", ["t", bad, None])  # type: ignore[arg-type]
     T2Module._state(ctx, "create_table", ["t", [["a", "text"]], None])  # type: ignore[arg-type]
     assert calls and calls[0][0][1] == [("a", "text")]
@@ -96,6 +96,6 @@ def test_s1_10_an_unencodable_detail_is_an_audit_error(tmp_path: Path) -> None:
 
 
 def test_bundled_manifests_still_load() -> None:
-    root = Path(__file__).resolve().parents[2] / "src" / "switchyard" / "modules"
+    root = Path(__file__).resolve().parents[2] / "src" / "hermes_signalbox" / "modules"
     for d in sorted(p for p in root.iterdir() if (p / "module.toml").is_file()):
         assert load_manifest(d).digest

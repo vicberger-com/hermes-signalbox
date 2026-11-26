@@ -14,7 +14,7 @@
 
 - <Effect.>
 
-Full record: [ADR-0001](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0001-m0-core-stack.md)
+Full record: [ADR-0001](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0001-m0-core-stack.md)
 
 ---
-**Sources:** [ADR-0001](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0001-m0-core-stack.md)
+**Sources:** [ADR-0001](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0001-m0-core-stack.md)

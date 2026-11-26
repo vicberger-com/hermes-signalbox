@@ -1,7 +1,7 @@
-"""H1 D-4 / Question 9: Switchyard against a real Hermes Agent (pinned in CI, see ``hermes-integration`` in
+"""H1 D-4 / Question 9: Signalbox against a real Hermes Agent (pinned in CI, see ``hermes-integration`` in
 ``.github/workflows/ci.yml``). Skipped where Hermes is not installed.
 
-Hermes discovers Switchyard through its ``hermes_agent.plugins`` entry point, loads it into a real
+Hermes discovers Signalbox through its ``hermes_agent.plugins`` entry point, loads it into a real
 ``PluginContext``, and these tests drive it only through Hermes's own dispatch functions.
 """
 
@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 
-if os.environ.get("SWITCHYARD_REQUIRE_HERMES") == "1":  # the CI job that installs Hermes: never skip there
+if os.environ.get("SIGNALBOX_REQUIRE_HERMES") == "1":  # the CI job that installs Hermes: never skip there
     import hermes_cli.plugins as plugins
 else:
     plugins = pytest.importorskip("hermes_cli.plugins", reason="Hermes Agent is not installed")
@@ -27,38 +27,38 @@ pytestmark = pytest.mark.bundled_modules  # the real plugin, with the modules it
 def hermes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     home = tmp_path / "hermes-home"
     home.mkdir()
-    (home / "config.yaml").write_text("plugins:\n  enabled:\n    - switchyard\n", encoding="utf-8")
+    (home / "config.yaml").write_text("plugins:\n  enabled:\n    - signalbox\n", encoding="utf-8")
     monkeypatch.setenv("HERMES_HOME", str(home))
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     plugins._reset_plugin_managers_for_tests()
     plugins.discover_plugins(force=True)
     yield plugins.get_plugin_manager()
     plugins._reset_plugin_managers_for_tests()
-    import switchyard.hermes as adapter
+    import hermes_signalbox.hermes as adapter
 
     adapter.shutdown()
 
 
-def _switchyard(manager: Any) -> dict[str, Any]:
-    found = [p for p in manager.list_plugins() if p.get("name") == "switchyard"]
+def _signalbox(manager: Any) -> dict[str, Any]:
+    found = [p for p in manager.list_plugins() if p.get("name") == "signalbox"]
     assert found, manager.list_plugins()
     return found[0]
 
 
-def test_hermes_loads_switchyard_through_its_entry_point(hermes: Any) -> None:
-    info = _switchyard(hermes)
+def test_hermes_loads_signalbox_through_its_entry_point(hermes: Any) -> None:
+    info = _signalbox(hermes)
     assert info["enabled"] and info.get("error") in (None, "")
     assert info["tools"] == 3
     from tools.registry import registry
 
-    for name in ("switchyard_modules", "switchyard_audit", "switchyard_host"):
+    for name in ("signalbox_modules", "signalbox_audit", "signalbox_host"):
         assert registry.get_entry(name) is not None, name
 
 
 def test_model_tool_runs_through_the_hermes_registry(hermes: Any) -> None:
     from tools.registry import registry
 
-    entry = registry.get_entry("switchyard_modules")
+    entry = registry.get_entry("signalbox_modules")
     raw = entry.handler({"action": "list"}, task_id="integration")
     result = json.loads(raw)
     assert result["ok"] is True
@@ -85,8 +85,8 @@ def test_hooks_and_middleware_run_through_hermes_dispatch(hermes: Any) -> None:
 
 
 def test_slash_command_runs_through_hermes(hermes: Any) -> None:
-    assert "switchyard" in plugins.get_plugin_commands()
-    handler = plugins.get_plugin_command_handler("switchyard")
+    assert "signalbox" in plugins.get_plugin_commands()
+    handler = plugins.get_plugin_command_handler("signalbox")
     assert handler is not None
     out = handler("module list")
     assert "router" in str(out)
@@ -100,7 +100,7 @@ def test_h4_f8_gateway_ownership_check_is_the_one_hermes_ships(hermes: Any) -> N
 
     import hermes_cli
 
-    import switchyard.hermes as adapter
+    import hermes_signalbox.hermes as adapter
 
     status = importlib.import_module("gateway.status")
     assert callable(status.owns_gateway_runtime_lock)
@@ -117,19 +117,19 @@ def test_h4_f8_gateway_ownership_check_is_the_one_hermes_ships(hermes: Any) -> N
     assert current.core.hosting
 
 
-def test_h4_f14_hermes_unload_stops_switchyard(hermes: Any) -> None:
+def test_h4_f14_hermes_unload_stops_signalbox(hermes: Any) -> None:
     """Hermes's own unload (the disable/uninstall path of a running process) runs the adapter's callback."""
-    import switchyard.hermes as adapter
-    from switchyard.errors import SwitchyardError
-    from switchyard.hostlock import HostLock
+    import hermes_signalbox.hermes as adapter
+    from hermes_signalbox.errors import SignalboxError
+    from hermes_signalbox.hostlock import HostLock
 
     current = adapter.current()
     plugins.invoke_hook("pre_llm_call", session_id="s", turn_id="t", user_message="hello")
     assert current.core.hosting and current.driver_alive()
     lock_path = current.core.data_dir / "host.lock"
-    assert hermes.unload("switchyard") is True
+    assert hermes.unload("signalbox") is True
     assert not current.driver_alive() and not current.core.hosting
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         adapter.current()
     other = HostLock(lock_path)
     try:
@@ -143,7 +143,7 @@ def test_dashboard_api_imports_against_hermes(monkeypatch: pytest.MonkeyPatch) -
     import importlib.util
 
     path = Path(__file__).resolve().parents[2] / "dashboard" / "plugin_api.py"
-    spec = importlib.util.spec_from_file_location("switchyard_dashboard_api", path)
+    spec = importlib.util.spec_from_file_location("signalbox_dashboard_api", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -157,13 +157,13 @@ def test_h4_r1_f10_dashboard_finds_the_plugins_data_dir_in_real_hermes(hermes: A
     import importlib.util
 
     pytest.importorskip("fastapi")
-    import switchyard.hermes as adapter
+    import hermes_signalbox.hermes as adapter
 
     plugin_dir = adapter.current().core.data_dir
     root = plugin_dir.parent
     before = sorted(p.name for p in root.iterdir())
     path = Path(__file__).resolve().parents[2] / "dashboard" / "plugin_api.py"
-    spec = importlib.util.spec_from_file_location("switchyard_dashboard_api_h4", path)
+    spec = importlib.util.spec_from_file_location("signalbox_dashboard_api_h4", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

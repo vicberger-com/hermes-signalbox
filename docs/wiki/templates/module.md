@@ -10,7 +10,7 @@
 | **Default activation** | auto / manual |
 | **Requests** | [[Capability <name>]], … |
 | **Optional** | [[Capability <name>]] (works without it) |
-| **Spec** | [README](https://github.com/vicberger-com/hermes-switchyard/blob/v<X.Y.Z>/src/switchyard/modules/<id>/README.md) |
+| **Spec** | [README](https://github.com/vicberger-com/hermes-signalbox/blob/v<X.Y.Z>/src/hermes_signalbox/modules/<id>/README.md) |
 
 ## What it does
 
@@ -25,8 +25,8 @@
 ## Turn it on
 
 ```bash
-switchyard module grant <id> --capability <name>
-switchyard module activate <id>
+hermes-signalbox module grant <id> --capability <name>
+hermes-signalbox module activate <id>
 ```
 
 ## Settings (`[modules.<id>]`)
@@ -57,4 +57,4 @@ switchyard module activate <id>
 - [[<Page>]]
 
 ---
-**Sources:** [<document>](https://github.com/vicberger-com/hermes-switchyard/blob/v<X.Y.Z>/<path>) · [<document>](<link>)
+**Sources:** [<document>](https://github.com/vicberger-com/hermes-signalbox/blob/v<X.Y.Z>/<path>) · [<document>](<link>)

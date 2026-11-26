@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from switchyard import events, host_t2_child, rpc
-from switchyard.errors import SwitchyardError
-from switchyard.events import EventBus
+from hermes_signalbox import events, host_t2_child, rpc
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.events import EventBus
 
 
 class _Parent:
@@ -72,7 +72,7 @@ def test_h1_b18_subscriptions_per_module_are_capped() -> None:
     bus = EventBus(_Audit())  # type: ignore[arg-type]
     for _ in range(events.MAX_SUBSCRIPTIONS):
         bus.subscribe("mod", "demo.*", lambda e: None)
-    with pytest.raises(SwitchyardError, match="subscriptions"):
+    with pytest.raises(SignalboxError, match="subscriptions"):
         bus.subscribe("mod", "demo.*", lambda e: None)
     bus.subscribe("other", "demo.*", lambda e: None)  # per module, not global
     bus.unsubscribe_all("mod")

@@ -1,4 +1,4 @@
-"""``switchyard`` command line (spec section 3, CLI)."""
+"""``signalbox`` command line (spec section 3, CLI)."""
 
 from __future__ import annotations
 
@@ -9,15 +9,15 @@ from pathlib import Path
 import pytest
 from sy_testing import write_module
 
-from switchyard import __version__
-from switchyard.api import ControlServer
-from switchyard.cli import main
-from switchyard.core import Core
+from hermes_signalbox import __version__
+from hermes_signalbox.api import ControlServer
+from hermes_signalbox.cli import main
+from hermes_signalbox.core import Core
 
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -63,7 +63,7 @@ def test_usage_error_exit_code(data: Path, capsys: pytest.CaptureFixture[str]) -
 
 def test_live_operation_needs_the_daemon(data: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(_run(data, "module", "activate", "ext")) == 1
-    assert "switchyard api serve" in capsys.readouterr().err
+    assert "hermes-signalbox api serve" in capsys.readouterr().err
 
 
 def test_operation_error_exit_code(data: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -111,7 +111,7 @@ def test_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_serve_runs_until_interrupted(data: Path, monkeypatch: pytest.MonkeyPatch,
                                       capsys: pytest.CaptureFixture[str]) -> None:  # fmt: skip
-    import switchyard.cli as cli
+    import hermes_signalbox.cli as cli
 
     ticks: list[int] = []
 
@@ -128,7 +128,7 @@ def test_serve_runs_until_interrupted(data: Path, monkeypatch: pytest.MonkeyPatc
 
 def test_default_data_dir_comes_from_the_environment(data: Path, monkeypatch: pytest.MonkeyPatch,
                                                      capsys: pytest.CaptureFixture[str]) -> None:  # fmt: skip
-    monkeypatch.setenv("SWITCHYARD_DATA_DIR", str(data))
+    monkeypatch.setenv("SIGNALBOX_DATA_DIR", str(data))
     assert main(["--json", "module", "list"]) == 0
     assert json.loads(capsys.readouterr().out)[0]["id"] == "ext"
 
@@ -180,9 +180,9 @@ def test_h1_d10_config_show_names_the_data_directory_and_why(
     out = capsys.readouterr().out
     assert f"data_dir: {data}" in out and "data_dir_source: --data-dir" in out
     assert "api.enabled: False" in out and "{" not in out  # nested settings as key: value lines
-    monkeypatch.setenv("SWITCHYARD_DATA_DIR", str(data))
+    monkeypatch.setenv("SIGNALBOX_DATA_DIR", str(data))
     assert main(["config", "show"]) == 0
-    assert "data_dir_source: SWITCHYARD_DATA_DIR" in capsys.readouterr().out
+    assert "data_dir_source: SIGNALBOX_DATA_DIR" in capsys.readouterr().out
 
 
 def test_h1_d9_stale_daemon_files_cost_nothing_and_are_removed(
@@ -222,7 +222,7 @@ def test_h1_d9_serve_removes_its_files_on_termination(data: Path) -> None:
     assert spec is not None and spec.loader is not None
     tool = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(tool)
-    env = {**os.environ, "SWITCHYARD_DATA_DIR": str(data)}
+    env = {**os.environ, "SIGNALBOX_DATA_DIR": str(data)}
     proc = tool._start_daemon(["api", "serve", "--port", "0"], env)
     try:
         assert (data / "api.port").exists() and (data / "api.token").exists()

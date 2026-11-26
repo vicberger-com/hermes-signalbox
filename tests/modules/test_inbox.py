@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import SwitchyardError
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import SignalboxError
 
 pytestmark = pytest.mark.bundled_modules
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,7 +29,7 @@ def ib(core: Core, action: str, actor: str = "t", **args: Any) -> Any:
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "no-hermes"))
 
 
@@ -49,7 +49,7 @@ def test_contract_suite() -> None:
 
 
 def test_notify_reaches_the_inbox_redacted_and_bounded(core: Core) -> None:
-    from switchyard.notify import NotifyBroker
+    from hermes_signalbox.notify import NotifyBroker
 
     notify = NotifyBroker(core.bus.publish, core.audit, core.redactor.redact).for_module("tester")
     secret = "sk-or-v1-" + "a" * 64
@@ -57,11 +57,11 @@ def test_notify_reaches_the_inbox_redacted_and_bounded(core: Core) -> None:
     item = ib(core, "list")["items"][0]
     assert item["severity"] == "high" and item["module"] == "tester" and len(item["title"]) == 120
     assert "\n" not in item["title"] and secret not in item["detail"]
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         notify.send("urgent", "x")
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         notify.send("info", "  ")
-    with pytest.raises(SwitchyardError, match="notify"):
+    with pytest.raises(SignalboxError, match="notify"):
         _ = core.manager._entry("inbox").instance.ctx.notify  # not granted
     assert "module.notify" in [r["action"] for r in core.run("audit", "tail", {"n": 20}, actor="t")]
 
@@ -76,14 +76,14 @@ def test_alert_events_min_severity_ack_and_bounds(core: Core, monkeypatch: pytes
     ib(core, "ack", id=items[0]["id"])
     assert len(ib(core, "list", state="acked")["items"]) == 1
     assert ib(core, "ack_all")["acked"] == 2 and ib(core, "list")["items"] == []
-    with pytest.raises(SwitchyardError, match="no such"):
+    with pytest.raises(SignalboxError, match="no such"):
         ib(core, "ack", id="nope")
-    with pytest.raises(SwitchyardError, match="read-only"):
+    with pytest.raises(SignalboxError, match="read-only"):
         ib(core, "list", actor="hermes")  # module-written text is for the operator, not the model
     for bad in ({"state": "x"}, {"limit": 0}):
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             ib(core, "list", **bad)
-    monkeypatch.setattr("switchyard.modules.inbox.inbox_module.KEEP", 5, raising=False)
+    monkeypatch.setattr("hermes_signalbox.modules.inbox.inbox_module.KEEP", 5, raising=False)
     inst = core.manager._entry("inbox").instance
     inst.on_event.__globals__["KEEP"] = 5
     for i in range(12):
@@ -131,13 +131,13 @@ def test_reports(core: Core) -> None:
     core.run("module", "grant", {"id": "meter", "capability": "ui.panel"}, actor="t")
     changes = core.run("report", "show", {"kind": "changes"}, actor="t")["changes"]
     assert any(r["action"] == "policy.granted" for r in changes)
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         core.run("report", "show", {"kind": "secrets"}, actor="t")
 
 
 def test_dashboard_bundle_is_accessible_and_local() -> None:
     manifest = json.loads((ROOT / "dashboard" / "manifest.json").read_text("utf-8"))
-    assert manifest["name"] == "switchyard" and manifest["api"] == "plugin_api.py"
+    assert manifest["name"] == "signalbox" and manifest["api"] == "plugin_api.py"
     js = (
         (ROOT / manifest["entry"].join(["dashboard/", ""])).read_text("utf-8")
         if False
@@ -194,7 +194,7 @@ def test_dashboard_backend_proxy(core: Core, monkeypatch: pytest.MonkeyPatch, tm
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    monkeypatch.setenv("SWITCHYARD_DATA_DIR", str(tmp_path / "nothing"))
+    monkeypatch.setenv("SIGNALBOX_DATA_DIR", str(tmp_path / "nothing"))
     with pytest.raises(HTTPException) as exc:
         asyncio.run(mod.modules())
     assert exc.value.status_code == 503
@@ -205,7 +205,7 @@ def test_dashboard_backend_proxy(core: Core, monkeypatch: pytest.MonkeyPatch, tm
             calls.append((noun, verb, params))
             return core.run(noun, verb, params, actor="api")
 
-    monkeypatch.setattr("switchyard.api.ApiClient.from_data_dir", lambda d: Client())
+    monkeypatch.setattr("hermes_signalbox.api.ApiClient.from_data_dir", lambda d: Client())
     assert any(m["id"] == "inbox" for m in asyncio.run(mod.modules()))
     assert asyncio.run(mod.report("health"))["kind"] == "health"
     assert asyncio.run(mod.inbox("open")) == {"items": []}
@@ -225,7 +225,7 @@ def test_dashboard_backend_proxy(core: Core, monkeypatch: pytest.MonkeyPatch, tm
 
 
 def test_dashboard_api_profile_refuses_privileged_ops(core: Core) -> None:
-    from switchyard.api import ApiClient, ControlServer
+    from hermes_signalbox.api import ApiClient, ControlServer
 
     server = ControlServer(core, profile="dashboard")
     server.start()
@@ -237,7 +237,7 @@ def test_dashboard_api_profile_refuses_privileged_ops(core: Core) -> None:
             ("module", "revoke", {"id": "inbox", "capability": "ui.panel"}),
             ("module", "mode", {"id": "inbox", "mode": "manual"}),
         ]:
-            with pytest.raises(SwitchyardError, match="not served by the Switchyard API inside Hermes"):
+            with pytest.raises(SignalboxError, match="not served by the Signalbox API inside Hermes"):
                 client.request(noun, verb, params)
         core.bus.publish("meter", "meter.exhausted", {"quota": "day"})
         items = client.request("module", "action", {"id": "inbox", "action": "list", "args": {}})["items"]
@@ -245,7 +245,7 @@ def test_dashboard_api_profile_refuses_privileged_ops(core: Core) -> None:
         for cap in ("hermes.output", "ui.panel"):
             core.run("module", "grant", {"id": "trimmer", "capability": cap}, actor="t")
         core.run("module", "activate", {"id": "trimmer"}, actor="t")
-        with pytest.raises(SwitchyardError, match="read-only"):  # other module actions: model rights only
+        with pytest.raises(SignalboxError, match="read-only"):  # other module actions: model rights only
             client.request("module", "action", {"id": "trimmer", "action": "preview", "args": {"text": "x"}})
         assert (
             client.request("module", "action", {"id": "trimmer", "action": "report", "args": {}})["tools"]
@@ -253,13 +253,13 @@ def test_dashboard_api_profile_refuses_privileged_ops(core: Core) -> None:
         )
     finally:
         server.shutdown()
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         ControlServer(core, profile="root")
 
 
 def test_review_fixes(core: Core) -> None:
-    from switchyard.manifest import validate_document
-    from switchyard.notify import NotifyBroker
+    from hermes_signalbox.manifest import validate_document
+    from hermes_signalbox.notify import NotifyBroker
 
     secret = "TOPSECRETVALUE12345"  # noqa: S105 - test value
     broker = NotifyBroker(core.bus.publish, core.audit, lambda s: s.replace(secret, "[redacted]"))

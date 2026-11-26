@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from switchyard import capabilities, context, lifecycle
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.errors import CapabilityDenied
+from hermes_signalbox import capabilities, context, lifecycle
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.errors import CapabilityDenied
 
 SRC = Path(lifecycle.__file__).resolve().parent
 

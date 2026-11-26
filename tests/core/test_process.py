@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from sy_testing import RecordingAudit
 
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.errors import CapabilityDenied, SwitchyardError
-from switchyard.process import ProcessBroker
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError
+from hermes_signalbox.process import ProcessBroker
 
 
 @pytest.fixture
@@ -32,13 +32,13 @@ def test_runs_with_minimal_env_and_audits_program_only(
 ) -> None:
     pb, policy = broker
     policy.grant("demo", "process.spawn", actor="t")
-    monkeypatch.setenv("SWITCHYARD_TEST_LEAK", "should-not-pass")
+    monkeypatch.setenv("SIGNALBOX_TEST_LEAK", "should-not-pass")
     code = (
-        "import os, sys; print(sorted(k for k in os.environ if k.startswith('SWITCHYARD')), sys.stdin.read())"
+        "import os, sys; print(sorted(k for k in os.environ if k.startswith('SIGNALBOX')), sys.stdin.read())"
     )
     argv = [sys.executable, "-c", code, "secret-arg"]
-    done = pb.for_module("demo").run(argv, env={"SWITCHYARD_X": "1"}, input="hello")
-    assert done.returncode == 0 and "['SWITCHYARD_X'] hello" in done.stdout
+    done = pb.for_module("demo").run(argv, env={"SIGNALBOX_X": "1"}, input="hello")
+    assert done.returncode == 0 and "['SIGNALBOX_X'] hello" in done.stdout
     record = audit.records[-1]
     assert record["action"] == "process.spawned" and record["detail"]["result"] == "0"
     assert "secret-arg" not in str(audit.records) and Path(sys.executable).name == record["detail"]["program"]
@@ -47,18 +47,18 @@ def test_runs_with_minimal_env_and_audits_program_only(
 def test_timeout_missing_program_and_bad_argv(broker: tuple[ProcessBroker, PolicyEngine]) -> None:
     pb, policy = broker
     policy.grant("demo", "process.spawn", actor="t")
-    with pytest.raises(SwitchyardError, match="timed out"):
+    with pytest.raises(SignalboxError, match="timed out"):
         pb.run("demo", [sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.2)
-    with pytest.raises(SwitchyardError, match="not found"):
+    with pytest.raises(SignalboxError, match="not found"):
         pb.run("demo", ["definitely-not-a-program-xyz"])
-    with pytest.raises(SwitchyardError, match="argv"):
+    with pytest.raises(SignalboxError, match="argv"):
         pb.run("demo", [])
 
 
 def test_helper_planted_in_the_working_directory_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from switchyard.process import find_program
+    from hermes_signalbox.process import find_program
 
     name = "planted-helper-xyz"
     script = tmp_path / (name + (".cmd" if sys.platform == "win32" else ""))
@@ -89,7 +89,7 @@ def _fake_program(directory: Path, name: str, works: bool) -> Path:
 
 
 def test_h1_d2_first_runnable_candidate_wins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from switchyard.process import find_runnable, program_candidates
+    from hermes_signalbox.process import find_runnable, program_candidates
 
     name = "sy-fake-tool"
     broken = _fake_program(tmp_path / "a", name, works=False)
@@ -111,7 +111,7 @@ def test_h1_d15_working_directory_hit_from_path_is_refused(
 ) -> None:
     import shutil
 
-    from switchyard import process
+    from hermes_signalbox import process
 
     planted = _fake_program(tmp_path, "sy-planted", works=True)
     monkeypatch.chdir(tmp_path)
@@ -124,7 +124,7 @@ def test_h1_d15_working_directory_hit_from_path_is_refused(
 def test_h1_d2_git_resolves_and_runs_here() -> None:
     """On a machine with any runnable git (every CI runner, and this workstation with Git for Windows behind
     the Hermes Desktop copy), the updates path finds it."""
-    from switchyard.updates import git_usable, resolved_git
+    from hermes_signalbox.updates import git_usable, resolved_git
 
     assert git_usable() is True
     assert resolved_git() is not None
@@ -139,11 +139,11 @@ def test_h1_b3_deadline_covers_stdin_and_every_failure_is_recorded(
     policy.grant("demo", "process.spawn", actor="t")
     code = "import time; time.sleep(30)"  # never reads its stdin
     start = time.monotonic()
-    with pytest.raises(SwitchyardError, match="timed out"):
+    with pytest.raises(SignalboxError, match="timed out"):
         pb.run("demo", [sys.executable, "-c", code], input="x" * 900_000, timeout=1.0)
     assert time.monotonic() - start < 6
     assert audit.records[-1]["detail"] == {"program": Path(sys.executable).name, "result": "timeout"}
-    with pytest.raises(SwitchyardError, match="input"):
+    with pytest.raises(SignalboxError, match="input"):
         pb.run("demo", [sys.executable, "-c", "pass"], input="x" * 1_000_001)
     done = pb.run("demo", [sys.executable, "-c", "import sys; print(len(sys.stdin.read()))"], input="abc")
     assert done.stdout.strip() == "3"

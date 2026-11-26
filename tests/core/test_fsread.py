@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 from sy_testing import RecordingAudit
 
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.errors import CapabilityDenied, SwitchyardError
-from switchyard.fsread import CEILING_BYTES, FsBroker
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError
+from hermes_signalbox.fsread import CEILING_BYTES, FsBroker
 
 
 @pytest.fixture
@@ -50,25 +50,25 @@ def test_rules(fs: tuple[FsBroker, PolicyEngine], tmp_path: Path) -> None:
     policy.grant("demo", "fs.read", actor="t")
     big = tmp_path / "big.txt"
     big.write_bytes(b"x" * 2048)
-    with pytest.raises(SwitchyardError, match="absolute"):
+    with pytest.raises(SignalboxError, match="absolute"):
         broker.read_text("demo", "relative.txt")
-    with pytest.raises(SwitchyardError, match="larger"):
+    with pytest.raises(SignalboxError, match="larger"):
         broker.read_text("demo", big, max_bytes=1024)
     for bad in (0, -1, CEILING_BYTES + 1, True):
-        with pytest.raises(SwitchyardError, match="max_bytes"):
+        with pytest.raises(SignalboxError, match="max_bytes"):
             broker.read_text("demo", big, max_bytes=bad)
-    with pytest.raises(SwitchyardError, match="regular file"):
+    with pytest.raises(SignalboxError, match="regular file"):
         broker.read_text("demo", tmp_path)
-    with pytest.raises(SwitchyardError, match="not found"):
+    with pytest.raises(SignalboxError, match="not found"):
         broker.read_text("demo", tmp_path / "missing")
     (tmp_path / "bin").write_bytes(b"\xff\xfe\x00")
-    with pytest.raises(SwitchyardError, match="UTF-8"):
+    with pytest.raises(SignalboxError, match="UTF-8"):
         broker.read_text("demo", tmp_path / "bin")
     (tmp_path / "bad.json").write_text("{nope", encoding="utf-8")
-    with pytest.raises(SwitchyardError, match="valid JSON"):
+    with pytest.raises(SignalboxError, match="valid JSON"):
         broker.read_json("demo", tmp_path / "bad.json")
     (tmp_path / "deep.json").write_text("[" * 70 + "]" * 70, encoding="utf-8")
-    with pytest.raises(SwitchyardError, match="nesting"):
+    with pytest.raises(SignalboxError, match="nesting"):
         broker.read_json("demo", tmp_path / "deep.json")
 
 
@@ -76,7 +76,7 @@ def test_rules(fs: tuple[FsBroker, PolicyEngine], tmp_path: Path) -> None:
 def test_device_files_are_refused(fs: tuple[FsBroker, PolicyEngine]) -> None:
     broker, policy = fs
     policy.grant("demo", "fs.read", actor="t")
-    with pytest.raises(SwitchyardError, match="refuses Unix device paths"):
+    with pytest.raises(SignalboxError, match="refuses Unix device paths"):
         broker.read_text("demo", os.devnull)
 
 
@@ -86,9 +86,9 @@ def test_device_files_are_refused(fs: tuple[FsBroker, PolicyEngine]) -> None:
      "C:relative.json", "C:\\Users\\NUL", "C:\\x\\con.txt", "C:\\a\x00b"],
 )  # fmt: skip
 def test_windows_paths_that_are_not_local_files_are_refused_without_io(path: str) -> None:
-    from switchyard.fsread import check_local_path
+    from hermes_signalbox.fsread import check_local_path
 
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         check_local_path(path, windows=True)
     assert check_local_path("C:\\Users\\vic\\models.json", windows=True)
 
@@ -96,14 +96,14 @@ def test_windows_paths_that_are_not_local_files_are_refused_without_io(path: str
 def test_posix_rules_and_failures_are_audited(
     fs: tuple[FsBroker, PolicyEngine], tmp_path: Path, audit: RecordingAudit
 ) -> None:
-    from switchyard.fsread import check_local_path
+    from hermes_signalbox.fsread import check_local_path
 
-    with pytest.raises(SwitchyardError, match="absolute"):
+    with pytest.raises(SignalboxError, match="absolute"):
         check_local_path("relative/x", windows=False)
     assert check_local_path("/etc/hosts", windows=False)
     broker, policy = fs
     policy.grant("demo", "fs.read", actor="t")
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         broker.read_text("demo", tmp_path / "missing.json")
     assert (
         audit.records[-1]["action"] == "fs.read_failed"
@@ -114,14 +114,14 @@ def test_posix_rules_and_failures_are_audited(
 def test_json_screen_bounds_size_before_parsing(
     fs: tuple[FsBroker, PolicyEngine], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from switchyard import fsread
+    from hermes_signalbox import fsread
 
     broker, policy = fs
     policy.grant("demo", "fs.read", actor="t")
     monkeypatch.setattr(fsread, "MAX_JSON_ITEMS", 100)
     wide = tmp_path / "wide.json"
     wide.write_text(json.dumps([0] * 500), encoding="utf-8")
-    with pytest.raises(SwitchyardError, match="values"):
+    with pytest.raises(SignalboxError, match="values"):
         broker.read_json("demo", wide)
     commas_in_strings = tmp_path / "strings.json"
     commas_in_strings.write_text(json.dumps(["a,b[{" * 100]), encoding="utf-8")

@@ -10,7 +10,7 @@ from typing import Any, ClassVar
 
 import pytest
 
-from switchyard import net
+from hermes_signalbox import net
 
 
 class _AllowAll:

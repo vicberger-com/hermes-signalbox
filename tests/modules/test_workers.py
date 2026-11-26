@@ -11,10 +11,10 @@ from typing import Any
 
 import pytest
 
-from switchyard.bridge import goal_sha
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import SwitchyardError
+from hermes_signalbox.bridge import goal_sha
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import SignalboxError
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "workers"
@@ -44,7 +44,7 @@ def grant(core: Core, module: str, *caps: str) -> None:
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "no-hermes"))
 
 
@@ -306,12 +306,12 @@ def test_module_sees_no_text_and_bad_answers_fail_closed(core: Core, monkeypatch
     core.bridge.set_delegation("workers", lambda meta: 1 / 0, lambda: [("ok", "x\ny"), ("BAD", "z"), 5])
     assert core.bridge.dispatch_delegation(task("any"))[0] is None
     assert core.bridge.delegation_roles() == [("ok", "x y")]
-    with pytest.raises(SwitchyardError, match="already provided"):
+    with pytest.raises(SignalboxError, match="already provided"):
         core.bridge.set_delegation("other", spy, inst.role_list)
     core.run("module", "deactivate", {"id": "workers"}, actor="t")
     assert not core.bridge.delegation_active() and not core.bridge._routed_goals
     route, message = core.bridge.dispatch_delegation(task("any"))
-    assert route is None and "No Switchyard module" in message
+    assert route is None and "No Signalbox module" in message
 
 
 def test_router_down_and_actions(core: Core) -> None:
@@ -324,7 +324,7 @@ def test_router_down_and_actions(core: Core) -> None:
         ("team_set", {"name": "t", "roles": "coder"}),
         ("team_remove", {"name": "t"}),
     ]:
-        with pytest.raises(SwitchyardError, match="read-only"):
+        with pytest.raises(SignalboxError, match="read-only"):
             wk(core, action, actor="hermes", **args)
     assert wk(core, "roles", actor="hermes")["roles"][0]["name"] == "coder"
     for bad in [
@@ -333,18 +333,18 @@ def test_router_down_and_actions(core: Core) -> None:
         {"name": "x", "max_minutes": 0},
         {"name": "x", "profile": "../p"},
     ]:
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             wk(core, "role_set", **bad)
-    with pytest.raises(SwitchyardError, match="unknown role"):
+    with pytest.raises(SignalboxError, match="unknown role"):
         wk(core, "team_set", name="t", roles="coder,ghost")
     wk(core, "team_set", name="t", roles="coder")
     wk(core, "role_remove", name="coder")
     assert wk(core, "teams")["teams"][0]["roles"] == []
     wk(core, "team_remove", name="t")
     for action in ("role_remove", "team_remove"):
-        with pytest.raises(SwitchyardError, match="no "):
+        with pytest.raises(SignalboxError, match="no "):
             wk(core, action, name="t")
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         wk(core, "ledger", state="weird")
     assert core.run("module", "panel", {"id": "workers", "panel": "workers.status"}, actor="t")["roles"] == 0
 
@@ -381,10 +381,10 @@ def test_hermes_provider(core: Core, monkeypatch: pytest.MonkeyPatch) -> None:
     fake.DelegationRouteError = RouteError  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "agent", types.ModuleType("agent"))
     monkeypatch.setitem(sys.modules, "agent.delegation_provider", fake)
-    from switchyard.hermes.delegation import make_provider
+    from hermes_signalbox.hermes.delegation import make_provider
 
     provider = make_provider(core.bridge, lambda: True)
-    assert provider.name == "switchyard" and provider.summary and provider.is_available()
+    assert provider.name == "signalbox" and provider.summary and provider.is_available()
     assert provider.task_parameters({}) == {} and provider.description({}) == ""
     pool(core, "coder", f"{OR}/free/coder:free")
     wk(core, "role_set", name="coder", description="Writes code")

@@ -14,7 +14,7 @@
 
 - <Effect.>
 
-Full record: [ADR-0010](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0010-net-outbound-broker.md)
+Full record: [ADR-0010](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0010-net-outbound-broker.md)
 
 ---
-**Sources:** [ADR-0010](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0010-net-outbound-broker.md)
+**Sources:** [ADR-0010](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0010-net-outbound-broker.md)

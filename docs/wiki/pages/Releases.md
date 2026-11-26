@@ -9,4 +9,4 @@
 | [[Release 1.0.0]] | First stable release |
 
 ---
-**Sources:** [CHANGELOG.md](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/CHANGELOG.md)
+**Sources:** [CHANGELOG.md](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/CHANGELOG.md)

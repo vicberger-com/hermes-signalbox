@@ -1,6 +1,6 @@
-"""Switchyard dashboard backend, mounted by Hermes at ``/api/plugins/switchyard/`` (behind dashboard auth).
+"""Signalbox dashboard backend, mounted by Hermes at ``/api/plugins/signalbox/`` (behind dashboard auth).
 
-A thin proxy to Switchyard's loopback control API (``[api] enabled = true``): a fixed list of operations,
+A thin proxy to Signalbox's loopback control API (``[api] enabled = true``): a fixed list of operations,
 validated path parameters, bounded responses. It reads no secrets and holds no state. Grants, installs and
 config changes are deliberately not offered here (CLI only).
 
@@ -28,23 +28,21 @@ _KINDS = ("health", "usage", "security", "changes")
 
 def _data_dir() -> Path:
     """The data directory the agent plugin uses, resolved as its core resolves it, creating nothing
-    (H4 R1-F10; ``switchyard.hermes.dashboard``)."""
-    from switchyard.hermes.dashboard import data_dir
+    (H4 R1-F10; ``hermes_signalbox.hermes.dashboard``)."""
+    from hermes_signalbox.hermes.dashboard import data_dir
 
     return data_dir()
 
 
 def _call(noun: str, verb: str, params: dict[str, Any]) -> Any:
-    from switchyard.api import ApiClient, ApiUnavailable
-    from switchyard.errors import SwitchyardError
+    from hermes_signalbox.api import ApiClient, ApiUnavailable
+    from hermes_signalbox.errors import SignalboxError
 
     try:
         return ApiClient.from_data_dir(_data_dir()).request(noun, verb, params)
     except ApiUnavailable as exc:
-        raise HTTPException(
-            status_code=503, detail="Switchyard API is off: set [api] enabled = true"
-        ) from exc
-    except SwitchyardError as exc:
+        raise HTTPException(status_code=503, detail="Signalbox API is off: set [api] enabled = true") from exc
+    except SignalboxError as exc:
         raise HTTPException(status_code=400, detail=str(exc)[:300]) from exc
 
 
@@ -53,7 +51,7 @@ def _own_page_only(request: Request) -> None:
     browsers, the CLI, tests) pass: the header can only narrow what Hermes's auth already allowed."""
     values = request.headers.getlist("sec-fetch-site")  # every value, as Hermes's own gate does (1.1 S3-3)
     if any(v.strip().lower() in ("cross-site", "same-site") for v in values):
-        raise HTTPException(status_code=403, detail="Switchyard writes must come from the dashboard page")
+        raise HTTPException(status_code=403, detail="Signalbox writes must come from the dashboard page")
 
 
 _WRITE = [Depends(_own_page_only)]
@@ -67,7 +65,7 @@ def _check(pattern: re.Pattern[str], value: str) -> str:
 
 @router.get("/modules")
 async def modules() -> Any:
-    from switchyard.hermes.dashboard import rows_with_health
+    from hermes_signalbox.hermes.dashboard import rows_with_health
 
     # H4 R1-F11: the Health column, from each running module's own check
     return rows_with_health(_call("module", "list", {}), lambda mid: _call("module", "health", {"id": mid}))

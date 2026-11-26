@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 from sy_testing import ManifestFactory
 
-from switchyard.audit import GENESIS, AuditLog
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.errors import AuditError, CapabilityDenied
+from hermes_signalbox.audit import GENESIS, AuditLog
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.errors import AuditError, CapabilityDenied
 
 
 def _clock() -> str:
@@ -266,7 +266,7 @@ def test_wrong_fields_detected(tmp_path: Path) -> None:
 
 def test_prev_rewrite_detected(tmp_path: Path) -> None:
     # Recomputing the hash of an edited record is not enough: its successor's prev no longer matches.
-    from switchyard.audit import record_hash
+    from hermes_signalbox.audit import record_hash
 
     _fill(_log(tmp_path), 3)
 

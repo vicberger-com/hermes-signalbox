@@ -103,7 +103,7 @@ not use; ships tests, docs and SBOM entries; leaves no state behind on removal u
 
 ## M0 work breakdown
 
-1. Package skeleton `src/switchyard/`, config loader, data directory resolution.
+1. Package skeleton `src/hermes_signalbox/`, config loader, data directory resolution.
 2. Manifest loader and schema validation (replace the template validator with the core implementation; keep the
    CLI entry point).
 3. Policy engine and capability grants; `ModuleContext`.

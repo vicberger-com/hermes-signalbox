@@ -3,8 +3,9 @@
 - R1-F4: granting a capability to an unknown module is a usage error (exit 2), as REFERENCE's exit-code table
   says for an unknown name; it was refused as a policy denial (exit 3).
 - R1-F5: a live command run while another process hosts the data directory without the API names the steps
-  that work for that setup (``[api] enabled = true`` plus a restart, or ``/switchyard`` in a chat) instead
-  of telling the operator to start ``switchyard api serve``, which cannot start while the directory is hosted.
+  that work for that setup (``[api] enabled = true`` plus a restart, or ``/signalbox`` in a chat) instead
+  of telling the operator to start ``hermes-signalbox api serve``, which cannot start while the directory is
+  hosted.
 - R1-F7: setting the mode a module already has records no ``module.mode_changed``.
 - R1-F12: the usage report says why a module's section is missing (``not installed``, ``not active``) instead
   of printing an exception class name.
@@ -18,16 +19,16 @@ from pathlib import Path
 import pytest
 from sy_testing import write_module
 
-from switchyard import cli
-from switchyard.core import Core
-from switchyard.errors import CapabilityDenied, UsageError
+from hermes_signalbox import cli
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import CapabilityDenied, UsageError
 
 USAGE_MODULES = ("meter", "router", "trimmer", "workers")
 
 
 @pytest.fixture(autouse=True)
 def _no_env_dir(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -87,7 +88,7 @@ def test_h4_r1_f5_live_command_while_hosted_without_api_names_the_hosted_setup(
     err = capsys.readouterr().err
     assert "api serve" not in err
     assert "[api] enabled = true" in err and "restart" in err
-    assert "/switchyard module activate m1" in err
+    assert "/signalbox module activate m1" in err
 
 
 def test_h4_r1_f5_live_command_with_nobody_hosting_still_names_api_serve(
@@ -95,7 +96,7 @@ def test_h4_r1_f5_live_command_with_nobody_hosting_still_names_api_serve(
 ) -> None:
     # guard: with no hosting process, starting the daemon is the right step
     assert _cli(data, "module", "activate", "m1") == 1
-    assert "switchyard api serve" in capsys.readouterr().err
+    assert "hermes-signalbox api serve" in capsys.readouterr().err
 
 
 # R1-F7 ----------------------------------------------------------------------------------------------------
@@ -131,7 +132,7 @@ def test_h4_r1_f7_disabled_again_still_stops_an_active_module(core: Core) -> Non
 
 def _class_names(section: object) -> bool:
     text = str(section)
-    return any(name in text for name in ("UsageError", "SwitchyardError", "ModuleNotRunning", "Error'"))
+    return any(name in text for name in ("UsageError", "SignalboxError", "ModuleNotRunning", "Error'"))
 
 
 def test_h4_r1_f12_usage_report_says_not_installed(core: Core) -> None:

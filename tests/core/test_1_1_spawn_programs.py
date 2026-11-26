@@ -8,12 +8,12 @@ from pathlib import Path
 import pytest
 from sy_testing import ManifestFactory, RecordingAudit
 
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.errors import CapabilityDenied, ManifestError, SwitchyardError
-from switchyard.manifest import load_manifest
-from switchyard.process import ProcessBroker
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.errors import CapabilityDenied, ManifestError, SignalboxError
+from hermes_signalbox.manifest import load_manifest
+from hermes_signalbox.process import ProcessBroker
 
-BUNDLED = Path(__file__).resolve().parents[2] / "src" / "switchyard" / "modules"
+BUNDLED = Path(__file__).resolve().parents[2] / "src" / "hermes_signalbox" / "modules"
 
 
 def _broker(
@@ -38,27 +38,27 @@ def test_h1_b10_an_unlisted_program_is_denied_and_audited(
 def test_h1_b10_a_listed_program_passes_the_policy(
     make_manifest: ManifestFactory, audit: RecordingAudit
 ) -> None:
-    pb = _broker(make_manifest, audit, ["switchyard-no-such-program"])
-    with pytest.raises(SwitchyardError, match="not found") as info:  # past the policy: the PATH lookup fails
-        pb.run("demo", ["switchyard-no-such-program"])
+    pb = _broker(make_manifest, audit, ["signalbox-no-such-program"])
+    with pytest.raises(SignalboxError, match="not found") as info:  # past the policy: the PATH lookup fails
+        pb.run("demo", ["signalbox-no-such-program"])
     assert not isinstance(info.value, CapabilityDenied)
 
 
 def test_h1_b10_a_path_in_argv0_is_refused_when_programs_are_listed(
     make_manifest: ManifestFactory, audit: RecordingAudit
 ) -> None:
-    pb = _broker(make_manifest, audit, ["switchyard-demo"])
+    pb = _broker(make_manifest, audit, ["signalbox-demo"])
     with pytest.raises(CapabilityDenied, match="bare program name"):
-        pb.run("demo", [str(Path(sys.executable).parent / "switchyard-demo.exe"), "-c", "pass"])
+        pb.run("demo", [str(Path(sys.executable).parent / "signalbox-demo.exe"), "-c", "pass"])
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows program names ignore case and .exe")
 def test_h1_b10_windows_names_ignore_case_and_extension(
     make_manifest: ManifestFactory, audit: RecordingAudit
 ) -> None:
-    pb = _broker(make_manifest, audit, ["switchyard-no-such-program"])
-    with pytest.raises(SwitchyardError, match="not found"):
-        pb.run("demo", ["SwitchYard-No-Such-Program.EXE"])
+    pb = _broker(make_manifest, audit, ["signalbox-no-such-program"])
+    with pytest.raises(SignalboxError, match="not found"):
+        pb.run("demo", ["SignalBox-No-Such-Program.EXE"])
 
 
 def test_h1_b10_without_a_list_any_program_still_runs(
@@ -87,7 +87,7 @@ def test_h1_b10_bundled_spawning_modules_list_their_programs() -> None:
 
 
 def test_h1_b10_an_update_that_adds_a_program_widens(make_manifest: ManifestFactory, tmp_path: Path) -> None:
-    from switchyard.sbom import sbom_delta
+    from hermes_signalbox.sbom import sbom_delta
 
     old = make_manifest("demo", request=["process.spawn"], programs=["bw"])
     new = make_manifest("demo", request=["process.spawn"], programs=["bw", "curl"])

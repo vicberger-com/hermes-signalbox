@@ -14,7 +14,7 @@
 
 - <Effect.>
 
-Full record: [ADR-0007](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0007-delegation-routing.md)
+Full record: [ADR-0007](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0007-delegation-routing.md)
 
 ---
-**Sources:** [ADR-0007](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0007-delegation-routing.md)
+**Sources:** [ADR-0007](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0007-delegation-routing.md)

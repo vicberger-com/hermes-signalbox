@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from switchyard.context import MemoryPanelRegistry
-from switchyard.errors import SwitchyardError
-from switchyard.logs import MAX_LINE_BYTES, JsonlLogSink
+from hermes_signalbox.context import MemoryPanelRegistry
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.logs import MAX_LINE_BYTES, JsonlLogSink
 
 
 def test_lines_are_json_per_stream(tmp_path: Path) -> None:
@@ -35,7 +35,7 @@ def test_redaction_applies_to_every_string(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("stream", ["../escape", "a/b", "A", "", "x" * 80])
 def test_bad_stream_names_are_refused(tmp_path: Path, stream: str) -> None:
-    with pytest.raises(SwitchyardError, match="stream"):
+    with pytest.raises(SignalboxError, match="stream"):
         JsonlLogSink(tmp_path).write("demo", stream, "e", {})
 
 
@@ -60,14 +60,14 @@ def test_panel_registry() -> None:
     assert reg.panels("a") == ["a.status"] and reg.render("a", "a.status") == {"x": 1}
     reg.remove_all("a")
     assert reg.panels("a") == [] and reg.panels("b") == ["b.status"]
-    with pytest.raises(SwitchyardError, match="panel"):
+    with pytest.raises(SignalboxError, match="panel"):
         reg.render("a", "a.status")
 
 
 def test_h1_b4_long_event_names_keep_every_line_valid_json(tmp_path: Path) -> None:
     import json as _json
 
-    from switchyard.logs import MAX_LINE_BYTES, JsonlLogSink
+    from hermes_signalbox.logs import MAX_LINE_BYTES, JsonlLogSink
 
     sink = JsonlLogSink(tmp_path / "logs")
     sink.write("demo", "s", "e" * 20_000, {})

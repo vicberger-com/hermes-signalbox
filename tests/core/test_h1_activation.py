@@ -9,8 +9,8 @@ from typing import Any
 import pytest
 from sy_testing import write_module
 
-from switchyard.core import Core
-from switchyard.errors import CapabilityDenied
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import CapabilityDenied
 
 CODE = """
 class Mod:
@@ -26,7 +26,7 @@ class Mod:
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -74,6 +74,6 @@ def test_h1_c6_model_may_activate_only_auto_modules(core: Core) -> None:
 
 
 def test_h1_c6_tool_description_says_auto_only() -> None:
-    from switchyard.hermes import MODULES_SCHEMA
+    from hermes_signalbox.hermes import MODULES_SCHEMA
 
     assert "auto" in MODULES_SCHEMA["description"]

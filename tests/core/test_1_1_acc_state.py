@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from switchyard import state as state_mod
-from switchyard.errors import StateError
-from switchyard.state import StateStore
+from hermes_signalbox import state as state_mod
+from hermes_signalbox.errors import StateError
+from hermes_signalbox.state import StateStore
 
 
 def _insert(table: str) -> str:

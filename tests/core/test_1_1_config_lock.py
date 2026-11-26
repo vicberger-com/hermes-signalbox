@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from switchyard.errors import SwitchyardError
-from switchyard.hermesconfig import WRITE_LOCK_NAME, ConfigWriter
-from switchyard.hostlock import FileLock
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.hermesconfig import WRITE_LOCK_NAME, ConfigWriter
+from hermes_signalbox.hostlock import FileLock
 
 
 class _Sink:
@@ -76,7 +76,7 @@ def test_h1_c17_a_rollback_never_overwrites_another_writer(tmp_path: Path) -> No
         return ["a", "b", "intruder"] if len(reads) == 1 else ["other"]
 
     port.after_write = lambda: setattr(port, "get", get)
-    with pytest.raises(SwitchyardError, match="changed by another writer"):
+    with pytest.raises(SignalboxError, match="changed by another writer"):
         ConfigWriter(port, sink, tmp_path / "b").set("activation", "skills.disabled", ["a", "b"], actor="t")  # type: ignore[arg-type]
     assert port.writes == [["a", "b"]]  # no restore written over "other"
     rollback = [r for r in sink.records if r["action"] == "hermes.config.rollback"]
@@ -91,6 +91,6 @@ def test_h1_c17_a_rollback_of_our_own_write_still_restores(tmp_path: Path) -> No
         return ["a", "b", "intruder"]
 
     port.after_write = lambda: setattr(port, "get", get)
-    with pytest.raises(SwitchyardError, match="previous value restored"):
+    with pytest.raises(SignalboxError, match="previous value restored"):
         ConfigWriter(port, sink, tmp_path / "b").set("activation", "skills.disabled", ["a", "b"], actor="t")  # type: ignore[arg-type]
     assert port.writes == [["a", "b"], ["a"]]

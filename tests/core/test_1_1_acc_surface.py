@@ -9,10 +9,10 @@ from typing import Any
 
 import pytest
 
-from switchyard import ops, secrets
-from switchyard.errors import SwitchyardError
-from switchyard.hermesconfig import ConfigWriter
-from switchyard.ops import UsageError
+from hermes_signalbox import ops, secrets
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.hermesconfig import ConfigWriter
+from hermes_signalbox.ops import UsageError
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -81,7 +81,7 @@ class _Port:
 
 def test_s2_6_a_rollback_that_cannot_read_the_key_does_not_write_blind(tmp_path: Path) -> None:
     port, sink = _Port(), _Sink()
-    with pytest.raises(SwitchyardError, match="NOT restored"):
+    with pytest.raises(SignalboxError, match="NOT restored"):
         ConfigWriter(port, sink, tmp_path / "b").set("activation", "skills.disabled", ["a", "b"], actor="t")  # type: ignore[arg-type]
     assert port.writes == [["a", "b"]]  # no restore written over a value nobody could read
     rollback = [r for r in sink.records if r["action"] == "hermes.config.rollback"]

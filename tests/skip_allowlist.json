@@ -1,5 +1,5 @@
 {
-  "_comment": "Tests expected to skip on each platform (H1 D-12). CI sets SWITCHYARD_CHECK_SKIPS=1 and fails when the skipped set differs. Update this file in the same pull request that adds or removes a platform skip.",
+  "_comment": "Tests expected to skip on each platform (H1 D-12). CI sets SIGNALBOX_CHECK_SKIPS=1 and fails when the skipped set differs. Update this file in the same pull request that adds or removes a platform skip.",
   "win32": [
     "tests/core/test_1_1_api_server.py::test_h1_b17_posix_mode_is_user_only_before_the_write",
     "tests/core/test_audit.py::test_files_are_user_only",

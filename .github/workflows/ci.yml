@@ -35,7 +35,7 @@ jobs:
       - run: mypy
       - name: Tests (skipped set must match tests/skip_allowlist.json for this OS)
         env:
-          SWITCHYARD_CHECK_SKIPS: "1"
+          SIGNALBOX_CHECK_SKIPS: "1"
         run: python -m pytest -rs
       - name: Validate module manifests
         shell: bash
@@ -63,7 +63,7 @@ jobs:
 
   # H1 D-4 (Question 9): the plugin against a real Hermes Agent, pinned to the commit of the release the
   # operator runs (v0.23.2). PyPI's hermes-agent stops at 0.19.0, so the pin is a git commit. Bump the SHA
-  # in the same pull request that moves Switchyard to a newer Hermes.
+  # in the same pull request that moves Signalbox to a newer Hermes.
   hermes-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -89,7 +89,7 @@ jobs:
           git -C "$RUNNER_TEMP/hermes-src" fetch -q --depth 1 https://github.com/NousResearch/hermes-agent "$HERMES_REF"
           git -C "$RUNNER_TEMP/hermes-src" checkout -q FETCH_HEAD
           cd "$RUNNER_TEMP/hermes-src" && uv sync --frozen --python "$(command -v python)"
-      - name: Add Switchyard and the test tools to that environment
+      - name: Add Signalbox and the test tools to that environment
         run: |
           HPY="$RUNNER_TEMP/hermes-src/.venv/bin/python"
           uv pip install --python "$HPY" --require-hashes -r tests/integration/requirements.txt
@@ -97,7 +97,7 @@ jobs:
           echo "HPY=$HPY" >> "$GITHUB_ENV"
       - name: Real-Hermes tests (must not skip)
         env:
-          SWITCHYARD_REQUIRE_HERMES: "1"
+          SIGNALBOX_REQUIRE_HERMES: "1"
         run: '"$HPY" -m pytest --no-cov -p no:randomly -rs tests/integration'
 
   # Single stable check to require in the branch ruleset; matrix job names change, this one does not.

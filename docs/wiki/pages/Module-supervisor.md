@@ -10,7 +10,7 @@
 | **Default activation** | auto |
 | **Requests** | [[Capability schedule]], [[Capability core.read]], [[Capability ui.panel]] |
 | **Optional** | — |
-| **Spec** | [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/supervisor/README.md) |
+| **Spec** | [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/supervisor/README.md) |
 
 ## What it does
 
@@ -27,10 +27,10 @@
 ## Turn it on
 
 ```bash
-switchyard module grant supervisor --capability schedule
-switchyard module grant supervisor --capability core.read
-switchyard module grant supervisor --capability ui.panel
-switchyard module activate supervisor
+hermes-signalbox module grant supervisor --capability schedule
+hermes-signalbox module grant supervisor --capability core.read
+hermes-signalbox module grant supervisor --capability ui.panel
+hermes-signalbox module activate supervisor
 ```
 
 ## Settings (`[modules.supervisor]`)
@@ -48,11 +48,11 @@ switchyard module activate supervisor
 
 ## Events and audit records
 
-<From [Reference](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/REFERENCE.md).>
+<From [Reference](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/REFERENCE.md).>
 
 ## Security notes
 
 <Summary; link the "Security review" table in the README.>
 
 ---
-**Sources:** [module README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/supervisor/README.md) · [module.toml](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/supervisor/module.toml)
+**Sources:** [module README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/supervisor/README.md) · [module.toml](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/supervisor/module.toml)

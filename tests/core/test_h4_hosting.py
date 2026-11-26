@@ -20,11 +20,11 @@ import pytest
 from sy_testing import FakeHermesCtx as FakeCtx
 from sy_testing import write_module
 
-from switchyard import hermes as adapter_mod
-from switchyard.api import ApiClient, ApiUnavailable
-from switchyard.core import Core
-from switchyard.hermes import HermesAdapter
-from switchyard.hostlock import HostLock
+from hermes_signalbox import hermes as adapter_mod
+from hermes_signalbox.api import ApiClient, ApiUnavailable
+from hermes_signalbox.core import Core
+from hermes_signalbox.hermes import HermesAdapter
+from hermes_signalbox.hostlock import HostLock
 
 RETRY = 0.05
 _REAL_GATEWAY_RUNTIME = adapter_mod._gateway_runtime  # the suite replaces it per test (tests/conftest.py)
@@ -32,7 +32,7 @@ _REAL_GATEWAY_RUNTIME = adapter_mod._gateway_runtime  # the suite replaces it pe
 
 @pytest.fixture(autouse=True)
 def _fast(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setattr(adapter_mod, "TICK_SECONDS", RETRY)
     monkeypatch.setattr(adapter_mod, "HOST_RETRY_SECONDS", RETRY)
 
@@ -118,7 +118,7 @@ def test_h4_f8_plugin_cli_command_does_not_make_the_process_a_host(
 ) -> None:
     _role(monkeypatch, gateway=False)
     cli_load = adapters(data)
-    code = cli_load._cli_handler(argparse.Namespace(switchyard_json=True, switchyard_args=["module", "list"]))
+    code = cli_load._cli_handler(argparse.Namespace(signalbox_json=True, signalbox_args=["module", "list"]))
     assert code == 0
     time.sleep(4 * RETRY)
     assert not cli_load.core.hosting
@@ -181,7 +181,7 @@ def test_h4_f8_not_hosting_is_recorded_only_by_a_process_that_runs_turns(
     assert elsewhere.acquire()
     try:
         process = adapters(data)
-        process._cli_handler(argparse.Namespace(switchyard_json=True, switchyard_args=["module", "list"]))
+        process._cli_handler(argparse.Namespace(signalbox_json=True, signalbox_args=["module", "list"]))
         time.sleep(4 * RETRY)
         assert "core.not_hosting" not in _actions(data)
         ctx: Any = process.ctx
@@ -219,9 +219,9 @@ def test_h4_f8_every_turn_surface_counts_as_running_turns(
     process = adapters(data)
     ctx: Any = process.ctx
     if surface == "tool":
-        ctx.tools["switchyard_modules"]["handler"]({"action": "list"})
+        ctx.tools["signalbox_modules"]["handler"]({"action": "list"})
     elif surface == "command":
-        ctx.commands["switchyard"]("module list")
+        ctx.commands["signalbox"]("module list")
     elif surface == "middleware":
         ctx.middleware["llm_request"](request={"model": "x"})
     else:

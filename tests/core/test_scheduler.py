@@ -8,9 +8,9 @@ from typing import Any
 import pytest
 from sy_testing import RecordingAudit
 
-from switchyard.errors import SwitchyardError
-from switchyard.events import EventBus
-from switchyard.scheduler import Cron, Scheduler, Trigger
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.events import EventBus
+from hermes_signalbox.scheduler import Cron, Scheduler, Trigger
 
 
 class Clock:
@@ -70,7 +70,7 @@ def test_cron_matching(expr: str, when: datetime, match: bool) -> None:
              "*/0 * * * *", "*/x * * * *", "5-1 * * * *", "a * * * *", "1,,2 * * * *", "* * * * * *"],
 )  # fmt: skip
 def test_bad_cron_is_refused(expr: str) -> None:
-    with pytest.raises(SwitchyardError, match="cron"):
+    with pytest.raises(SignalboxError, match="cron"):
         Cron.parse(expr)
 
 
@@ -96,18 +96,18 @@ def test_bad_cron_is_refused(expr: str) -> None:
 )
 def test_bad_trigger_specs_are_refused(audit: RecordingAudit, kind: str, spec: dict[str, Any]) -> None:
     sched, _, _ = _setup(audit)
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         sched.add(Trigger(id="t1", owner="demo", kind=kind, spec=spec, callback=lambda p: None))
 
 
 def test_duplicate_ids_and_bad_names_are_refused(audit: RecordingAudit) -> None:
     sched, _, _ = _setup(audit)
     sched.add(Trigger(id="t1", owner="demo", kind="time", spec={"every": 5}, callback=lambda p: None))
-    with pytest.raises(SwitchyardError, match="already"):
+    with pytest.raises(SignalboxError, match="already"):
         sched.add(Trigger(id="t1", owner="demo", kind="time", spec={"every": 5}, callback=lambda p: None))
-    with pytest.raises(SwitchyardError, match="trigger id"):
+    with pytest.raises(SignalboxError, match="trigger id"):
         sched.add(Trigger(id="Bad Id", owner="demo", kind="time", spec={"every": 5}, callback=lambda p: None))
-    with pytest.raises(SwitchyardError, match="min_interval"):
+    with pytest.raises(SignalboxError, match="min_interval"):
         sched.add(Trigger(id="t2", owner="d", kind="time", spec={"every": 5}, callback=lambda p: None,
                           min_interval_s=-1))  # fmt: skip
 
@@ -259,9 +259,9 @@ def test_remove_and_remove_owner(audit: RecordingAudit) -> None:
     sched.remove("b1")
     sched.remove("b1")  # idempotent
     assert sched.ids() == []
-    with pytest.raises(SwitchyardError, match="unknown trigger"):
+    with pytest.raises(SignalboxError, match="unknown trigger"):
         sched.fire("b1")
-    with pytest.raises(SwitchyardError, match="unknown trigger"):
+    with pytest.raises(SignalboxError, match="unknown trigger"):
         sched.stats("b1")
 
 
@@ -276,8 +276,8 @@ def test_remove_and_remove_owner(audit: RecordingAudit) -> None:
 )
 def test_h1_b21_non_finite_numbers_are_refused(kind: str, spec: dict[str, Any]) -> None:
     sched = Scheduler(EventBus(RecordingAudit()), RecordingAudit())
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         sched.add(Trigger(id="t1", owner="demo", kind=kind, spec=spec, callback=lambda p: None))
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         sched.add(Trigger(id="t2", owner="demo", kind="time", spec={"every": 5}, callback=lambda p: None,
                           min_interval_s=float("nan")))  # fmt: skip

@@ -2,8 +2,9 @@
 
     python tools/guide_walkthrough.py [--guide docs/USER-GUIDE.md]
 
-Takes every ``switchyard ...`` line from the ``bash`` blocks of sections 2, 3, 6, 7 and 8, starts the daemon
-for ``switchyard api serve``, runs the rest one by one and fails on a non-zero exit or a ``status: failed``
+Takes every ``signalbox ...`` line from the ``bash`` blocks of sections 2, 3, 6, 7 and 8, starts the daemon
+for ``hermes-signalbox api serve``, runs the rest one by one and fails on a non-zero exit or a ``status:
+failed``
 result. Lines with a ``<placeholder>`` cannot run as written and are listed as skipped. At the end the daemon
 is stopped the way an operator would (Ctrl+Break on Windows, SIGTERM elsewhere) and must leave no
 ``api.port`` or ``api.token`` behind (finding D-9).
@@ -43,14 +44,14 @@ def commands(text: str) -> tuple[list[str], list[str]]:
             in_block = raw.strip() == "```bash" and not in_block
             continue
         line = _COMMENT.sub("", raw).strip()
-        if not in_block or section not in SECTIONS or not line.startswith("switchyard "):
+        if not in_block or section not in SECTIONS or not line.startswith("hermes-signalbox "):
             continue
         (skipped if "<" in line else run).append(line)
     return run, skipped
 
 
 def _cli(args: list[str]) -> list[str]:
-    return [sys.executable, "-m", "switchyard.cli", *args]
+    return [sys.executable, "-m", "hermes_signalbox.cli", *args]
 
 
 def _start_daemon(args: list[str], env: dict[str, str]) -> subprocess.Popen[str]:
@@ -92,7 +93,7 @@ def _stop_daemon(proc: subprocess.Popen[str]) -> None:
 def walkthrough(guide: Path, data_dir: Path) -> list[str]:
     """Run the guide; returns the failures (empty when everything worked)."""
     run, skipped = commands(guide.read_text(encoding="utf-8"))
-    env = {**os.environ, "SWITCHYARD_DATA_DIR": str(data_dir), "PYTHONUTF8": "1"}
+    env = {**os.environ, "SIGNALBOX_DATA_DIR": str(data_dir), "PYTHONUTF8": "1"}
     failures: list[str] = []
     daemon: subprocess.Popen[str] | None = None
     try:

@@ -3,7 +3,7 @@
 > **Type:** index · **Applies to:** v1.0.0 · **Last checked:** 2026-11-20 · **Status:** current
 
 Default deny: a module gets only the capabilities its manifest requests and you grant
-(`switchyard module grant <id> --capability <name>`). Grants are stored, audited and revocable, and removing a
+(`hermes-signalbox module grant <id> --capability <name>`). Grants are stored, audited and revocable, and removing a
 module drops them.
 
 | Capability | Risk | Allows | Requested by |
@@ -29,4 +29,4 @@ module drops them.
 > including subprocess modules and a model with a shell, can act outside them. See [[Security model]].
 
 ---
-**Sources:** [capabilities.py](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/capabilities.py) · [DESIGN.md §4](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/DESIGN.md)
+**Sources:** [capabilities.py](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/capabilities.py) · [DESIGN.md §4](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/DESIGN.md)

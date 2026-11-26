@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-if os.environ.get("SWITCHYARD_REQUIRE_HERMES") == "1":  # the CI job that installs Hermes: never skip there
+if os.environ.get("SIGNALBOX_REQUIRE_HERMES") == "1":  # the CI job that installs Hermes: never skip there
     import fastapi
     from fastapi.testclient import TestClient
 else:
@@ -25,7 +25,7 @@ PLUGIN_API = Path(__file__).resolve().parents[2] / "dashboard" / "plugin_api.py"
 
 
 def _load() -> Any:
-    spec = importlib.util.spec_from_file_location("switchyard_dashboard_api_under_test", PLUGIN_API)
+    spec = importlib.util.spec_from_file_location("signalbox_dashboard_api_under_test", PLUGIN_API)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -34,14 +34,14 @@ def _load() -> Any:
 
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("SWITCHYARD_DATA_DIR", str(tmp_path / "data"))  # no daemon there: the API is "off"
+    monkeypatch.setenv("SIGNALBOX_DATA_DIR", str(tmp_path / "data"))  # no daemon there: the API is "off"
     app = fastapi.FastAPI()
-    app.include_router(_load().router, prefix="/api/plugins/switchyard")
+    app.include_router(_load().router, prefix="/api/plugins/signalbox")
     return TestClient(app)
 
 
 def test_d22_a_read_route_reports_the_api_off_as_503(client: TestClient) -> None:
-    r = client.get("/api/plugins/switchyard/modules")
+    r = client.get("/api/plugins/signalbox/modules")
     assert r.status_code == 503 and "enabled = true" in r.json()["detail"]
 
 
@@ -50,14 +50,14 @@ def test_d22_a_read_route_reports_the_api_off_as_503(client: TestClient) -> None
     ["/modules/Bad-Name", "/panel/router/..%2Fx", "/modules/a"],
 )
 def test_d22_path_parameters_are_validated(client: TestClient, path: str) -> None:
-    assert client.get("/api/plugins/switchyard" + path).status_code in (400, 404)
+    assert client.get("/api/plugins/signalbox" + path).status_code in (400, 404)
 
 
 def test_d22_only_activate_and_deactivate_are_lifecycle_verbs(client: TestClient) -> None:
-    assert client.post("/api/plugins/switchyard/modules/router/remove").status_code == 404
-    assert client.get("/api/plugins/switchyard/report/secrets").status_code == 404
-    assert client.get("/api/plugins/switchyard/inbox?state=bogus").status_code == 400
-    assert client.post("/api/plugins/switchyard/inbox/not-hex/ack").status_code == 400
+    assert client.post("/api/plugins/signalbox/modules/router/remove").status_code == 404
+    assert client.get("/api/plugins/signalbox/report/secrets").status_code == 404
+    assert client.get("/api/plugins/signalbox/inbox?state=bogus").status_code == 400
+    assert client.post("/api/plugins/signalbox/inbox/not-hex/ack").status_code == 400
 
 
 @pytest.mark.parametrize("site", ["cross-site", "same-site"])
@@ -65,23 +65,23 @@ def test_d22_only_activate_and_deactivate_are_lifecycle_verbs(client: TestClient
     "path", ["/modules/router/deactivate", "/inbox/0123456789abcdef/ack", "/inbox/ack_all"]
 )
 def test_c18_a_write_another_page_sent_is_refused(client: TestClient, site: str, path: str) -> None:
-    r = client.post("/api/plugins/switchyard" + path, headers={"Sec-Fetch-Site": site})
+    r = client.post("/api/plugins/signalbox" + path, headers={"Sec-Fetch-Site": site})
     assert r.status_code == 403
 
 
 @pytest.mark.parametrize("headers", [{"Sec-Fetch-Site": "same-origin"}, {"Sec-Fetch-Site": "none"}, {}])
-def test_c18_the_dashboards_own_writes_still_reach_switchyard(
+def test_c18_the_dashboards_own_writes_still_reach_signalbox(
     client: TestClient, headers: dict[str, str]
 ) -> None:
     # Past the page check the request reaches the (absent) daemon: 503, not 403.
-    r = client.post("/api/plugins/switchyard/modules/router/deactivate", headers=headers)
+    r = client.post("/api/plugins/signalbox/modules/router/deactivate", headers=headers)
     assert r.status_code == 503
 
 
 def test_s3_3_every_sec_fetch_site_value_is_checked(client: TestClient) -> None:
     # Two values, one of them cross-site: Hermes's own gate checks all of them, so does the plugin.
     r = client.post(
-        "/api/plugins/switchyard/modules/router/deactivate",
+        "/api/plugins/signalbox/modules/router/deactivate",
         headers=[("Sec-Fetch-Site", "none"), ("Sec-Fetch-Site", "cross-site")],
     )
     assert r.status_code == 403

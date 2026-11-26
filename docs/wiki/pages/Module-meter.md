@@ -10,7 +10,7 @@
 | **Default activation** | auto |
 | **Requests** | [[Capability hermes.hooks]], [[Capability ui.panel]] |
 | **Optional** | [[Capability fs.read]] |
-| **Spec** | [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/meter/README.md) |
+| **Spec** | [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/meter/README.md) |
 
 ## What it does
 
@@ -27,10 +27,10 @@
 ## Turn it on
 
 ```bash
-switchyard module grant meter --capability hermes.hooks
-switchyard module grant meter --capability ui.panel
-switchyard module grant meter --capability fs.read
-switchyard module activate meter
+hermes-signalbox module grant meter --capability hermes.hooks
+hermes-signalbox module grant meter --capability ui.panel
+hermes-signalbox module grant meter --capability fs.read
+hermes-signalbox module activate meter
 ```
 
 ## Settings (`[modules.meter]`)
@@ -51,11 +51,11 @@ switchyard module activate meter
 
 ## Events and audit records
 
-<From [Reference](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/REFERENCE.md).>
+<From [Reference](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/REFERENCE.md).>
 
 ## Security notes
 
 <Summary; link the "Security review" table in the README.>
 
 ---
-**Sources:** [module README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/meter/README.md) · [module.toml](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/meter/module.toml)
+**Sources:** [module README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/meter/README.md) · [module.toml](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/meter/module.toml)

@@ -11,11 +11,11 @@ from typing import Any
 
 import pytest
 
-from switchyard.core import Core
-from switchyard.errors import AuditError, CapabilityDenied, SwitchyardError
-from switchyard.ops import OPERATIONS, UsageError
-from switchyard.scheduler import Trigger
-from switchyard.secrets import MemoryBackend
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import AuditError, CapabilityDenied, SignalboxError
+from hermes_signalbox.ops import OPERATIONS, UsageError
+from hermes_signalbox.scheduler import Trigger
+from hermes_signalbox.secrets import MemoryBackend
 
 ROOT = Path(__file__).resolve().parents[2]
 CANARY = "canary-" + "core-value-123"
@@ -32,7 +32,7 @@ class Mod:
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 def _core(tmp_path: Path, **kw: Any) -> Core:
@@ -215,7 +215,7 @@ def test_close_stops_active_modules(tmp_path: Path) -> None:
 def test_operations_after_close_are_refused(tmp_path: Path) -> None:
     core = _core(tmp_path)
     core.close()
-    with pytest.raises(SwitchyardError, match="closed"):
+    with pytest.raises(SignalboxError, match="closed"):
         core.run("module", "list", {}, actor="cli")
 
 
@@ -225,7 +225,7 @@ def test_operations_after_close_are_refused(tmp_path: Path) -> None:
 def test_h1_a10_failed_startup_releases_the_host_lock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import switchyard.core as core_mod
+    import hermes_signalbox.core as core_mod
 
     data = tmp_path / "data"
     real = core_mod.StateStore

@@ -18,8 +18,8 @@ from typing import Any
 import pytest
 from sy_testing import write_module
 
-from switchyard import api as api_mod
-from switchyard.api import (
+from hermes_signalbox import api as api_mod
+from hermes_signalbox.api import (
     MAX_BODY_BYTES,
     MAX_RESPONSE_BYTES,
     ApiClient,
@@ -27,14 +27,14 @@ from switchyard.api import (
     ControlServer,
     safe_header,
 )
-from switchyard.core import Core
-from switchyard.errors import CapabilityDenied, SwitchyardError
-from switchyard.ops import UsageError
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError
+from hermes_signalbox.ops import UsageError
 
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -99,7 +99,7 @@ def test_client_maps_errors(served: tuple[ControlServer, Path]) -> None:
         client.request("module", "activate", {})
     with pytest.raises(CapabilityDenied):
         client.request("module", "grant", {"id": "ext", "capability": "net.outbound"})
-    with pytest.raises(SwitchyardError, match="unknown module"):
+    with pytest.raises(SignalboxError, match="unknown module"):
         client.request("module", "activate", {"id": "ghost"})
 
 
@@ -185,7 +185,7 @@ def test_response_headers(served: tuple[ControlServer, Path]) -> None:
     server, _ = served
     _, headers, _ = _raw(server, "POST", "/v1/module/list", b"{}")
     assert not any(k.startswith("access-control-") for k in headers)
-    assert headers["server"] == "switchyard" and "python" not in headers["server"].lower()
+    assert headers["server"] == "signalbox" and "python" not in headers["server"].lower()
     assert headers["x-content-type-options"] == "nosniff" and headers["cache-control"] == "no-store"
 
 
@@ -200,7 +200,7 @@ def test_header_values_with_line_breaks_are_refused() -> None:
 def test_binds_loopback_only(served: tuple[ControlServer, Path]) -> None:
     server, _ = served
     assert server.host == "127.0.0.1"
-    with pytest.raises(SwitchyardError, match="loopback"):
+    with pytest.raises(SignalboxError, match="loopback"):
         ControlServer(None, host="0.0.0.0")  # type: ignore[arg-type]  # noqa: S104
 
 
@@ -263,7 +263,7 @@ def test_client_caps_response_size(tmp_path: Path) -> None:
     thread.start()
     try:
         client = ApiClient(httpd.server_address[1], "token")
-        with pytest.raises(SwitchyardError, match="too large"):
+        with pytest.raises(SignalboxError, match="too large"):
             client.request("module", "list", {})
     finally:
         httpd.shutdown()

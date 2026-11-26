@@ -13,8 +13,8 @@ from typing import Any
 import pytest
 from sy_testing import write_module
 
-from switchyard import hermes as adapter_mod
-from switchyard.hermes import MODEL_TOOL_ACTIONS, HermesAdapter, register
+from hermes_signalbox import hermes as adapter_mod
+from hermes_signalbox.hermes import MODEL_TOOL_ACTIONS, HermesAdapter, register
 
 
 class FakeCtx:
@@ -67,7 +67,7 @@ class FakeCtx:
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setattr(adapter_mod, "TICK_SECONDS", 0.05)
 
 
@@ -90,13 +90,13 @@ def _tool(ctx: FakeCtx, name: str, **args: Any) -> dict[str, Any]:
 
 def test_register_contributes_tools_commands_cli_idle_task_and_patterns(ctx: FakeCtx) -> None:
     register(ctx)
-    assert set(ctx.tools) == {"switchyard_modules", "switchyard_audit", "switchyard_host"}
-    assert all(t["toolset"] == "switchyard" for t in ctx.tools.values())
+    assert set(ctx.tools) == {"signalbox_modules", "signalbox_audit", "signalbox_host"}
+    assert all(t["toolset"] == "signalbox" for t in ctx.tools.values())
     for name, tool in ctx.tools.items():
         schema = tool["schema"]
         assert schema["name"] == name and schema["description"] and schema["parameters"]["type"] == "object"
-    assert set(ctx.commands) == {"switchyard"} and set(ctx.cli) == {"switchyard"}
-    assert ctx.idle["switchyard-audit-verify"]["interval_hours"] == 24
+    assert set(ctx.commands) == {"signalbox"} and set(ctx.cli) == {"signalbox"}
+    assert ctx.idle["signalbox-audit-verify"]["interval_hours"] == 24
     assert ctx.patterns and all(p[:2].isalnum() or p[:2].replace("_", "a").isalnum() for p in ctx.patterns)
 
 
@@ -110,36 +110,36 @@ def test_plugin_yaml_declares_what_register_provides(ctx: FakeCtx) -> None:
 
 def test_model_tools_list_and_run_modules(ctx: FakeCtx) -> None:
     register(ctx)
-    listed = _tool(ctx, "switchyard_modules", action="list")
+    listed = _tool(ctx, "signalbox_modules", action="list")
     assert listed["ok"] and listed["result"][0]["id"] == "ext"
-    import switchyard.hermes as sh
+    import hermes_signalbox.hermes as sh
 
     assert sh._current is not None
     core = sh._current.core
-    assert not _tool(ctx, "switchyard_modules", action="activate", id="ext")["ok"]  # H1 C-6: ext is manual
+    assert not _tool(ctx, "signalbox_modules", action="activate", id="ext")["ok"]  # H1 C-6: ext is manual
     core.run("module", "grant", {"id": "ext", "capability": "schedule"}, actor="t")
     core.run("module", "mode", {"id": "ext", "mode": "auto"}, actor="t")
-    assert _tool(ctx, "switchyard_modules", action="activate", id="ext")["result"]["status"] == "active"
-    assert _tool(ctx, "switchyard_modules", action="health", id="ext")["result"] == {
+    assert _tool(ctx, "signalbox_modules", action="activate", id="ext")["result"]["status"] == "active"
+    assert _tool(ctx, "signalbox_modules", action="health", id="ext")["result"] == {
         "ok": True,
         "detail": "ok",
         "host_pid": os.getpid(),  # H4 R1-F8
     }
-    assert not _tool(ctx, "switchyard_modules", action="deactivate", id="ext")["ok"]  # R1: operator only
-    from switchyard.errors import CapabilityDenied
+    assert not _tool(ctx, "signalbox_modules", action="deactivate", id="ext")["ok"]  # R1: operator only
+    from hermes_signalbox.errors import CapabilityDenied
 
     with pytest.raises(CapabilityDenied, match="operator only"):  # enforced in the core, not only the tool
         core.run("module", "grant", {"id": "ext", "capability": "fs.read"}, actor="hermes")
-    actors = {r["actor"] for r in _tool(ctx, "switchyard_audit", action="tail", n=10)["result"]}
+    actors = {r["actor"] for r in _tool(ctx, "signalbox_audit", action="tail", n=10)["result"]}
     assert "hermes" in actors
-    assert _tool(ctx, "switchyard_audit", action="verify")["result"]["ok"] is True
-    assert _tool(ctx, "switchyard_host")["result"]["profile_name"]
+    assert _tool(ctx, "signalbox_audit", action="verify")["result"]["ok"] is True
+    assert _tool(ctx, "signalbox_host")["result"]["profile_name"]
 
 
 @pytest.mark.parametrize("action", ["grant", "revoke", "mode", "remove"])
 def test_model_tools_cannot_change_grants_or_modes(ctx: FakeCtx, action: str) -> None:
     register(ctx)
-    out = _tool(ctx, "switchyard_modules", action=action, id="ext", capability="schedule", mode="auto")
+    out = _tool(ctx, "signalbox_modules", action=action, id="ext", capability="schedule", mode="auto")
     assert out["ok"] is False and out["error"] == "UsageError"
     assert action not in MODEL_TOOL_ACTIONS
 
@@ -148,22 +148,22 @@ def test_tool_errors_are_json_and_carry_no_foreign_messages(
     ctx: FakeCtx, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     register(ctx)
-    out = _tool(ctx, "switchyard_modules", action="activate", id="ghost")
+    out = _tool(ctx, "signalbox_modules", action="activate", id="ghost")
     assert out == {"ok": False, "error": "UsageError", "message": "unknown module 'ghost'"}  # H1 A-31
-    assert _tool(ctx, "switchyard_modules")["error"] == "UsageError"  # no action
-    assert _tool(ctx, "switchyard_modules", action="list", id=7)["error"] == "UsageError"
+    assert _tool(ctx, "signalbox_modules")["error"] == "UsageError"  # no action
+    assert _tool(ctx, "signalbox_modules", action="list", id=7)["error"] == "UsageError"
 
     def boom(*_a: Any, **_k: Any) -> Any:
         raise RuntimeError("token=sk-should-not-leak")
 
     monkeypatch.setattr(adapter_mod.current().core, "run", boom)
-    out = _tool(ctx, "switchyard_modules", action="list")
+    out = _tool(ctx, "signalbox_modules", action="list")
     assert out == {"ok": False, "error": "RuntimeError", "message": ""}
 
 
 def test_slash_command_is_the_human_path_for_grants(ctx: FakeCtx) -> None:
     register(ctx)
-    handler = ctx.commands["switchyard"]
+    handler = ctx.commands["signalbox"]
     assert "module grant" in (handler("") or "")  # help text lists operations
     assert "granted" in (handler("module grant ext capability=schedule") or "")
     assert "schedule" in (handler("module show ext") or "")
@@ -174,20 +174,18 @@ def test_slash_command_is_the_human_path_for_grants(ctx: FakeCtx) -> None:
     assert handler("module list") == "[]"
 
 
-def test_cli_command_delegates_to_the_switchyard_cli(
-    ctx: FakeCtx, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_command_delegates_to_the_signalbox_cli(ctx: FakeCtx, capsys: pytest.CaptureFixture[str]) -> None:
     register(ctx)
     parser = argparse.ArgumentParser()
-    ctx.cli["switchyard"]["setup"](parser)
+    ctx.cli["signalbox"]["setup"](parser)
     args = parser.parse_args(["--json", "module", "list"])
-    assert ctx.cli["switchyard"]["handler"](args) == 0
+    assert ctx.cli["signalbox"]["handler"](args) == 0
     assert json.loads(capsys.readouterr().out)[0]["id"] == "ext"
 
 
 def test_idle_task_verifies_the_audit_chain(ctx: FakeCtx) -> None:
     register(ctx)
-    summary = ctx.idle["switchyard-audit-verify"]["fn"](SimpleNamespace(name="switchyard-audit-verify"))
+    summary = ctx.idle["signalbox-audit-verify"]["fn"](SimpleNamespace(name="signalbox-audit-verify"))
     assert summary.startswith("audit ok")
 
 
@@ -200,9 +198,7 @@ def test_driver_thread_ticks_only_in_the_hosting_process(ctx: FakeCtx, tmp_path:
     try:
         # H4 R1-F8: a process that may host keeps its driver, which retries the lock; it does not tick
         assert not other.core.hosting and other.driver_alive()
-        out = json.loads(
-            other.ctx.tools["switchyard_modules"]["handler"]({"action": "activate", "id": "ext"})
-        )
+        out = json.loads(other.ctx.tools["signalbox_modules"]["handler"]({"action": "activate", "id": "ext"}))
         assert out["ok"] is False and "does not host" in out["message"]
     finally:
         other.close()
@@ -254,7 +250,7 @@ def test_config_port_uses_the_public_hermes_api(monkeypatch: pytest.MonkeyPatch)
     import sys
     import types
 
-    from switchyard.hermes.config_port import HermesConfigAdapter
+    from hermes_signalbox.hermes.config_port import HermesConfigAdapter
 
     stored: dict[str, Any] = {"skills": {"disabled": ["a"]}, "model": "m"}
     saved: list[tuple[dict[str, Any], bool]] = []
@@ -288,10 +284,10 @@ def test_pre_llm_call_gate_blocks_the_turn(ctx: FakeCtx, monkeypatch: pytest.Mon
     register(ctx)
     bridge = adapter_mod.current().core.bridge
     assert ctx.hooks["pre_llm_call"](user_message="hi") is None
-    monkeypatch.setattr(bridge, "dispatch_gate", lambda kw: "[switchyard/router] stop")
+    monkeypatch.setattr(bridge, "dispatch_gate", lambda kw: "[signalbox/router] stop")
     assert ctx.hooks["pre_llm_call"](user_message="hi") == {
         "action": "block",
-        "message": "[switchyard/router] stop",
+        "message": "[signalbox/router] stop",
     }
     assert ctx.hooks["post_llm_call"](user_message="hi") is None  # only pre_llm_call can block
 
@@ -310,13 +306,13 @@ def test_delegation_backend_registered_when_hermes_supports_it(
     got: list[Any] = []
     ctx.register_delegation_provider = got.append  # type: ignore[attr-defined]
     register(ctx)
-    assert got[0].name == "switchyard" and not got[0].is_available()  # no module routes yet
+    assert got[0].name == "signalbox" and not got[0].is_available()  # no module routes yet
 
 
 def test_h1_d20_model_tool_description_matches_its_actions() -> None:
     import re
 
-    from switchyard.hermes import MODULES_SCHEMA
+    from hermes_signalbox.hermes import MODULES_SCHEMA
 
     text = MODULES_SCHEMA["description"]
     listed = re.search(r"Actions: ([a-z, ]+?)(?: \(|\.)", text)
@@ -329,7 +325,7 @@ def test_h1_d20_model_tool_description_matches_its_actions() -> None:
 def test_h1_c9_adapter_errors_are_audited_once_and_fail_open(
     ctx: FakeCtx, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import switchyard.hermes as sh
+    import hermes_signalbox.hermes as sh
 
     register(ctx)
     assert sh._current is not None

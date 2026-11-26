@@ -21,8 +21,8 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """H1 D-12: in CI (``SWITCHYARD_CHECK_SKIPS=1``) the skipped set must match this platform's allow-list."""
-    if os.environ.get("SWITCHYARD_CHECK_SKIPS") != "1":
+    """H1 D-12: in CI (``SIGNALBOX_CHECK_SKIPS=1``) the skipped set must match this platform's allow-list."""
+    if os.environ.get("SIGNALBOX_CHECK_SKIPS") != "1":
         return
     from skip_allowlist import allowed, compare
 
@@ -42,7 +42,9 @@ def _no_bundled_modules(
     """Tests run without the bundled modules unless marked ``bundled_modules``, so module lists contain only
     what a test writes."""
     if request.node.get_closest_marker("bundled_modules") is None:
-        monkeypatch.setattr("switchyard.core.BUILTIN_MODULES", tmp_path_factory.mktemp("no-bundled-modules"))
+        monkeypatch.setattr(
+            "hermes_signalbox.core.BUILTIN_MODULES", tmp_path_factory.mktemp("no-bundled-modules")
+        )
     yield
 
 
@@ -50,4 +52,4 @@ def _no_bundled_modules(
 def _adapter_is_the_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
     """Adapter tests stand for the Hermes gateway process, which hosts at plugin load (H4 R1-F8, ADR-0014).
     Tests of the other process roles replace this again (``tests/core/test_h4_hosting.py``)."""
-    monkeypatch.setattr("switchyard.hermes._gateway_runtime", lambda: True)
+    monkeypatch.setattr("hermes_signalbox.hermes._gateway_runtime", lambda: True)

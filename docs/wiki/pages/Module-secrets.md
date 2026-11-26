@@ -10,7 +10,7 @@
 | **Default activation** | auto |
 | **Requests** | [[Capability secrets.read]], [[Capability process.spawn]], [[Capability ui.panel]] |
 | **Optional** | — |
-| **Spec** | [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/secrets/README.md) |
+| **Spec** | [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/secrets/README.md) |
 
 ## What it does
 
@@ -27,10 +27,10 @@
 ## Turn it on
 
 ```bash
-switchyard module grant secrets --capability secrets.read
-switchyard module grant secrets --capability process.spawn
-switchyard module grant secrets --capability ui.panel
-switchyard module activate secrets
+hermes-signalbox module grant secrets --capability secrets.read
+hermes-signalbox module grant secrets --capability process.spawn
+hermes-signalbox module grant secrets --capability ui.panel
+hermes-signalbox module activate secrets
 ```
 
 ## Settings (`[modules.secrets]`)
@@ -47,11 +47,11 @@ switchyard module activate secrets
 
 ## Events and audit records
 
-<From [Reference](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/REFERENCE.md).>
+<From [Reference](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/REFERENCE.md).>
 
 ## Security notes
 
 <Summary; link the "Security review" table in the README.>
 
 ---
-**Sources:** [module README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/secrets/README.md) · [module.toml](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/secrets/module.toml)
+**Sources:** [module README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/secrets/README.md) · [module.toml](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/secrets/module.toml)

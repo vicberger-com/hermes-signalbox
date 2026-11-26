@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from switchyard.manifest import Manifest, load_manifest
+from hermes_signalbox.manifest import Manifest, load_manifest
 
 ManifestFactory = Callable[..., Manifest]
 

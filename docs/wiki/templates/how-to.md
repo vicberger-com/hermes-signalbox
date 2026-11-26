@@ -13,7 +13,7 @@
 1. <Step.>
 
    ```bash
-   switchyard <noun> <verb> <id> --<option> <value>
+   signalbox <noun> <verb> <id> --<option> <value>
    ```
 
 2. <Step.>
@@ -23,7 +23,7 @@
 ## Check it worked
 
 ```bash
-switchyard <noun> <verb> <id>
+signalbox <noun> <verb> <id>
 ```
 
 <What the output should show.>
@@ -37,4 +37,4 @@ switchyard <noun> <verb> <id>
 - [[<Page>]]
 
 ---
-**Sources:** [<document>](https://github.com/vicberger-com/hermes-switchyard/blob/v<X.Y.Z>/<path>) · [<document>](<link>)
+**Sources:** [<document>](https://github.com/vicberger-com/hermes-signalbox/blob/v<X.Y.Z>/<path>) · [<document>](<link>)

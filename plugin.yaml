@@ -1,20 +1,20 @@
 # Hermes plugin manifest (Hermes >= 0.22). Installed from git with `hermes plugins install`, or via pip through the
-# `hermes_agent.plugins` entry point declared in pyproject.toml. Implementation: src/switchyard/hermes/__init__.py
+# `hermes_agent.plugins` entry point declared in pyproject.toml. Implementation: src/hermes_signalbox/hermes/__init__.py
 manifest_version: 2
-name: switchyard
+name: signalbox
 version: 1.0.3
 description: "Security-first, modular control plane for Hermes: modules, capability grants, audit, secrets by reference."
 author: Vic Berger
 license: Apache-2.0
-homepage: https://github.com/vicberger-com/hermes-switchyard
+homepage: https://github.com/vicberger-com/hermes-signalbox
 requires_hermes: ">=0.22"
 # No runtime dependencies (ADR-0001): Hermes must not install this repository into its shared environment (a
 # [build-system] in pyproject.toml would otherwise make it a package to admit; 1.1 S-1).
 python_runtime: external
 provides_tools:
-  - switchyard_modules
-  - switchyard_audit
-  - switchyard_host
+  - signalbox_modules
+  - signalbox_audit
+  - signalbox_host
 provides_hooks:
   - api_request_error
   - post_api_request
@@ -30,4 +30,4 @@ provides_middleware:
 config_schema:
   data_dir:
     type: string
-    description: "Absolute path for Switchyard state; default is this profile's plugin data directory."
+    description: "Absolute path for Signalbox state; default is this profile's plugin data directory."

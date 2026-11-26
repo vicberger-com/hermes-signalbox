@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27,<2"]  # the lock pins the exact version used in CI 
 build-backend = "hatchling.build"
 
 [project]
-name = "hermes-switchyard"
+name = "hermes-signalbox"
 version = "1.0.3"
 description = "Security-first, modular control plane for Hermes Agent."
 readme = "README.md"
@@ -24,31 +24,31 @@ dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.11", "pre-commit>=3.8
 security = ["bandit>=1.7", "pip-audit>=2.7", "cyclonedx-bom>=4.5", "pip-licenses>=5"]
 
 [project.urls]
-Repository = "https://github.com/vicberger-com/hermes-switchyard"
+Repository = "https://github.com/vicberger-com/hermes-signalbox"
 
 [project.scripts]
-switchyard = "switchyard.cli:main"
+hermes-signalbox = "hermes_signalbox.cli:main"
 
 [project.entry-points."hermes_agent.plugins"]
-switchyard = "switchyard.hermes"
+signalbox = "hermes_signalbox.hermes"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/switchyard"]
+packages = ["src/hermes_signalbox"]
 
 # H1 D-5: the Hermes plugin manifest and the dashboard tab ship in the wheel too. Hermes 0.23.2 shows dashboard
 # tabs only for plugins installed into a plugins directory (`hermes plugins install`), not for pip entry points;
 # see docs/USER-GUIDE.md section 5. Files are listed one by one so no local cache file is packaged.
 [tool.hatch.build.targets.wheel.force-include]
-"plugin.yaml" = "switchyard/_plugin/plugin.yaml"
-"dashboard/manifest.json" = "switchyard/_plugin/dashboard/manifest.json"
-"dashboard/plugin_api.py" = "switchyard/_plugin/dashboard/plugin_api.py"
-"dashboard/dist/index.js" = "switchyard/_plugin/dashboard/dist/index.js"
-"dashboard/dist/style.css" = "switchyard/_plugin/dashboard/dist/style.css"
+"plugin.yaml" = "hermes_signalbox/_plugin/plugin.yaml"
+"dashboard/manifest.json" = "hermes_signalbox/_plugin/dashboard/manifest.json"
+"dashboard/plugin_api.py" = "hermes_signalbox/_plugin/dashboard/plugin_api.py"
+"dashboard/dist/index.js" = "hermes_signalbox/_plugin/dashboard/dist/index.js"
+"dashboard/dist/style.css" = "hermes_signalbox/_plugin/dashboard/dist/style.css"
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "templates/module/tests"]
 pythonpath = ["tools", "templates/module", "tests"]
-addopts = "-q --strict-markers --import-mode=importlib --cov=switchyard --cov-branch --cov-report=term-missing:skip-covered"
+addopts = "-q --strict-markers --import-mode=importlib --cov=hermes_signalbox --cov-branch --cov-report=term-missing:skip-covered"
 
 [tool.coverage.report]
 fail_under = 90
@@ -67,16 +67,16 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
 "tests/**" = ["S101"]
 # Bundled modules build SQL only from constants and ctx.state.table() names; values are always bound.
 # Bandit's B608 is still marked per line with "nosec B608".
-"src/switchyard/modules/secrets/secrets_module.py" = ["S608"]
-"src/switchyard/modules/resources/resources_module.py" = ["S608"]
-"src/switchyard/modules/router/router_module.py" = ["S608"]
-"src/switchyard/modules/meter/meter_module.py" = ["S608"]
-"src/switchyard/modules/activation/activation_module.py" = ["S608"]
-"src/switchyard/modules/supervisor/supervisor_module.py" = ["S608"]
-"src/switchyard/modules/workers/workers_module.py" = ["S608"]
-"src/switchyard/modules/trimmer/trimmer_module.py" = ["S608"]
-"src/switchyard/modules/inbox/inbox_module.py" = ["S608"]
-"src/switchyard/modules/scanner/scanner_module.py" = ["S608"]
+"src/hermes_signalbox/modules/secrets/secrets_module.py" = ["S608"]
+"src/hermes_signalbox/modules/resources/resources_module.py" = ["S608"]
+"src/hermes_signalbox/modules/router/router_module.py" = ["S608"]
+"src/hermes_signalbox/modules/meter/meter_module.py" = ["S608"]
+"src/hermes_signalbox/modules/activation/activation_module.py" = ["S608"]
+"src/hermes_signalbox/modules/supervisor/supervisor_module.py" = ["S608"]
+"src/hermes_signalbox/modules/workers/workers_module.py" = ["S608"]
+"src/hermes_signalbox/modules/trimmer/trimmer_module.py" = ["S608"]
+"src/hermes_signalbox/modules/inbox/inbox_module.py" = ["S608"]
+"src/hermes_signalbox/modules/scanner/scanner_module.py" = ["S608"]
 
 [tool.mypy]
 python_version = "3.11"

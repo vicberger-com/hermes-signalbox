@@ -10,10 +10,10 @@ from typing import Any
 
 import pytest
 
-from switchyard import trim
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import SwitchyardError
+from hermes_signalbox import trim
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import SignalboxError
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "trimmer"
@@ -28,7 +28,7 @@ def tr(core: Core, action: str, actor: str = "t", **args: Any) -> Any:
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "no-hermes"))
 
 
@@ -94,13 +94,12 @@ def test_short_output_and_tool_selection(core: Core) -> None:
 
 def test_module_cannot_write_text() -> None:
     lines = ["a", "b", "c", "d"]
-    assert trim.rebuild(lines, [[0, 1], [3, 4]]) == "a\n[switchyard: 2 lines omitted]\nd"
+    assert trim.rebuild(lines, [[0, 1], [3, 4]]) == "a\n[signalbox: 2 lines omitted]\nd"
     for bad in ([["x", 2]], [[0, True]], ["inject"], [[0, 1, 2]], [(0, 4)]):
         assert trim.rebuild(lines, bad) is None  # invalid shapes, or nothing removed
-    assert trim.rebuild(["x"] * 3, [[-5, 1]]) == "x\n[switchyard: 2 lines omitted]"
+    assert trim.rebuild(["x"] * 3, [[-5, 1]]) == "x\n[signalbox: 2 lines omitted]"
     assert (
-        trim.rebuild(["ok", "Error: boom", "ok"], [[0, 1]])
-        == "ok\nError: boom\n[switchyard: 1 lines omitted]"
+        trim.rebuild(["ok", "Error: boom", "ok"], [[0, 1]]) == "ok\nError: boom\n[signalbox: 1 lines omitted]"
     )
     assert trim.normalise("a\x1b[31mred\x1b[0m\r\nb 10%\rb 100%") == "ared\nb 100%"
 
@@ -116,7 +115,7 @@ def test_bad_modules_fail_open(core: Core) -> None:
 
 
 def test_hermes_adapter_keeps_json_valid(core: Core) -> None:
-    from switchyard.hermes import HermesAdapter
+    from hermes_signalbox.hermes import HermesAdapter
 
     adapter = HermesAdapter.__new__(HermesAdapter)
     adapter.core = core
@@ -131,7 +130,7 @@ def test_hermes_adapter_keeps_json_valid(core: Core) -> None:
 
 
 def test_actions_settings_and_capability(core: Core, tmp_path: Path) -> None:
-    with pytest.raises(SwitchyardError, match="read-only"):
+    with pytest.raises(SignalboxError, match="read-only"):
         tr(core, "preview", actor="hermes", text="x")
     out = tr(core, "preview", text=(FIXTURES / "npm_install.txt").read_text("utf-8"))
     assert out["chars_out"] < out["chars_in"] / 5
@@ -181,7 +180,7 @@ def test_review_regressions(core: Core) -> None:
 
 
 def test_only_progress_lines_collapse_by_shape() -> None:
-    from switchyard.modules.trimmer.trimmer_module import plan  # type: ignore[import-not-found,unused-ignore]
+    from hermes_signalbox.modules.trimmer.trimmer_module import plan  # type: ignore[import-not-found,unused-ignore]
 
     lines = ["Step 1 returned 0", "Step 2 returned 1", "Step 3 returned 0", "done"]
     assert plan(lines, 200, 60, 80) == [[0, 4]]
@@ -190,7 +189,7 @@ def test_only_progress_lines_collapse_by_shape() -> None:
 
 
 def test_write_tools_and_duplicate_keys(core: Core, tmp_path: Path) -> None:
-    from switchyard.hermes import HermesAdapter
+    from hermes_signalbox.hermes import HermesAdapter
 
     c = start(tmp_path / "w", 'tools = ["write_file"]')
     try:

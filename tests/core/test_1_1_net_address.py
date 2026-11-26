@@ -15,8 +15,8 @@ from typing import Any, ClassVar
 
 import pytest
 
-from switchyard import net
-from switchyard.errors import SwitchyardError
+from hermes_signalbox import net
+from hermes_signalbox.errors import SignalboxError
 
 
 class _AllowAll:
@@ -81,7 +81,7 @@ def test_b22_link_local_addresses_are_refused(monkeypatch: pytest.MonkeyPatch, a
     _resolver(monkeypatch, {"metadata.example": [address]})
     audit = _Audit()
     broker = net.NetBroker(_AllowAll(), audit)  # type: ignore[arg-type]
-    with pytest.raises(SwitchyardError, match="link-local"):
+    with pytest.raises(SignalboxError, match="link-local"):
         broker.request("demo", "GET", "http://metadata.example/latest")
     assert audit.records and audit.records[-1]["detail"]["result"] == "refused_address"
 

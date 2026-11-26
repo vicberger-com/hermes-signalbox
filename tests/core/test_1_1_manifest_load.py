@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from switchyard import config, manifest
-from switchyard.errors import ConfigError, ManifestError
+from hermes_signalbox import config, manifest
+from hermes_signalbox.errors import ConfigError, ManifestError
 
 
 def _no_whole_reads(monkeypatch: pytest.MonkeyPatch) -> None:

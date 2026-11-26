@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 from sy_testing import RecordingAudit
 
-from switchyard.errors import SwitchyardError
-from switchyard.events import MAX_DATA_BYTES, MAX_DEPTH, Event, EventBus
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.events import MAX_DATA_BYTES, MAX_DEPTH, Event, EventBus
 
 
 def _bus(audit: RecordingAudit, **kw: Any) -> EventBus:
@@ -77,19 +77,19 @@ def test_failing_handler_is_isolated_and_audited(audit: RecordingAudit) -> None:
     ids=["unserialisable", "int-key", "too-big", "list"],
 )
 def test_bad_data_is_refused(audit: RecordingAudit, data: Any) -> None:
-    with pytest.raises(SwitchyardError, match="event data"):
+    with pytest.raises(SignalboxError, match="event data"):
         _bus(audit).publish("core", "x.y", data)
 
 
 @pytest.mark.parametrize("type_", ["", "X.y", "x..y", "x.", ".x", "x y", "x.*"])
 def test_bad_event_types_are_refused(audit: RecordingAudit, type_: str) -> None:
-    with pytest.raises(SwitchyardError, match="event type"):
+    with pytest.raises(SignalboxError, match="event type"):
         _bus(audit).publish("core", type_, {})
 
 
 @pytest.mark.parametrize("pattern", ["", "x.**", "*.x", "X", "x.*.y"])
 def test_bad_patterns_are_refused(audit: RecordingAudit, pattern: str) -> None:
-    with pytest.raises(SwitchyardError, match="pattern"):
+    with pytest.raises(SignalboxError, match="pattern"):
         _bus(audit).subscribe("a", pattern, lambda e: None)
 
 
@@ -154,14 +154,14 @@ def test_threads_have_independent_depth(audit: RecordingAudit) -> None:
 
 def test_non_finite_and_deep_data_are_refused(audit: RecordingAudit) -> None:
     bus = _bus(audit)
-    with pytest.raises(SwitchyardError, match="non-finite"):
+    with pytest.raises(SignalboxError, match="non-finite"):
         bus.publish("core", "x.y", {"n": float("nan")})
     deep: dict[str, Any] = {}
     node = deep
     for _ in range(40):
         node["k"] = {}
         node = node["k"]
-    with pytest.raises(SwitchyardError, match="nested"):
+    with pytest.raises(SignalboxError, match="nested"):
         bus.publish("core", "x.y", deep)
 
 

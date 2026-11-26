@@ -14,7 +14,7 @@
 
 - <Effect.>
 
-Full record: [ADR-0005](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0005-hermes-config-writes.md)
+Full record: [ADR-0005](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0005-hermes-config-writes.md)
 
 ---
-**Sources:** [ADR-0005](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0005-hermes-config-writes.md)
+**Sources:** [ADR-0005](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0005-hermes-config-writes.md)

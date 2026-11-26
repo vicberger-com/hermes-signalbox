@@ -6,8 +6,8 @@ from typing import Any
 
 from sy_testing import ManifestFactory, RecordingAudit
 
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.context import ContextServices, ModuleContext
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.context import ContextServices, ModuleContext
 
 
 class _Nothing:

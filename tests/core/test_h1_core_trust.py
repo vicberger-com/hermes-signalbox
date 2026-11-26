@@ -12,25 +12,25 @@ from typing import Any
 import pytest
 from sy_testing import write_module
 
-from switchyard.contract import run_contract
-from switchyard.core import Core
-from switchyard.errors import CapabilityDenied, ManifestError
-from switchyard.manifest import load_manifest, validate_file
-from switchyard.paths import data_dir_source, resolve_data_dir
-from switchyard.secrets import MemoryBackend, SecretUnavailable
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import CapabilityDenied, ManifestError
+from hermes_signalbox.manifest import load_manifest, validate_file
+from hermes_signalbox.paths import data_dir_source, resolve_data_dir
+from hermes_signalbox.secrets import MemoryBackend, SecretUnavailable
 
 TEMPLATE = Path(__file__).resolve().parents[2] / "templates" / "module"
 SECRET = "Zq9-canary-VALUE-7731-long"  # noqa: S105  # synthetic canary
 
 
-# A-1: an explicit data directory wins over SWITCHYARD_DATA_DIR ------------------------------------------
+# A-1: an explicit data directory wins over SIGNALBOX_DATA_DIR ------------------------------------------
 
 
 def test_h1_a1_explicit_data_dir_beats_the_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     env_dir, arg_dir = tmp_path / "env", tmp_path / "arg"
-    monkeypatch.setenv("SWITCHYARD_DATA_DIR", str(env_dir))
+    monkeypatch.setenv("SIGNALBOX_DATA_DIR", str(env_dir))
     assert resolve_data_dir(configured=arg_dir) == arg_dir
     assert "--data-dir" in data_dir_source(configured=arg_dir)
     assert resolve_data_dir(hermes_dir=tmp_path / "h") == env_dir  # the variable still beats the profile dir
@@ -57,7 +57,7 @@ def test_h1_a3_loaded_module_must_come_from_inside(tmp_path: Path) -> None:
     for p in (inside, outside):
         p.mkdir()
         (p / "x.py").write_text("", encoding="utf-8")
-    from switchyard.manifest import loaded_inside
+    from hermes_signalbox.manifest import loaded_inside
 
     assert loaded_inside(type("M", (), {"__file__": str(inside / "x.py")}), inside)
     assert not loaded_inside(type("M", (), {"__file__": str(outside / "x.py")}), inside)
@@ -160,7 +160,7 @@ def test_h1_a7_health_and_panel_results_are_redacted(tmp_path: Path) -> None:
 
 
 def test_h1_a15_require_host_after_unregister_is_denied(tmp_path: Path) -> None:
-    from switchyard.capabilities import PolicyEngine
+    from hermes_signalbox.capabilities import PolicyEngine
 
     class Store:
         def load(self, mid: str) -> frozenset[str]:
@@ -244,7 +244,7 @@ def test_h1_a19_validator_rejects_unsupported_policies(tmp_path: Path) -> None:
 
 
 def test_h1_a21_contract_detects_grants_left_in_the_store(monkeypatch: pytest.MonkeyPatch) -> None:
-    from switchyard.capabilities import PolicyEngine
+    from hermes_signalbox.capabilities import PolicyEngine
 
     real = PolicyEngine.unregister
 
@@ -263,7 +263,7 @@ def test_h1_a21_contract_detects_grants_left_in_the_store(monkeypatch: pytest.Mo
 def test_h1_a22_context_close_runs_every_step(tmp_path: Path) -> None:
     from types import SimpleNamespace
 
-    from switchyard.context import ModuleContext
+    from hermes_signalbox.context import ModuleContext
 
     calls: list[str] = []
 
@@ -297,7 +297,7 @@ def test_h1_a22_context_close_runs_every_step(tmp_path: Path) -> None:
 def test_h1_c15_bitwarden_strips_one_trailing_newline() -> None:
     import json
 
-    from switchyard.modules.secrets import backends as B
+    from hermes_signalbox.modules.secrets import backends as B
 
     unlocked = subprocess.CompletedProcess([], 0, json.dumps({"status": "unlocked"}), "")
     results = [unlocked, subprocess.CompletedProcess([], 0, SECRET + "\n", "")]

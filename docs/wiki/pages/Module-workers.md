@@ -10,7 +10,7 @@
 | **Default activation** | auto |
 | **Requests** | [[Capability hermes.hooks]], [[Capability hermes.delegation]], [[Capability schedule]], [[Capability ui.panel]] |
 | **Optional** | [[Capability llm.paid]] |
-| **Spec** | [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/workers/README.md) |
+| **Spec** | [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/workers/README.md) |
 
 ## What it does
 
@@ -29,12 +29,12 @@
 ## Turn it on
 
 ```bash
-switchyard module grant workers --capability hermes.hooks
-switchyard module grant workers --capability hermes.delegation
-switchyard module grant workers --capability schedule
-switchyard module grant workers --capability ui.panel
-switchyard module grant workers --capability llm.paid
-switchyard module activate workers
+hermes-signalbox module grant workers --capability hermes.hooks
+hermes-signalbox module grant workers --capability hermes.delegation
+hermes-signalbox module grant workers --capability schedule
+hermes-signalbox module grant workers --capability ui.panel
+hermes-signalbox module grant workers --capability llm.paid
+hermes-signalbox module activate workers
 ```
 
 ## Settings (`[modules.workers]`)
@@ -56,11 +56,11 @@ switchyard module activate workers
 
 ## Events and audit records
 
-<From [Reference](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/REFERENCE.md).>
+<From [Reference](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/REFERENCE.md).>
 
 ## Security notes
 
 <Summary; link the "Security review" table in the README.>
 
 ---
-**Sources:** [module README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/workers/README.md) · [module.toml](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/workers/module.toml)
+**Sources:** [module README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/workers/README.md) · [module.toml](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/workers/module.toml)

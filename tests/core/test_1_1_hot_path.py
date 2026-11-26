@@ -11,16 +11,16 @@ from pathlib import Path
 
 import pytest
 
-import switchyard.core as core_mod
-from switchyard.audit import AuditLog
-from switchyard.core import Core
+import hermes_signalbox.core as core_mod
+from hermes_signalbox.audit import AuditLog
+from hermes_signalbox.core import Core
 
 pytestmark = pytest.mark.bundled_modules
 
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture

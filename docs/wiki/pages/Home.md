@@ -1,4 +1,4 @@
-# Hermes Switchyard
+# Hermes Signalbox
 
 > **Type:** home · **Applies to:** v1.0.0 · **Last checked:** 2026-11-20 · **Status:** current
 
@@ -28,7 +28,7 @@ this order.
 ## Status
 
 **v1.0.0** (2026-11-20): [[Release 1.0.0]] · [Backlog board](https://github.com/orgs/vicberger-com/projects/1) ·
-[Report a vulnerability](https://github.com/vicberger-com/hermes-switchyard/security/advisories/new)
+[Report a vulnerability](https://github.com/vicberger-com/hermes-signalbox/security/advisories/new)
 
 ---
-**Sources:** [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/README.md) · [DESIGN.md](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/DESIGN.md)
+**Sources:** [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/README.md) · [DESIGN.md](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/DESIGN.md)

@@ -1,6 +1,6 @@
 """Per-platform skip allow-list for the test suite (H1, finding D-12).
 
-``tests/conftest.py`` records every skipped and passed test. With ``SWITCHYARD_CHECK_SKIPS=1`` (set in CI) the
+``tests/conftest.py`` records every skipped and passed test. With ``SIGNALBOX_CHECK_SKIPS=1`` (set in CI) the
 session fails when a test skips that is not listed for this platform in ``tests/skip_allowlist.json``, or when
 a listed test ran and passed (the list is stale). Each OS proves its own half, and a new silent skip on any
 OS turns the run red.

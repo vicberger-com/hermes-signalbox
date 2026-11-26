@@ -1,9 +1,10 @@
 """Template module. Copy the directory, rename, and replace the bodies.
 
-The core passes a ``switchyard.context.ModuleContext`` to ``activate``. It exposes only the brokers for
+The core passes a ``hermes_signalbox.context.ModuleContext`` to ``activate``. It exposes only the brokers for
 capabilities this module was granted; anything else raises ``CapabilityDenied``. The context is typed here as
-a Protocol with the two members the template uses, so the module imports nothing from Switchyard and its unit
-tests run on their own. ``tests/test_contract.py`` also runs it through a real core (``switchyard.contract``).
+a Protocol with the two members the template uses, so the module imports nothing from Signalbox and its unit
+tests run on their own. ``tests/test_contract.py`` also runs it through a real core
+(``hermes_signalbox.contract``).
 """
 
 from __future__ import annotations

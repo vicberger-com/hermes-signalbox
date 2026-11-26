@@ -8,9 +8,9 @@ from typing import Any
 import pytest
 from sy_testing import ManifestFactory, RecordingAudit
 
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.context import ContextServices, ModuleContext
-from switchyard.errors import CapabilityDenied, SwitchyardError
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.context import ContextServices, ModuleContext
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError
 
 
 class FakeLogs:
@@ -70,7 +70,7 @@ def test_log_goes_to_declared_stream(make_manifest: ManifestFactory, audit: Reco
     ctx, s = _setup(make_manifest, audit)
     ctx.log("demo", "started", count=1)
     assert s.logs.lines == [("demo", "demo", "started", {"count": 1})]  # type: ignore[attr-defined]
-    with pytest.raises(SwitchyardError, match="log stream"):
+    with pytest.raises(SignalboxError, match="log stream"):
         ctx.log("other", "x")
 
 
@@ -79,7 +79,7 @@ def test_panel_needs_grant_and_declaration(make_manifest: ManifestFactory, audit
     with pytest.raises(CapabilityDenied):
         ctx.register_panel("demo.status", dict)
     ctx, s = _setup(make_manifest, audit, grant=("ui.panel",))
-    with pytest.raises(SwitchyardError, match="panel"):
+    with pytest.raises(SignalboxError, match="panel"):
         ctx.register_panel("demo.undeclared", dict)
     ctx.register_panel("demo.status", dict)
     assert ("demo", "demo.status") in s.panels.panels  # type: ignore[attr-defined]
@@ -90,7 +90,7 @@ def test_emit_is_namespaced(make_manifest: ManifestFactory, audit: RecordingAudi
     ctx.emit("demo.tick", {"n": 1})
     assert s.bus.published == [("demo", "demo.tick", {"n": 1})]  # type: ignore[attr-defined]
     for spoof in ("module.activated", "demox.tick", "demo.", "demo"):
-        with pytest.raises(SwitchyardError, match="event type"):
+        with pytest.raises(SignalboxError, match="event type"):
             ctx.emit(spoof, {})
 
 
@@ -127,7 +127,7 @@ def test_gated_members(
     assert getattr(ctx, member)._facade is broker  # wrapped: re-checked on every call (R1 review)
 
     ctx, _ = _setup(make_manifest, audit, grant=(capability,), **kw)
-    with pytest.raises(SwitchyardError, match="not available"):
+    with pytest.raises(SignalboxError, match="not available"):
         getattr(ctx, member)
 
 
@@ -147,7 +147,7 @@ def test_close_revokes_everything(make_manifest: ManifestFactory, audit: Recordi
         lambda: ctx.health_report(True),
         lambda: ctx.secrets,
     ):
-        with pytest.raises(SwitchyardError, match="closed"):
+        with pytest.raises(SignalboxError, match="closed"):
             call()
 
 
