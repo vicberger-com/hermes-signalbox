@@ -13,8 +13,12 @@ workers, output trimming, dashboard and inbox, security scanners, offload connec
 by a Hermes instance following [AGENTS.md](AGENTS.md); every phase had a fresh security review (results in each
 module README and `docs/qa/`).
 
-Start with the [user guide](docs/USER-GUIDE.md). Install by owner/repository and commit
+**Start here:** [QUICKSTART.md](docs/QUICKSTART.md) — 5 minutes to a working dashboard.
+
+Install by owner/repository and commit
 (`hermes plugins install vicberger-com/hermes-signalbox --ref <SHA>`).
+
+**Capability grants required** — each module needs grants before it runs. See the [capabilities table](docs/USER-GUIDE.md#3-grant-capabilities-and-activate-a-module) for the exact commands per module.
 
 **Priorities (in order, used to break every tie):** 1 security, 2 utility, 3 open source, 4 speed and capacity,
 5 size and code clarity.
@@ -23,6 +27,8 @@ Start with the [user guide](docs/USER-GUIDE.md). Install by owner/repository and
 
 | File | What it is |
 |---|---|
+| [docs/QUICKSTART.md](docs/QUICKSTART.md) | **Start here** — 5-minute zero-to-dashboard path |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues: Symptom → Cause → Fix |
 | [docs/USER-GUIDE.md](docs/USER-GUIDE.md) | Install, first run, grants, activation, dashboard, updates, uninstall |
 | [docs/REFERENCE.md](docs/REFERENCE.md) | Every operation, tool, core setting, audit action and event |
 | [docs/wiki/README.md](docs/wiki/README.md) | Wiki framework: structure, page types, templates, publishing |
