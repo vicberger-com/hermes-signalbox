@@ -28,7 +28,8 @@ Notifications below `min_severity` (default `low`) are dropped. Nothing leaves t
 
 The control API that Hermes starts for the dashboard serves only a dashboard profile: module list, show, panels,
 activate/deactivate, reports, audit reads and the inbox actions. Other module actions run with the model's
-rights (read-only only). Grants, modes, installs, updates, removal and config are refused there; use the
+rights (read-only only). The start mode can be set there (1.1). Grants, installs, updates, removal and config
+are refused there; use the
 command line or `/signalbox` in a Hermes chat (`hermes-signalbox api serve` keeps the full API for them).
 
 Set `[api] enabled = true` in Signalbox's `config.toml` and restart Hermes; the **Signalbox** tab then shows

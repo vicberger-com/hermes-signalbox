@@ -235,10 +235,13 @@ def test_dashboard_api_profile_refuses_privileged_ops(core: Core) -> None:
         for noun, verb, params in [
             ("module", "grant", {"id": "inbox", "capability": "ui.panel"}),
             ("module", "revoke", {"id": "inbox", "capability": "ui.panel"}),
-            ("module", "mode", {"id": "inbox", "mode": "manual"}),
+            ("module", "remove", {"id": "inbox"}),
         ]:
             with pytest.raises(SignalboxError, match="not served by the Signalbox API inside Hermes"):
                 client.request(noun, verb, params)
+        # H5 WP3 (#206): the start mode is served by the dashboard profile, audited as the dashboard
+        assert client.request("module", "mode", {"id": "inbox", "mode": "manual"}) == {"mode": "manual"}
+        assert core.audit_log.tail(1)[0]["actor"] == "api"
         core.bus.publish("meter", "meter.exhausted", {"quota": "day"})
         items = client.request("module", "action", {"id": "inbox", "action": "list", "args": {}})["items"]
         client.request("module", "action", {"id": "inbox", "action": "ack", "args": {"id": items[0]["id"]}})

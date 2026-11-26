@@ -4,11 +4,12 @@ A thin proxy to Signalbox's loopback control API (``[api] enabled = true``): a f
 validated path parameters, bounded responses. It reads no secrets and holds no state. Grants, installs and
 config changes are deliberately not offered here (CLI only).
 
-Writes (activate/deactivate, inbox ack) are reached only through Hermes's dashboard auth: in loopback mode
-every ``/api/`` request needs the ``X-Hermes-Session-Token`` header, which another site's page cannot send;
-behind the OAuth gate the session cookies are ``SameSite=Lax`` and Hermes refuses a cookie write the browser
-marks as another page's (``Sec-Fetch-Site``). H1 C-18 traced this in Hermes v0.23.3. ``_own_page_only``
-repeats the ``Sec-Fetch-Site`` check here, so it holds in either mode and if Hermes's gate changes.
+Writes (activate/deactivate, start mode, inbox ack) are reached only through Hermes's dashboard auth: in
+loopback mode every ``/api/`` request needs the ``X-Hermes-Session-Token`` header, which another site's page
+cannot send; behind the OAuth gate the session cookies are ``SameSite=Lax`` and Hermes refuses a cookie
+write the browser marks as another page's (``Sec-Fetch-Site``). H1 C-18 traced this in Hermes v0.23.3.
+``_own_page_only`` repeats the ``Sec-Fetch-Site`` check here, so it holds in either mode and if Hermes's
+gate changes.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ _ID = re.compile(r"[a-z][a-z0-9_]{1,31}\Z")
 _PANEL = re.compile(r"[a-z][a-z0-9_.-]{0,63}\Z")
 _ITEM = re.compile(r"[0-9a-f]{16}\Z")
 _KINDS = ("health", "usage", "security", "changes")
+_MODES = ("auto", "manual", "disabled")
 
 
 def _data_dir() -> Path:
@@ -79,6 +81,30 @@ async def module_show(module_id: str) -> Any:
 @router.get("/panel/{module_id}/{panel}")
 async def panel(module_id: str, panel: str) -> Any:
     return _call("module", "panel", {"id": _check(_ID, module_id), "panel": _check(_PANEL, panel)})
+
+
+@router.get("/labels")
+async def glossary() -> Any:
+    """Plain-language labels for every capability, status, mode, severity, actor and audit action
+    (H5 WP3, #208). Static: no call to the core."""
+    from hermes_signalbox import labels
+
+    return labels.glossary()
+
+
+# Declared before the generic lifecycle route below, which would otherwise answer ".../mode".
+@router.post("/modules/{module_id}/mode", dependencies=_WRITE)
+async def module_mode(module_id: str, request: Request) -> Any:
+    """Set a module's start mode (H5 WP3, #206); audited as ``module.mode_changed`` by the dashboard."""
+    target = _check(_ID, module_id)
+    try:
+        body = await request.json()
+    except Exception as exc:  # not JSON: the page always sends {"mode": ...}
+        raise HTTPException(status_code=400, detail="expected a JSON body with 'mode'") from exc
+    mode = body.get("mode") if isinstance(body, dict) else None
+    if mode not in _MODES:
+        raise HTTPException(status_code=400, detail=f"mode must be one of: {', '.join(_MODES)}")
+    return _call("module", "mode", {"id": target, "mode": mode})
 
 
 @router.post("/modules/{module_id}/{verb}", dependencies=_WRITE)

@@ -322,13 +322,15 @@ class _Handler(BaseHTTPRequestHandler):
             self._reply(200, {"ok": True, "result": result})
 
 
-# Operations the dashboard profile serves (M9 review): reads, module lifecycle on/off, reports, and the inbox
-# actions. Grants, modes, installs, updates, removal and config are CLI-only. Any other module action runs as
-# the model actor, so only read-only actions succeed.
+# Operations the dashboard profile serves (M9 review): reads, module lifecycle on/off, the start mode,
+# reports, and the inbox actions. Grants, installs, updates, removal and config are CLI-only. Any other module
+# action runs as the model actor, so only read-only actions succeed.
+# H5 WP3 (#206): the start mode is served too. It cannot widen what a module may do: "disabled" only stops,
+# and "auto" starts nothing that lacks a grant.
 DASHBOARD_OPS = frozenset({
     ("module", "list"), ("module", "show"), ("module", "panel"), ("module", "activate"),
     ("module", "deactivate"), ("module", "action"), ("report", "show"), ("audit", "tail"),
-    ("audit", "verify"), ("host", "profile"), ("module", "health"),
+    ("audit", "verify"), ("host", "profile"), ("module", "health"), ("module", "mode"),
 })  # fmt: skip
 NOT_SERVED = "not_served"
 DASHBOARD_ACTIONS = frozenset({("inbox", "list"), ("inbox", "ack"), ("inbox", "ack_all")})

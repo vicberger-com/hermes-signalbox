@@ -85,3 +85,19 @@ def test_s3_3_every_sec_fetch_site_value_is_checked(client: TestClient) -> None:
         headers=[("Sec-Fetch-Site", "none"), ("Sec-Fetch-Site", "cross-site")],
     )
     assert r.status_code == 403
+
+
+def test_h5_wp3_mode_route_with_the_real_fastapi(client: TestClient) -> None:
+    """The mode route is matched before the generic lifecycle route, validates its body, is refused for
+    another page, and serves the static labels with the API off."""
+    base = "/api/plugins/signalbox"
+    assert client.post(base + "/modules/router/mode", json={"mode": "always"}).status_code == 400
+    assert client.post(base + "/modules/router/mode", content=b"not json").status_code == 400
+    assert client.post(base + "/modules/Bad..Id/mode", json={"mode": "auto"}).status_code in (400, 404)
+    crossed = client.post(
+        base + "/modules/router/mode", json={"mode": "auto"}, headers={"Sec-Fetch-Site": "cross-site"}
+    )
+    assert crossed.status_code == 403
+    assert client.post(base + "/modules/router/mode", json={"mode": "auto"}).status_code == 503  # API off
+    labels = client.get(base + "/labels")
+    assert labels.status_code == 200 and "hermes.hooks" in labels.json()["capabilities"]

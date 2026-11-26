@@ -31,6 +31,11 @@ Status: accepted, 2026-11-20. Phase: M9. Q&A: [10-m9-prework.md](../qa/10-m9-pre
    surface, not added to `module list`.
 8. Each report kind has a stated purpose and a deterministic `summary` (`headline`, `counts`, `lines`) in its
    payload, so every surface shows the same sentence and none recomputes it.
+9. The dashboard profile also serves `module mode` (`POST /modules/{id}/mode` in the dashboard backend, behind
+   the same write guard as activate and deactivate; audited `module.mode_changed`, actor `api`). A mode cannot
+   widen what a module may do: `disabled` only stops it and `auto` starts nothing that lacks a grant. Grants,
+   installs, updates, removal and config stay off the dashboard. `GET /labels` serves the label tables; it is
+   static and makes no call to the core.
 
 ## Consequences
 

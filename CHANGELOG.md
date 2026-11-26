@@ -21,9 +21,15 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   fails when one is missing.
 - **Report summaries** (#207): every `report show` result now carries `purpose` (the question the report
   answers) and `summary` (`headline`, `counts`, `lines`), computed from the report data alone.
+- **Label glossary for the dashboard** (#208): `GET /labels` in the dashboard backend serves the label tables.
+  It is static and makes no call to the core.
 
 ### Changed
 
+- **The dashboard API can set a module's start mode** (#206): `POST /modules/{id}/mode` in the dashboard
+  backend, behind the same write guard as activate and deactivate, audited as `module.mode_changed` with actor
+  `api`. The restricted API profile Hermes runs now accepts `module mode`; grants, installs, updates, removal
+  and config are still refused there. The Modules view gets the control in the next change.
 - **Chat replies are readable** (#205): `/signalbox <noun> <verb>` answers in Markdown, with a summary line,
   a table with each module's description and state in plain words, and the next step (for example the grant
   command). Add `json=true` for the previous JSON reply, unchanged.
