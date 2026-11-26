@@ -10,9 +10,9 @@ from typing import Any
 import pytest
 from sy_testing import GOOD, write_module
 
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import ChannelNotFound, SwitchyardError, UpdateError
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import ChannelNotFound, SignalboxError, UpdateError
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "updates"
@@ -35,7 +35,7 @@ class Heads:
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "no-hermes"))
 
 
@@ -74,7 +74,7 @@ def test_announces_each_available_commit_once(
     setup: tuple[Core, Heads], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     core, heads = setup
-    monkeypatch.setattr("switchyard.updates.CHECK_MIN_SECONDS", 0.0)
+    monkeypatch.setattr("hermes_signalbox.updates.CHECK_MIN_SECONDS", 0.0)
     assert act(core, "check_now") == {"modules": 1, "available": 0, "errors": 1}
     heads.heads[(URL, "stable")] = NEW
     assert act(core, "check_now") == {"modules": 1, "available": 1, "errors": 0}
@@ -88,7 +88,7 @@ def test_announces_each_available_commit_once(
 
 def test_rights_and_settings(setup: tuple[Core, Heads], tmp_path: Path) -> None:
     core, _ = setup
-    with pytest.raises(SwitchyardError, match="read-only"):
+    with pytest.raises(SignalboxError, match="read-only"):
         act(core, "check_now", actor="hermes")
     for i, bad in enumerate(("interval_hours = 0", "interval_hours = true", "other = 1")):
         data = tmp_path / f"b{i}"

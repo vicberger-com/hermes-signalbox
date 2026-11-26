@@ -10,13 +10,13 @@ from typing import Any
 import pytest
 from sy_testing import write_module
 
-from switchyard.audit import AuditLog
-from switchyard.core import Core
-from switchyard.errors import CapabilityDenied, StateError, SwitchyardError
-from switchyard.logs import MAX_STREAM_BYTES, JsonlLogSink
-from switchyard.rpc import Channel, ProtocolError
-from switchyard.state import StateStore
-from switchyard.trim import MUST_KEEP
+from hermes_signalbox.audit import AuditLog
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError, StateError
+from hermes_signalbox.logs import MAX_STREAM_BYTES, JsonlLogSink
+from hermes_signalbox.rpc import Channel, ProtocolError
+from hermes_signalbox.state import StateStore
+from hermes_signalbox.trim import MUST_KEEP
 
 SUBSCRIBER = """
 class Mod:
@@ -32,7 +32,7 @@ class Mod:
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "no-hermes"))
 
 
@@ -121,7 +121,7 @@ def test_kept_facade_is_rechecked_after_deactivation(tmp_path: Path) -> None:
         core.run("module", "activate", {"id": "keeper"}, actor="t")
         kept = core.manager._entry("keeper").instance.ctx.schedule
         core.run("module", "deactivate", {"id": "keeper"}, actor="t")
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             kept.every("again", 60, lambda: None)
     finally:
         core.close()
@@ -152,7 +152,7 @@ def test_rpc_call_has_one_total_deadline() -> None:
 
 
 def test_log_streams_are_bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("switchyard.logs.MAX_STREAM_BYTES", 2000)
+    monkeypatch.setattr("hermes_signalbox.logs.MAX_STREAM_BYTES", 2000)
     sink = JsonlLogSink(tmp_path)
     for i in range(100):
         sink.write("m", "s", "e", {"i": i, "pad": "x" * 50})
@@ -175,7 +175,7 @@ def test_auth_failures_are_never_trimmed(line: str) -> None:
 
 
 def test_module_results_reach_the_model_labelled() -> None:
-    from switchyard.hermes import UNTRUSTED_NOTE
+    from hermes_signalbox.hermes import UNTRUSTED_NOTE
 
     assert "data" in UNTRUSTED_NOTE and json.dumps({"note": UNTRUSTED_NOTE})
 
@@ -184,7 +184,7 @@ def test_module_results_reach_the_model_labelled() -> None:
 
 
 def test_guarded_facade_hides_private_state_and_checks_nested(tmp_path: Path) -> None:
-    from switchyard.context import _Guarded
+    from hermes_signalbox.context import _Guarded
 
     class Inner:
         def write(self) -> str:
@@ -201,7 +201,7 @@ def test_guarded_facade_hides_private_state_and_checks_nested(tmp_path: Path) ->
 
         def _open(self) -> None:
             if not self.allowed:
-                raise SwitchyardError("closed")
+                raise SignalboxError("closed")
 
         class _services:
             class policy:
@@ -216,17 +216,17 @@ def test_guarded_facade_hides_private_state_and_checks_nested(tmp_path: Path) ->
     nested = g.inner
     assert nested.write() == "wrote"
     ctx.allowed = False
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         nested.write()
 
 
 def test_log_rotation_failure_keeps_appending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("switchyard.logs.MAX_STREAM_BYTES", 200)
+    monkeypatch.setattr("hermes_signalbox.logs.MAX_STREAM_BYTES", 200)
 
     def busy(*_a: object) -> None:
         raise PermissionError("held open by another process")
 
-    monkeypatch.setattr("switchyard.logs.os.replace", busy)
+    monkeypatch.setattr("hermes_signalbox.logs.os.replace", busy)
     sink = JsonlLogSink(tmp_path)
     for i in range(5):
         sink.write("m", "s", "e", {"i": i, "pad": "x" * 50})

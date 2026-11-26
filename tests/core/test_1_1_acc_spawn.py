@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 from sy_testing import ManifestFactory, RecordingAudit
 
-from switchyard import process
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.errors import CapabilityDenied, ManifestError, SwitchyardError
-from switchyard.process import ProcessBroker
+from hermes_signalbox import process
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.errors import CapabilityDenied, ManifestError, SignalboxError
+from hermes_signalbox.process import ProcessBroker
 
 
 def _broker(
@@ -48,7 +48,7 @@ def test_s1_1_cmd_metacharacters_never_reach_a_batch_file(
 ) -> None:
     name, work = batch_program
     pb = _broker(make_manifest, audit, [name])
-    with pytest.raises(SwitchyardError, match="batch file"):
+    with pytest.raises(SignalboxError, match="batch file"):
         pb.run("demo", [name, arg])
     assert not (work / "out.txt").exists()
 
@@ -71,7 +71,7 @@ def test_s1_2_the_caller_cannot_set_variables_that_choose_what_runs(
     make_manifest: ManifestFactory, audit: RecordingAudit, key: str
 ) -> None:
     pb = _broker(make_manifest, audit, None)
-    with pytest.raises(SwitchyardError, match="environment variable"):
+    with pytest.raises(SignalboxError, match="environment variable"):
         pb.run("demo", [sys.executable, "-c", "pass"], env={key: "x"})
 
 
@@ -112,7 +112,7 @@ def test_s1_9_a_skipped_tree_kill_is_logged(
 ) -> None:
     monkeypatch.setattr(process, "system_program", lambda _name: None)
     proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
-    with caplog.at_level(logging.WARNING, logger="switchyard.process"):
+    with caplog.at_level(logging.WARNING, logger="hermes_signalbox.process"):
         process._kill_tree(proc)
     assert proc.wait(timeout=10) is not None
     assert any("taskkill" in r.getMessage() for r in caplog.records)

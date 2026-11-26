@@ -7,17 +7,17 @@ from typing import Any
 import pytest
 from sy_testing import ManifestFactory, RecordingAudit
 
-from switchyard import secrets as secrets_mod
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.errors import SwitchyardError
-from switchyard.secrets import MASK, MemoryBackend, Redactor, SecretsBroker
+from hermes_signalbox import secrets as secrets_mod
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.secrets import MASK, MemoryBackend, Redactor, SecretsBroker
 
 VALUE = "plain-" + "4c1d9e7a22-value"  # matches no credential pattern, so only the value list redacts it
 
 
 def test_a17_memory_backend_needs_the_flag_even_when_pytest_is_loaded() -> None:
     # The old guard was "pytest" in sys.modules: any stub module named pytest opened it.
-    with pytest.raises(SwitchyardError, match="allow_test_backend"):
+    with pytest.raises(SignalboxError, match="allow_test_backend"):
         MemoryBackend({"a": "b"})
     assert MemoryBackend({"a": "b"}, allow_test_backend=True).get("a") == "b"
 

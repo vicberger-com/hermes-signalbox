@@ -1,4 +1,4 @@
-# Switchyard module manifest. Schema: src/switchyard/schemas/module.schema.json
+# Signalbox module manifest. Schema: src/hermes_signalbox/schemas/module.schema.json
 # Validate: python tools/validate_manifest.py <this file>
 schema = 1
 
@@ -22,7 +22,7 @@ secrets = []                      # secret names (never values); required with "
 
 [contributes]
 hooks = []                        # Hermes hook names
-tools = []                        # Hermes tool names, prefixed switchyard_
+tools = []                        # Hermes tool names, prefixed signalbox_
 commands = []                     # slash and CLI commands
 panels = ["example.status"]
 policies = []                     # rules that tighten this module's own grant

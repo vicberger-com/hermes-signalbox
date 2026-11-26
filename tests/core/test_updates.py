@@ -12,9 +12,9 @@ from typing import Any
 import pytest
 from sy_testing import GOOD, write_module
 
-from switchyard.core import Core
-from switchyard.errors import ChannelNotFound, UpdateError
-from switchyard.updates import GitFetcher, git_usable
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import ChannelNotFound, UpdateError
+from hermes_signalbox.updates import GitFetcher, git_usable
 
 URL = "https://example.invalid/vendor/ext.git"
 OLD = "1" * 40
@@ -60,7 +60,7 @@ def _source(
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -194,7 +194,7 @@ needs_git = pytest.mark.skipif(not git_usable(), reason="no git executable this 
 
 
 def _git(cwd: Path, *args: str) -> str:
-    from switchyard.updates import resolved_git
+    from hermes_signalbox.updates import resolved_git
 
     exe = resolved_git() or "git"  # the same git the fetcher uses (H1 D-2)
     return subprocess.run([exe, *args], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()  # noqa: S603
@@ -388,7 +388,7 @@ def test_new_contributions_widen(env: Any) -> None:
 
 
 def test_patch_notes_exact_version_and_format_chars(tmp_path: Path) -> None:
-    from switchyard.updates import patch_notes
+    from hermes_signalbox.updates import patch_notes
 
     (tmp_path / "CHANGELOG.md").write_text(
         "## 1.20.0\n- wrong\n## 1.2 - date\n- right\u202egnp.exe\n## 1.1\n", encoding="utf-8"

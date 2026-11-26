@@ -14,7 +14,7 @@
 
 - <Effect.>
 
-Full record: [ADR-0003](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0003-fs-read-broker.md)
+Full record: [ADR-0003](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0003-fs-read-broker.md)
 
 ---
-**Sources:** [ADR-0003](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0003-fs-read-broker.md)
+**Sources:** [ADR-0003](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0003-fs-read-broker.md)

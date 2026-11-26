@@ -7,14 +7,14 @@ from pathlib import Path
 import pytest
 from sy_testing import GOOD, write_module
 
-from switchyard.contract import run_contract
+from hermes_signalbox.contract import run_contract
 
 TEMPLATE = Path(__file__).resolve().parents[2] / "templates" / "module"
 
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 def _names(report: object) -> dict[str, bool]:

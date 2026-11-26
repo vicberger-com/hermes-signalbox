@@ -9,9 +9,9 @@ from typing import Any
 
 import pytest
 
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import SwitchyardError
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import SignalboxError
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "resources"
@@ -48,7 +48,7 @@ def act(core: Core, action: str, actor: str = "t", **args: Any) -> Any:
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -73,13 +73,13 @@ def test_contract_suite() -> None:
 
 
 def test_import_is_reviewed_and_never_enables(core: Core) -> None:
-    with pytest.raises(SwitchyardError, match="read-only"):  # R1: a preview replaces the pending one
+    with pytest.raises(SignalboxError, match="read-only"):  # R1: a preview replaces the pending one
         act(core, "import_preview", actor="hermes")
     preview = act(core, "import_preview")
     assert preview["cost_changes"] == []
     assert (preview["added"], preview["changed"], preview["removed"]) == (3, 0, 0)
     assert act(core, "list")["count"] == 0  # nothing applied yet
-    with pytest.raises(SwitchyardError, match="read-only"):
+    with pytest.raises(SignalboxError, match="read-only"):
         act(core, "import_apply", actor="hermes", import_id=preview["import_id"])
     applied = act(core, "import_apply", import_id=preview["import_id"])
     assert applied["added"] == 3
@@ -93,7 +93,7 @@ def test_import_is_reviewed_and_never_enables(core: Core) -> None:
     ]
     assert rows["ollama/qwen3"]["cost_class"] == "self-hosted"
     assert "OPENROUTER_API_KEY" not in json.dumps(rows) and "example.invalid" not in json.dumps(rows)
-    with pytest.raises(SwitchyardError, match="no pending import"):
+    with pytest.raises(SignalboxError, match="no pending import"):
         act(core, "import_apply", import_id=preview["import_id"])
 
 
@@ -151,7 +151,7 @@ def test_filters_pools_bindings_and_resolve(core: Core) -> None:
         "consumers": ["main"],
     }
     assert act(core, "show", id="ollama/qwen3")["pools"] == [{"pool": "cheap", "priority": 2}]
-    with pytest.raises(SwitchyardError, match="bound"):
+    with pytest.raises(SignalboxError, match="bound"):
         act(core, "pool_delete", name="cheap")
     act(core, "unbind", consumer="main")
     assert act(core, "resolve", consumer="main")["pool"] is None
@@ -177,7 +177,7 @@ def test_filters_pools_bindings_and_resolve(core: Core) -> None:
     ],
 )  # fmt: skip
 def test_input_validation(core: Core, action: str, args: dict[str, Any]) -> None:
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         act(core, action, **args)
 
 
@@ -206,13 +206,13 @@ def test_file_import_and_hostile_files(core: Core, tmp_path: Path) -> None:
     for i, bad in enumerate(hostile):
         path = tmp_path / f"bad{i}.json"
         path.write_text(json.dumps(bad), encoding="utf-8")
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             act(core, "import_file", path=str(path))
     discard = act(core, "import_file", path=str(good))
     assert act(core, "import_discard", import_id=discard["import_id"])["discarded"] is True
     first = act(core, "import_file", path=str(good))["import_id"]
     second = act(core, "import_file", path=str(good))["import_id"]  # same source replaces the pending preview
-    with pytest.raises(SwitchyardError, match="no pending import"):
+    with pytest.raises(SignalboxError, match="no pending import"):
         act(core, "import_apply", import_id=first)
     assert second != first
     for i in range(4):
@@ -221,7 +221,7 @@ def test_file_import_and_hostile_files(core: Core, tmp_path: Path) -> None:
         act(core, "import_file", path=str(other))
     extra = tmp_path / "cat9.json"
     extra.write_text(good.read_text(encoding="utf-8"), encoding="utf-8")
-    with pytest.raises(SwitchyardError, match="pending"):
+    with pytest.raises(SignalboxError, match="pending"):
         act(core, "import_file", path=str(extra))
     assert (
         len(
@@ -240,14 +240,14 @@ def test_models_dev_parser_limits(tmp_path: Path) -> None:
     assert spec is not None and spec.loader is not None
     catalog = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(catalog)
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         catalog.from_models_dev([], providers=set(), free_only=False)
     rows = catalog.from_models_dev(MODELS_DEV, providers={"openrouter"}, free_only=True)
     assert [r["id"] for r in rows] == ["openrouter/meta/llama-4:free"]
     huge = {"p": {"models": {f"m{i}": {} for i in range(catalog.MAX_ROWS + 2)}}}
-    with pytest.raises(SwitchyardError, match="filter"):
+    with pytest.raises(SignalboxError, match="filter"):
         catalog.from_models_dev(huge, providers=set(), free_only=False)
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         catalog.from_file({"resources": [{}] * (catalog.MAX_ROWS + 1)})
 
 
@@ -266,7 +266,7 @@ def test_bad_settings(tmp_path: Path) -> None:
 def test_model_cannot_choose_files(core: Core, tmp_path: Path) -> None:
     secret = tmp_path / "private.json"
     secret.write_text(json.dumps({"resources": [{"id": "x/y", "name": "private-name"}]}), encoding="utf-8")
-    with pytest.raises(SwitchyardError, match="read-only"):
+    with pytest.raises(SignalboxError, match="read-only"):
         act(core, "import_file", actor="hermes", path=str(secret))
     preview = act(core, "import_preview")
     assert set(preview["sample_ids"]) == {"added", "changed", "removed"}
@@ -283,7 +283,7 @@ def test_tag_filter_treats_underscore_literally_and_tag_cap(core: Core, tmp_path
     many.write_text(
         json.dumps({"resources": [{"id": "t/x", "tags": [f"t{i}" for i in range(40)]}]}), encoding="utf-8"
     )
-    with pytest.raises(SwitchyardError, match="tags"):
+    with pytest.raises(SignalboxError, match="tags"):
         act(core, "import_file", path=str(many))
 
 

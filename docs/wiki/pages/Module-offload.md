@@ -10,7 +10,7 @@
 | **Default activation** | manual |
 | **Requests** | [[Capability net.outbound]], [[Capability ui.panel]] |
 | **Optional** | [[Capability process.spawn]] |
-| **Spec** | [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/offload/README.md) |
+| **Spec** | [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/offload/README.md) |
 
 ## What it does
 
@@ -27,10 +27,10 @@
 ## Turn it on
 
 ```bash
-switchyard module grant offload --capability net.outbound
-switchyard module grant offload --capability process.spawn
-switchyard module grant offload --capability ui.panel
-switchyard module activate offload
+hermes-signalbox module grant offload --capability net.outbound
+hermes-signalbox module grant offload --capability process.spawn
+hermes-signalbox module grant offload --capability ui.panel
+hermes-signalbox module activate offload
 ```
 
 ## Settings (`[modules.offload]`)
@@ -47,11 +47,11 @@ switchyard module activate offload
 
 ## Events and audit records
 
-<From [Reference](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/REFERENCE.md).>
+<From [Reference](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/REFERENCE.md).>
 
 ## Security notes
 
 <Summary; link the "Security review" table in the README.>
 
 ---
-**Sources:** [module README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/offload/README.md) · [module.toml](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/offload/module.toml)
+**Sources:** [module README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/offload/README.md) · [module.toml](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/offload/module.toml)

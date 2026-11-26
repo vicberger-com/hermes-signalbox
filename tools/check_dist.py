@@ -4,7 +4,8 @@
 
 Compares the wheel's files with ``tools/wheel_files.txt`` (version-independent: the ``*.dist-info`` directory
 name is normalised), checks an sdist exists, installs the wheel with no dependencies into a fresh virtual
-environment without pip, and runs ``switchyard version``, ``module list`` and ``config show`` there against a
+environment without pip, and runs ``hermes-signalbox version``, ``module list`` and ``config show`` there
+against a
 temporary data directory. ``--venv`` keeps the environment (the release SBOM is generated from it, so it lists
 what ships, not the build tools).
 """
@@ -26,7 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 EXPECTED = ROOT / "tools" / "wheel_files.txt"
-_DIST_INFO = re.compile(r"^hermes_switchyard-[^/]+\.dist-info/")
+_DIST_INFO = re.compile(r"^hermes_signalbox-[^/]+\.dist-info/")
 
 
 def project_version() -> str:
@@ -37,7 +38,7 @@ def project_version() -> str:
 def wheel_files(wheel: Path) -> list[str]:
     with zipfile.ZipFile(wheel) as zf:
         names = [n for n in zf.namelist() if not n.endswith("/")]
-    return sorted(_DIST_INFO.sub("hermes_switchyard.dist-info/", n) for n in names)
+    return sorted(_DIST_INFO.sub("hermes_signalbox.dist-info/", n) for n in names)
 
 
 def expected_files(path: Path = EXPECTED) -> list[str]:
@@ -65,10 +66,10 @@ def smoke(wheel: Path, env: Path) -> list[str]:
          "--quiet", str(wheel)],
         check=True,
     )  # fmt: skip
-    cli = _bin(env, "switchyard")
+    cli = _bin(env, "hermes-signalbox")
     problems: list[str] = []
     data = Path(tempfile.mkdtemp(prefix="sy-smoke-"))
-    run_env = {**os.environ, "SWITCHYARD_DATA_DIR": str(data)}
+    run_env = {**os.environ, "SIGNALBOX_DATA_DIR": str(data)}
     try:
 
         def run(*args: str) -> subprocess.CompletedProcess[str]:
@@ -79,11 +80,11 @@ def smoke(wheel: Path, env: Path) -> list[str]:
         version = run("version")
         if version.returncode != 0 or version.stdout.strip() != project_version():
             problems.append(
-                f"switchyard version printed {version.stdout.strip()!r} (exit {version.returncode})"
+                f"hermes-signalbox version printed {version.stdout.strip()!r} (exit {version.returncode})"
             )
         listed = run("--json", "module", "list")
         bundled = sorted(
-            p.parent.name for p in (ROOT / "src" / "switchyard" / "modules").glob("*/module.toml")
+            p.parent.name for p in (ROOT / "src" / "hermes_signalbox" / "modules").glob("*/module.toml")
         )
         try:
             ids = sorted(row["id"] for row in json.loads(listed.stdout))
@@ -106,8 +107,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("dist", type=Path)
     parser.add_argument("--venv", type=Path, default=None, help="keep the smoke-test environment here")
     args = parser.parse_args(argv)
-    wheels = sorted(args.dist.glob("hermes_switchyard-*.whl"))
-    sdists = sorted(args.dist.glob("hermes_switchyard-*.tar.gz"))
+    wheels = sorted(args.dist.glob("hermes_signalbox-*.whl"))
+    sdists = sorted(args.dist.glob("hermes_signalbox-*.tar.gz"))
     problems: list[str] = []
     if len(wheels) != 1 or len(sdists) != 1:
         problems.append(

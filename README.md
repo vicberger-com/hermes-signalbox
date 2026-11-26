@@ -1,4 +1,6 @@
-# Hermes Switchyard
+# Hermes Signalbox
+
+(Formerly Switchyard; renamed in 1.1.0. Upgrading: [docs/UPGRADING-1.1.md](docs/UPGRADING-1.1.md).)
 
 A security-first, open-source control plane for [Hermes Agent](https://github.com/NousResearch/hermes-agent):
 one small core framework plus snap-on modules that manage skills, plugins, model/resource pools, sub-agents,
@@ -12,8 +14,7 @@ by a Hermes instance following [AGENTS.md](AGENTS.md); every phase had a fresh s
 module README and `docs/qa/`).
 
 Start with the [user guide](docs/USER-GUIDE.md). Install by owner/repository and commit
-(`hermes plugins install vicberger-com/hermes-switchyard --ref <SHA>`): the Hermes plugin catalog's
-`hermes-switchyard` entry is a different, unrelated project.
+(`hermes plugins install vicberger-com/hermes-signalbox --ref <SHA>`).
 
 **Priorities (in order, used to break every tie):** 1 security, 2 utility, 3 open source, 4 speed and capacity,
 5 size and code clarity.
@@ -37,8 +38,8 @@ Start with the [user guide](docs/USER-GUIDE.md). Install by owner/repository and
 ## Layout
 
 ```
-src/switchyard/                core, Hermes adapter, bundled modules (src/switchyard/modules/<id>/README.md)
-src/switchyard/schemas/        normative module manifest schema
+src/hermes_signalbox/                core, Hermes adapter, bundled modules (src/hermes_signalbox/modules/<id>/README.md)
+src/hermes_signalbox/schemas/        normative module manifest schema
 dashboard/                     Hermes dashboard tab
 templates/module/              copy this to start a module
 tools/validate_manifest.py     stdlib manifest validator (used in CI)

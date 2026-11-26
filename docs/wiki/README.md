@@ -1,6 +1,6 @@
 # Wiki framework
 
-The GitHub wiki is the reading and operating layer of hermes-switchyard: where people find their way, follow a
+The GitHub wiki is the reading and operating layer of hermes-signalbox: where people find their way, follow a
 task, look up a module or capability, and fix a problem. It does not replace the versioned documents in this
 repository. This file defines the structure, the page types and the rules; `templates/` holds one template per
 page type; `pages/` holds the wiki source that is published.
@@ -25,7 +25,7 @@ page type; `pages/` holds the wiki source that is published.
 
 | Audience | Comes for | Starts at |
 |---|---|---|
-| Operator (runs Hermes with Switchyard) | Install, grant, activate, budgets, alerts, updates, recovery | Home → Getting started |
+| Operator (runs Hermes with Signalbox) | Install, grant, activate, budgets, alerts, updates, recovery | Home → Getting started |
 | Evaluator (deciding whether to adopt) | What it does, security model, limits, maturity | Home → Overview, Security model |
 | Module author | Contract, capabilities, manifest, testing, review | Home → Building modules |
 | Contributor / maintainer | Build process, phases, reviews, release | Home → Project |
@@ -45,7 +45,7 @@ spaces replaced by `-` (GitHub wiki convention).
 |---|---|---|
 | **Start** | Home (home), Overview (concept), Getting started (how-to), FAQ (faq), Glossary (glossary) | README, USER-GUIDE |
 | **Concepts** | Architecture (concept), Security model (concept), Capabilities (index) + one page per capability (capability), Modules and lifecycle (concept), Audit log (concept), Hosting and processes (concept) | DESIGN, ADR-0001..0012 |
-| **Modules** | Module catalog (index) + one page per bundled module (module) | `src/switchyard/modules/<id>/README.md`, `module.toml` |
+| **Modules** | Module catalog (index) + one page per bundled module (module) | `src/hermes_signalbox/modules/<id>/README.md`, `module.toml` |
 | **Operate** | Deployment profiles (index) + one page per profile (deployment), runbooks (how-to): grant and activate, set budgets and paid rules, enable the dashboard, update and roll back a module, back up and restore, uninstall, respond to an alert, investigate an audit failure; Troubleshooting (index) + entries (troubleshooting) | USER-GUIDE, REFERENCE |
 | **Build and project** | Building a module (how-to), Module contract (concept), Testing a module (how-to), Decisions (index) + one digest per ADR (decision), Roadmap (index → Project board), Releases (release), Contributing (concept) | MODULES, BUILD-PLAN, AGENTS, CONTRIBUTING, docs/adr, docs/qa, CHANGELOG |
 
@@ -64,7 +64,7 @@ same **sources** block.
 | how-to | `how-to.md` | One task, start to finish | Goal, before you start, steps, check it worked, undo, related |
 | module | `module.md` | One bundled module | Card, what it does, capabilities with reasons, settings, actions, model access, events and audit, security notes, review history |
 | capability | `capability.md` | One capability | What it allows, risk, broker and limits, who requests it, granting advice |
-| deployment | `deployment.md` | One way to run Switchyard | Fits when, layout, install, configuration, verify, operate, upgrade, remove |
+| deployment | `deployment.md` | One way to run Signalbox | Fits when, layout, install, configuration, verify, operate, upgrade, remove |
 | troubleshooting | `troubleshooting.md` | One symptom | Symptom, cause, fix, prevent |
 | decision | `decision.md` | Digest of one ADR | Decision in one paragraph, why, consequences for operators and authors, link |
 | release | `release.md` | One release | Highlights, changes you must act on, security, verify the download |
@@ -82,8 +82,8 @@ same **sources** block.
 
 ```markdown
 ---
-**Sources:** [DESIGN.md §4](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/DESIGN.md) ·
-[ADR-0006](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0006-schedules-core-view-gates.md)
+**Sources:** [DESIGN.md §4](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/DESIGN.md) ·
+[ADR-0006](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0006-schedules-core-view-gates.md)
 ```
 
 Links to repository files are pinned to the release tag the page applies to, so a page never silently changes
@@ -94,7 +94,7 @@ meaning when `main` moves.
 | Topic | Rule |
 |---|---|
 | Titles | Sentence case; module pages `Module <id>`, capability pages `Capability <name>`, decisions `Decision ADR-NNNN`, profiles `Deploy <profile>`. No `:` or `/` in titles: they cannot be file names on Windows |
-| Commands | Real, copy-pasteable, with the actual argument order (`switchyard module grant router --capability hermes.hooks`) |
+| Commands | Real, copy-pasteable, with the actual argument order (`hermes-signalbox module grant router --capability hermes.hooks`) |
 | Placeholders | `<angle brackets>`, never realistic-looking values |
 | Model vs operator | Every action table has a "Model may run" column |
 | Capabilities | Always linked to their capability page; first mention says what the grant allows |
@@ -118,7 +118,7 @@ sources block, no page restates a normative rule without a link.
 ## 7. Publishing
 
 `python tools/wiki_publish.py --publish <clone>` replaces the pages in a local clone of
-`hermes-switchyard.wiki.git` with `docs/wiki/pages/`; a maintainer reviews the diff, commits with the source
+`hermes-signalbox.wiki.git` with `docs/wiki/pages/`; a maintainer reviews the diff, commits with the source
 commit in the message, and pushes. The GitHub wiki needs one page created in the web interface
 before its git repository exists. Restrict wiki editing to collaborators (repository Settings → Features →
 Wikis → "Restrict editing to collaborators only").

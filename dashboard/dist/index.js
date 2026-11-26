@@ -1,14 +1,14 @@
 (function () {
   "use strict";
-  // Switchyard dashboard tab (M9). Plain JS against the Hermes plugin SDK: no build step, no network access
-  // other than this plugin's own /api/plugins/switchyard/ routes, no secret values (the API redacts).
+  // Signalbox dashboard tab (M9). Plain JS against the Hermes plugin SDK: no build step, no network access
+  // other than this plugin's own /api/plugins/signalbox/ routes, no secret values (the API redacts).
   var SDK = window.__HERMES_PLUGIN_SDK__;
   if (!SDK || !window.__HERMES_PLUGINS__) return;
   var React = SDK.React;
   var h = React.createElement;
   var useState = React.useState;
   var useEffect = React.useEffect;
-  var BASE = "/api/plugins/switchyard";
+  var BASE = "/api/plugins/signalbox";
 
   function api(path, method) {
     return SDK.fetchJSON(BASE + path, method ? { method: method } : undefined);
@@ -86,8 +86,8 @@
     function refresh() { tick[1](tick[0] + 1); }
     var current = VIEWS.filter(function (v) { return v[0] === view[0]; })[0];
     return h("main", { className: "sy-root" },
-      h("h1", null, "Switchyard"),
-      h("div", { role: "tablist", "aria-label": "Switchyard views", className: "sy-tabs" },
+      h("h1", null, "Signalbox"),
+      h("div", { role: "tablist", "aria-label": "Signalbox views", className: "sy-tabs" },
         VIEWS.map(function (v) {
           return h("button", { type: "button", role: "tab", key: v[0], id: "sy-tab-" + v[0],
             "aria-selected": view[0] === v[0] ? "true" : "false", "aria-controls": "sy-panel",
@@ -98,5 +98,5 @@
         h(current[2], { tick: tick[0], refresh: refresh })));
   }
 
-  window.__HERMES_PLUGINS__.register("switchyard", Page);
+  window.__HERMES_PLUGINS__.register("signalbox", Page);
 })();

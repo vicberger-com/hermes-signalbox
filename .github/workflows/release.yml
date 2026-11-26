@@ -43,7 +43,7 @@ jobs:
       - run: mypy
       - name: Tests
         env:
-          SWITCHYARD_CHECK_SKIPS: "1"
+          SIGNALBOX_CHECK_SKIPS: "1"
         run: python -m pytest -rs
       - run: bandit -q -r src tools templates dashboard -x '*/tests/*'
       - run: python -m build --no-isolation --outdir dist

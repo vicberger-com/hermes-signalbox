@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from switchyard.errors import ConfigError
-from switchyard.hostinfo import GIB, HostProfile, capacity_metrics, classify, parse_meminfo, profile
+from hermes_signalbox.errors import ConfigError
+from hermes_signalbox.hostinfo import GIB, HostProfile, capacity_metrics, classify, parse_meminfo, profile
 
 MEMINFO = """MemTotal:       16318412 kB
 MemFree:         1203400 kB

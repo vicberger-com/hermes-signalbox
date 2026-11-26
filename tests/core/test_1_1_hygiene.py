@@ -8,9 +8,9 @@ from typing import Any
 
 import pytest
 
-from switchyard import host_t2, host_t2_child, ops
-from switchyard.errors import SwitchyardError
-from switchyard.ops import UsageError
+from hermes_signalbox import host_t2, host_t2_child, ops
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.ops import UsageError
 
 
 class _Action:
@@ -24,7 +24,7 @@ def test_h1_b25_a_type_error_inside_an_action_is_a_failure_not_a_missing_argumen
     def handler(text: str) -> Any:
         raise TypeError("helper() missing 1 required positional argument: 'x'")  # a bug inside the action
 
-    with pytest.raises(SwitchyardError, match="failed: TypeError") as info:
+    with pytest.raises(SignalboxError, match="failed: TypeError") as info:
         ops.call_action_handler(_Action(handler, {}), {"text": "hi"})
     assert not isinstance(info.value, UsageError)
 
@@ -60,7 +60,7 @@ def test_h1_b25_a_failed_t2_shutdown_is_reported(capsys: pytest.CaptureFixture[s
 
 
 def test_h1_b25_updates_is_split_and_keeps_its_names() -> None:
-    from switchyard import gitfetch, sbom, updates
+    from hermes_signalbox import gitfetch, sbom, updates
 
     assert updates.GitFetcher is gitfetch.GitFetcher and updates.patch_notes is sbom.patch_notes
     assert updates.inventory is sbom.inventory and updates.git_usable is gitfetch.git_usable

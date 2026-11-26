@@ -14,7 +14,7 @@
 
 - <Effect.>
 
-Full record: [ADR-0011](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0011-update-preview-and-channels.md)
+Full record: [ADR-0011](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0011-update-preview-and-channels.md)
 
 ---
-**Sources:** [ADR-0011](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0011-update-preview-and-channels.md)
+**Sources:** [ADR-0011](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0011-update-preview-and-channels.md)

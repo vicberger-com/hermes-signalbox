@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from switchyard.logs import JsonlLogSink
+from hermes_signalbox.logs import JsonlLogSink
 
 SECRET = "sekret-" + "5e1f9a0c7b"
 

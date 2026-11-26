@@ -19,7 +19,7 @@ def _tool() -> object:
 
 
 def test_h1_d1_guide_commands_run_as_written(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     tool = _tool()
     failures = tool.walkthrough(tool.GUIDE, tmp_path / "data")  # type: ignore[attr-defined]
     assert failures == []
@@ -28,9 +28,9 @@ def test_h1_d1_guide_commands_run_as_written(tmp_path: Path, monkeypatch: pytest
 def test_h1_guide_parser_takes_only_runnable_lines() -> None:
     tool = _tool()
     text = (
-        "## 1. Install\n```bash\nswitchyard version\n```\n"
-        "## 2. First run\n```bash\nswitchyard api serve   # step 0\nswitchyard module show <id>\n"
-        "hermes plugins list\n```\nswitchyard outside a block\n"
+        "## 1. Install\n```bash\nhermes-signalbox version\n```\n"
+        "## 2. First run\n```bash\nhermes-signalbox api serve   # step 0\nhermes-signalbox module show <id>\n"
+        "hermes plugins list\n```\nhermes-signalbox outside a block\n"
     )
     run, skipped = tool.commands(text)  # type: ignore[attr-defined]
-    assert run == ["switchyard api serve"] and skipped == ["switchyard module show <id>"]
+    assert run == ["hermes-signalbox api serve"] and skipped == ["hermes-signalbox module show <id>"]

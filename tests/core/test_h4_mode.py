@@ -14,15 +14,15 @@ from pathlib import Path
 import pytest
 from sy_testing import write_module
 
-from switchyard import cli
-from switchyard.core import Core
-from switchyard.errors import CapabilityDenied, ModuleNotRunning
-from switchyard.ops import MODEL_ACTOR
+from hermes_signalbox import cli
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import CapabilityDenied, ModuleNotRunning
+from hermes_signalbox.ops import MODEL_ACTOR
 
 
 @pytest.fixture(autouse=True)
 def _no_env_dir(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -170,7 +170,7 @@ def test_h4_r1_f9_offline_remove_is_refused_while_another_process_hosts(
     host.run("module", "activate", {"id": "m1"}, actor="cli")
     assert _cli(data, "module", "remove", "m1") == 1
     err = capsys.readouterr().err
-    assert "hosts this data directory" in err and "/switchyard module remove m1" in err
+    assert "hosts this data directory" in err and "/signalbox module remove m1" in err
     assert "m1" in host.manager.ids() and host.manager.info("m1").status.value == "active"
     assert _row(data, "m1") == ("manual", "active")
 

@@ -10,9 +10,9 @@ from typing import Any
 
 import pytest
 
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import SwitchyardError
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import SignalboxError
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "meter"
@@ -86,7 +86,7 @@ def usage(inp: int = 1000, out: int = 500, cache_read: int = 0) -> dict[str, int
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -230,7 +230,7 @@ def test_forecast_and_scopes(core: Core, clock: Clock) -> None:
     assert fc["exhausted_at"] is not None and fc["period_end"] == "2026-12-01T00:00:00Z"
     tokens = mt(core, "forecast", name="all-tokens")
     assert tokens["used"] == 55_000
-    with pytest.raises(SwitchyardError, match="no quota"):
+    with pytest.raises(SignalboxError, match="no quota"):
         mt(core, "forecast", name="nope")
     mt(core, "quota_remove", name="big-cost")
     assert [q["name"] for q in mt(core, "quotas")["quotas"]] == ["all-tokens"]
@@ -264,7 +264,7 @@ def test_errors_subagents_and_retention(core: Core, clock: Clock) -> None:
 
 
 def test_model_cannot_change_quotas_and_bad_inputs(core: Core) -> None:
-    with pytest.raises(SwitchyardError, match="read-only"):
+    with pytest.raises(SignalboxError, match="read-only"):
         mt(
             core,
             "quota_add",
@@ -275,7 +275,7 @@ def test_model_cannot_change_quotas_and_bad_inputs(core: Core) -> None:
             period="day",
             limit="1",
         )
-    with pytest.raises(SwitchyardError, match="read-only"):
+    with pytest.raises(SignalboxError, match="read-only"):
         mt(core, "quota_remove", actor="hermes", name="q")
     assert mt(core, "summary", actor="hermes")["totals"]["requests"] == 0
     bad = [
@@ -291,14 +291,14 @@ def test_model_cannot_change_quotas_and_bad_inputs(core: Core) -> None:
     ]
     base = {"name": "q", "scope": "all", "metric": "requests", "period": "day", "limit": "1"}
     for override in bad:
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             mt(core, "quota_add", **{**base, **override})
     for action, args in [
         ("summary", {"days": 0}),
         ("usage", {"day": "today"}),
         ("quota_remove", {"name": "X Y"}),
     ]:
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             mt(core, action, **args)
     assert core.run("module", "panel", {"id": "meter", "panel": "meter.status"}, actor="t")["prices"] == 2
 
@@ -430,7 +430,7 @@ def test_r1_quota_always_exhausts_and_cost_needs_prices(core: Core, tmp_path: Pa
     assert q["thresholds"] == [80, 100]  # 100 always fires meter.exhausted
     (tmp_path / "models_dev_cache.json").write_text("{}", encoding="utf-8")
     mt(core, "prices_reload")
-    with pytest.raises(SwitchyardError, match="no model prices"):
+    with pytest.raises(SignalboxError, match="no model prices"):
         mt(core, "quota_add", name="usd", scope="all", metric="cost_usd", period="day", limit="1")
 
 
@@ -448,7 +448,7 @@ def test_h1_c5_routed_model_is_charged_not_the_served_alias(core: Core) -> None:
 
 
 def test_h1_c10_integral_float_counts_are_kept() -> None:
-    from switchyard.modules.meter.meter_module import _count
+    from hermes_signalbox.modules.meter.meter_module import _count
 
     assert _count(12.0) == (12, False)
     assert _count(12.4) == (12, False)

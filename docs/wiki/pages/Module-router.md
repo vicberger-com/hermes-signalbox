@@ -11,7 +11,7 @@
 | **Requests** | [[Capability hermes.hooks]], [[Capability ui.panel]] |
 | **Optional** | [[Capability llm.free]], [[Capability llm.paid]] |
 | **Needs running** | [[Module resources]] (without it every request passes through unchanged) |
-| **Spec** | [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/router/README.md) |
+| **Spec** | [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/router/README.md) |
 
 ## What it does
 
@@ -37,10 +37,10 @@ and counted against the day's budget. With `hard_stop = true` such turns are blo
 ## Turn it on
 
 ```bash
-switchyard module grant router --capability hermes.hooks
-switchyard module grant router --capability ui.panel
-switchyard module grant router --capability llm.free
-switchyard module activate router
+hermes-signalbox module grant router --capability hermes.hooks
+hermes-signalbox module grant router --capability ui.panel
+hermes-signalbox module grant router --capability llm.free
+hermes-signalbox module activate router
 ```
 
 > **Security:** granting `llm.paid` alone spends nothing: paid use also needs `rule_add` for the consumer and a
@@ -83,12 +83,12 @@ switchyard module activate router
 The choice and the paid charge happen under one lock, so concurrent requests cannot overspend. The router never
 changes provider, base URL or credentials. A model the registry does not know is outside its control and is never
 blocked. The model can read `status` and `explain` but cannot change rules, pins or budgets. Review history: the
-"Security review" table in the [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/router/README.md) and R1 findings in
-[docs/qa/14-r1-prework.md](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/qa/14-r1-prework.md).
+"Security review" table in the [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/router/README.md) and R1 findings in
+[docs/qa/14-r1-prework.md](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/qa/14-r1-prework.md).
 
 ## Related
 
 - [[Module resources]] · [[Module meter]] · [[Capability llm.paid]] · [[Decision ADR-0006]]
 
 ---
-**Sources:** [router README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/router/README.md) · [router module.toml](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/router/module.toml) · [ADR-0004](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0004-hermes-bridge.md)
+**Sources:** [router README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/router/README.md) · [router module.toml](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/router/module.toml) · [ADR-0004](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0004-hermes-bridge.md)

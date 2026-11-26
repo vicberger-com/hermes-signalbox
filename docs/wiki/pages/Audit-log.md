@@ -21,4 +21,4 @@
 - <related pages>
 
 ---
-**Sources:** [docs/modules/m0-core.md](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/modules/m0-core.md)
+**Sources:** [docs/modules/m0-core.md](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/modules/m0-core.md)

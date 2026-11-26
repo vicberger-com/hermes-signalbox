@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from switchyard.errors import ManifestError
-from switchyard.manifest import MAX_MANIFEST_BYTES, check, load_manifest, load_schema
+from hermes_signalbox.errors import ManifestError
+from hermes_signalbox.manifest import MAX_MANIFEST_BYTES, check, load_manifest, load_schema
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_DIR = ROOT / "templates" / "module"
@@ -128,7 +128,7 @@ def test_module_id_with_double_underscore_is_rejected(tmp_path: Path) -> None:
 
 
 def test_backend_provider_must_request_secrets_read() -> None:
-    from switchyard.manifest import cross_field
+    from hermes_signalbox.manifest import cross_field
 
     doc = {
         "capabilities": {"request": ["ui.panel"], "secrets": []},

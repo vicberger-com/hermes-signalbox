@@ -1,8 +1,8 @@
-# Hermes Switchyard
+# Hermes Signalbox
 
 > **Type:** home · **Applies to:** v<X.Y.Z> · **Last checked:** <YYYY-MM-DD> · **Status:** draft
 
-<One paragraph: what Switchyard is and the problem it solves.>
+<One paragraph: what Signalbox is and the problem it solves.>
 
 ## Start here
 
@@ -19,4 +19,4 @@
 <Current release, link to release page, link to Project board.>
 
 ---
-**Sources:** [<document>](https://github.com/vicberger-com/hermes-switchyard/blob/v<X.Y.Z>/<path>) · [<document>](<link>)
+**Sources:** [<document>](https://github.com/vicberger-com/hermes-signalbox/blob/v<X.Y.Z>/<path>) · [<document>](<link>)

@@ -4,6 +4,26 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **Renamed from Switchyard to Signalbox** (ADR-0015, [UPGRADING-1.1.md](docs/UPGRADING-1.1.md)): plugin, chat
+  and CLI command `signalbox`, standalone command `hermes-signalbox`, model tools `signalbox_*`, import package
+  `hermes_signalbox` (`SignalboxError`), distribution and repository `hermes-signalbox`, dashboard tab
+  `/signalbox`. The old names are not kept: update scripts, saved prompts and service definitions.
+- On first start, a Switchyard 1.0.x data directory in the default location is copied (never moved) to the new
+  one, after its audit chain verifies; `core.migrated` is recorded and the old directory is left for rollback.
+  Refused, with nothing written, while a 1.0.x process still holds it.
+
+### Deprecated
+
+- `SWITCHYARD_DATA_DIR` and `SWITCHYARD_SECRET_<NAME>` are still read in 1.1.x with a warning; rename them to
+  `SIGNALBOX_...`. Secrets stored under the old keychain service or credential prefix are still read when the new
+  name has none. All three are removed in 1.2.0.
+
+### Removed
+
+- Stray build artifacts `bandit-report.json` and `pr_body.md` from the repository root.
+
 ### Process
 
 - Pre-work Q&A question 12 (audience and presentation) and two gates: presentation, and an operator usability
@@ -564,22 +584,22 @@ Repository bootstrap (phase P0). No runtime code.
 - Tooling is installed from a hash-pinned `requirements-dev.txt`; `ci-required` and `security-required` gate jobs added.
 - Secret scanning runs the pinned gitleaks CLI. Repository moved to the `vicberger-com` organization.
 
-[Unreleased]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.3...HEAD
-[1.0.3]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.2...v1.0.3
-[1.0.2]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.1...v1.0.2
-[1.0.1]: https://github.com/vicberger-com/hermes-switchyard/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.13.0...v1.0.0
-[0.13.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.12.0...v0.13.0
-[0.12.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.11.0...v0.12.0
-[0.11.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.10.0...v0.11.0
-[0.10.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.9.0...v0.10.0
-[0.9.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.8.0...v0.9.0
-[0.8.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.7.0...v0.8.0
-[0.7.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.6.0...v0.7.0
-[0.6.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/vicberger-com/hermes-switchyard/compare/v0.0.1...v0.1.0
-[0.0.1]: https://github.com/vicberger-com/hermes-switchyard/releases/tag/v0.0.1
+[Unreleased]: https://github.com/vicberger-com/hermes-signalbox/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/vicberger-com/hermes-signalbox/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/vicberger-com/hermes-signalbox/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/vicberger-com/hermes-signalbox/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.13.0...v1.0.0
+[0.13.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v0.0.1...v0.1.0
+[0.0.1]: https://github.com/vicberger-com/hermes-signalbox/releases/tag/v0.0.1

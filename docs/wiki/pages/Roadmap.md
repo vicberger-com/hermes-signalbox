@@ -9,4 +9,4 @@ Planned and accepted work is tracked on the [backlog board](https://github.com/o
 | <page> | <summary> |
 
 ---
-**Sources:** [README.md](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/README.md)
+**Sources:** [README.md](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/README.md)

@@ -9,10 +9,10 @@ from typing import Any
 
 import pytest
 
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import SwitchyardError
-from switchyard.hermesconfig import ConfigWriter
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.hermesconfig import ConfigWriter
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "activation"
@@ -74,7 +74,7 @@ def act(core: Core, action: str, actor: str = "t", **args: Any) -> Any:
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -117,11 +117,11 @@ def test_writer_backs_up_audits_verifies_and_rolls_back(tmp_path: Path, port: Fa
     assert backup["old"] == ["p5js"] and backup["new"] == ["arxiv"]  # essential skills are never written
     assert records[-1]["action"] == "hermes.config.write"
     port.fail_next = True
-    with pytest.raises(SwitchyardError, match="previous value restored"):
+    with pytest.raises(SignalboxError, match="previous value restored"):
         w.set("m", "skills.disabled", ["github"], actor="t")
     assert port.values["skills.disabled"] == ["arxiv"] and records[-1]["action"] == "hermes.config.rollback"
     port.corrupt_next = True
-    with pytest.raises(SwitchyardError, match=r"failed \(SwitchyardError\); previous value restored"):
+    with pytest.raises(SignalboxError, match=r"failed \(SignalboxError\); previous value restored"):
         w.set("m", "skills.disabled", ["github"], actor="t")
     assert port.values["skills.disabled"] == ["arxiv"]
     w.revert("m", out["backup"], actor="t")
@@ -134,10 +134,10 @@ def test_writer_backs_up_audits_verifies_and_rolls_back(tmp_path: Path, port: Fa
         ("skills.disabled", "github"),
         ("skills.disabled", [3]),
     ]:
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             w.set("m", key, value, actor="t")
     for bad in ("../../etc", "20261120000000000000-zzzzzzzz", "20261120000000000000-00000000"):
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             w.revert("m", bad, actor="t")
     assert len(w.backups(50)) == 4
     (tmp_path / "backups" / "20261120000000000000-0000000a.json").write_text("not json", encoding="utf-8")
@@ -183,7 +183,7 @@ def test_apply_restore_and_undo(core: Core, port: FakeHermesConfig) -> None:
     assert "hermes-agent" in second["refused"] and second["baseline"] == out["baseline"]
     assert act(core, "restore")["restored"] == "idle"
     assert port.values["skills.disabled"] == ["p5js"]
-    with pytest.raises(SwitchyardError, match="no preset is active"):
+    with pytest.raises(SignalboxError, match="no preset is active"):
         act(core, "restore")
     act(core, "undo", backup=second["backup"])  # back to the 'coding' state
     assert port.values["skills.disabled"] == ["arxiv", "manim-video"]
@@ -228,7 +228,7 @@ def test_model_is_read_only_and_bad_inputs(core: Core, port: FakeHermesConfig) -
         ("undo", {"backup": "x"}),
         ("preset_remove", {"name": "coding"}),
     ]:
-        with pytest.raises(SwitchyardError, match="read-only"):
+        with pytest.raises(SignalboxError, match="read-only"):
             act(core, action, actor="hermes", **args)
     assert port.writes == 0
     bad = [
@@ -243,7 +243,7 @@ def test_model_is_read_only_and_bad_inputs(core: Core, port: FakeHermesConfig) -
         ("preset_add", {"name": "x", "disable": ",".join(f"s{i}" for i in range(501))}),
     ]
     for action, args in bad:
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             act(core, action, **args)
     act(core, "preset_remove", name="coding")
     assert act(core, "presets")["presets"] == []
@@ -255,7 +255,7 @@ def test_without_a_hermes_config_port(tmp_path: Path) -> None:
         for cap in ("hermes.config.write", "hermes.hooks", "ui.panel"):
             c.run("module", "grant", {"id": "activation", "capability": cap}, actor="t")
         c.run("module", "activate", {"id": "activation"}, actor="t")
-        with pytest.raises(SwitchyardError, match="not available"):
+        with pytest.raises(SignalboxError, match="not available"):
             act(c, "inventory")
     finally:
         c.close()
@@ -316,7 +316,7 @@ def test_writer_reads_and_essential_fallback(tmp_path: Path) -> None:
     port = Port()
     w = ConfigWriter(port, Sink(), tmp_path / "b")  # type: ignore[arg-type]
     assert w.essential() == frozenset({"hermes-agent"})
-    with pytest.raises(SwitchyardError, match="not readable"):
+    with pytest.raises(SignalboxError, match="not readable"):
         w.read("model.default")
     assert w.read("skills.platform_disabled") == {}
     port.values["skills.disabled"] = None

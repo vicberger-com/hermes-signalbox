@@ -91,7 +91,7 @@ def test_h1_d4_ci_runs_a_pinned_real_hermes_and_requires_it() -> None:
     assert re.fullmatch(r"[0-9a-f]{40}", job["env"]["HERMES_REF"])
     assert "uv sync --frozen" in _script(job)
     step = job["steps"][-1]
-    assert step["env"]["SWITCHYARD_REQUIRE_HERMES"] == "1" and "tests/integration" in step["run"]
+    assert step["env"]["SIGNALBOX_REQUIRE_HERMES"] == "1" and "tests/integration" in step["run"]
     assert "hermes-integration" in jobs["ci-required"]["needs"]
 
 

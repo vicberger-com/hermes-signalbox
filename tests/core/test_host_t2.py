@@ -11,17 +11,17 @@ from typing import Any
 import pytest
 from sy_testing import RecordingAudit, write_module
 
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.context import MemoryPanelRegistry
-from switchyard.errors import CapabilityDenied, StateError, SwitchyardError
-from switchyard.events import EventBus
-from switchyard.host_t2 import T2Module, child_environment
-from switchyard.host_t2_child import ChildHost
-from switchyard.lifecycle import ModuleManager, ModuleStatus
-from switchyard.logs import JsonlLogSink
-from switchyard.manifest import load_manifest
-from switchyard.rpc import RemoteError
-from switchyard.state import StateStore
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.context import MemoryPanelRegistry
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError, StateError
+from hermes_signalbox.events import EventBus
+from hermes_signalbox.host_t2 import T2Module, child_environment
+from hermes_signalbox.host_t2_child import ChildHost
+from hermes_signalbox.lifecycle import ModuleManager, ModuleStatus
+from hermes_signalbox.logs import JsonlLogSink
+from hermes_signalbox.manifest import load_manifest
+from hermes_signalbox.rpc import RemoteError
+from hermes_signalbox.state import StateStore
 
 # child dispatcher, in-process ------------------------------------------------------------------------------
 
@@ -92,11 +92,11 @@ def test_child_health_shapes_and_errors(tmp_path: Path) -> None:
     host, _ = _child(tmp_path, "class Mod:\n    def activate(self, c): ...\n    def deactivate(self): ...\n"
                                 "    def health(self):\n        return 'odd'\n")  # fmt: skip
     assert host.handle("health", {}) == [False, "invalid health result"]
-    with pytest.raises(SwitchyardError, match="unknown"):
+    with pytest.raises(SignalboxError, match="unknown"):
         host.handle("bogus", {})
-    with pytest.raises(SwitchyardError, match="panel"):
+    with pytest.raises(SignalboxError, match="panel"):
         host.handle("panel", {"panel_id": "nope"})
-    with pytest.raises(SwitchyardError, match="handler"):
+    with pytest.raises(SignalboxError, match="handler"):
         host.handle("event", {"handler_id": 99, "event": {}})
 
 
@@ -134,10 +134,10 @@ def test_child_state_proxy(tmp_path: Path) -> None:
 
 def test_child_refuses_load_twice_and_calls_before_load(tmp_path: Path) -> None:
     host = ChildHost(FakeParent())
-    with pytest.raises(SwitchyardError, match="not loaded"):
+    with pytest.raises(SignalboxError, match="not loaded"):
         host.handle("activate", {})
     host, _ = _child(tmp_path)
-    with pytest.raises(SwitchyardError, match="already loaded"):
+    with pytest.raises(SignalboxError, match="already loaded"):
         host.handle(
             "load", {"module_id": "kid", "directory": ".", "entry_module": "mod", "entry_class": "Mod"}
         )
@@ -154,11 +154,11 @@ def test_shutdown_stops_the_channel(tmp_path: Path) -> None:
 
 
 def test_child_environment_is_an_allow_list(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SWITCHYARD_TEST_SECRET", "canary")
+    monkeypatch.setenv("SIGNALBOX_TEST_SECRET", "canary")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-canary")
     env = child_environment()
-    assert "SWITCHYARD_TEST_SECRET" not in env and "OPENAI_API_KEY" not in env
-    assert env["SWITCHYARD_T2"] == "1" and "PATH" in env
+    assert "SIGNALBOX_TEST_SECRET" not in env and "OPENAI_API_KEY" not in env
+    assert env["SIGNALBOX_T2"] == "1" and "PATH" in env
 
 
 # real subprocesses ----------------------------------------------------------------------------------------
@@ -217,7 +217,7 @@ def test_end_to_end_subprocess_module(env: Env) -> None:
 
 
 def test_child_runs_with_scrubbed_environment(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SWITCHYARD_TEST_SECRET", "canary-value")
+    monkeypatch.setenv("SIGNALBOX_TEST_SECRET", "canary-value")
     code = """
     import os
     class Mod:
@@ -229,8 +229,8 @@ def test_child_runs_with_scrubbed_environment(env: Env, monkeypatch: pytest.Monk
     env.add("envmod", code)
     env.manager.activate("envmod", actor="user")
     rec = json.loads(env.log_text("envmod").splitlines()[0])
-    assert "SWITCHYARD_TEST_SECRET" not in rec["fields"]["keys"]
-    assert "SWITCHYARD_T2" in rec["fields"]["keys"]
+    assert "SIGNALBOX_TEST_SECRET" not in rec["fields"]["keys"]
+    assert "SIGNALBOX_T2" in rec["fields"]["keys"]
     assert Path(rec["fields"]["cwd"]).resolve() == (env.root / "envmod").resolve()
 
 
@@ -265,7 +265,7 @@ def test_child_cannot_spoof_core_events(env: Env) -> None:
     """
     env.add("spoof", code)
     env.manager.activate("spoof", actor="user")
-    assert env.manager.info("spoof").error == "SwitchyardError"
+    assert env.manager.info("spoof").error == "SignalboxError"
 
 
 def test_exception_messages_do_not_cross(env: Env) -> None:
@@ -348,17 +348,17 @@ def test_broker_access_is_policy_checked_then_unavailable(env: Env) -> None:
     assert env.manager.info("sched").error is None
     env.policy.grant("sched", "schedule", actor="user")
     env.manager.activate("sched", actor="user")
-    assert env.manager.info("sched").error == "SwitchyardError"  # granted, but brokers do not cross in M0
+    assert env.manager.info("sched").error == "SignalboxError"  # granted, but brokers do not cross in M0
 
 
 def test_t2_module_refuses_calls_after_kill(tmp_path: Path) -> None:
-    from switchyard.manifest import load_manifest
+    from hermes_signalbox.manifest import load_manifest
 
     d = write_module(tmp_path, "kid", CHILD_MOD, isolation="subprocess")
     mod = T2Module(load_manifest(d))
     assert mod.health() == (False, "not running")
     mod.kill()  # harmless before start
-    with pytest.raises(SwitchyardError, match="not running"):
+    with pytest.raises(SignalboxError, match="not running"):
         mod.deactivate()
 
 
@@ -372,7 +372,7 @@ def test_parent_rejects_bad_child_requests(env: Env) -> None:
     """
     env.add("evil", code)
     env.manager.activate("evil", actor="user")
-    assert env.manager.info("evil").error == "SwitchyardError"
+    assert env.manager.info("evil").error == "SignalboxError"
     assert (
         env.manager.info("evil").status is ModuleStatus.FAILED
     )  # H1 D-27: the parent recorded it and lives on
@@ -414,13 +414,13 @@ class FakeCtx:
 def test_parent_validates_child_requests(
     tmp_path: Path, method: str, params: dict[str, Any], fragment: str
 ) -> None:
-    from switchyard.manifest import load_manifest
+    from hermes_signalbox.manifest import load_manifest
 
     mod = T2Module(load_manifest(write_module(tmp_path, "kid", CHILD_MOD, isolation="subprocess")))
-    with pytest.raises(SwitchyardError, match="no context"):
+    with pytest.raises(SignalboxError, match="no context"):
         mod._dispatch("ctx.log", {})
     mod._ctx = FakeCtx()  # type: ignore[assignment]
-    with pytest.raises(SwitchyardError, match=fragment):
+    with pytest.raises(SignalboxError, match=fragment):
         mod._dispatch(method, params)
     mod._dispatch("ctx.health_report", {"ok": True, "detail": "x" * 500})
     assert mod._ctx.calls == ["health_report"]  # type: ignore[attr-defined]
@@ -441,8 +441,8 @@ class _Proc:
 def test_h1_d11_flooding_child_is_killed(tmp_path: Path) -> None:
     import io
 
-    from switchyard.host_t2 import MAX_PENDING_FRAMES, T2Module
-    from switchyard.rpc import write_frame
+    from hermes_signalbox.host_t2 import MAX_PENDING_FRAMES, T2Module
+    from hermes_signalbox.rpc import write_frame
 
     frames = io.BytesIO()
     for n in range(MAX_PENDING_FRAMES + 5):
@@ -459,8 +459,8 @@ def test_h1_d11_child_that_stops_reading_is_killed(tmp_path: Path) -> None:
     import threading
     import time
 
-    from switchyard.host_t2 import T2Module
-    from switchyard.rpc import ProtocolError
+    from hermes_signalbox.host_t2 import T2Module
+    from hermes_signalbox.rpc import ProtocolError
 
     class Stuck:
         def __init__(self) -> None:
@@ -487,7 +487,7 @@ def test_h1_d11_child_that_stops_reading_is_killed(tmp_path: Path) -> None:
 def test_h1_b14_send_counts_against_the_call_deadline(tmp_path: Path) -> None:
     import time
 
-    from switchyard.rpc import Channel, ProtocolError
+    from hermes_signalbox.rpc import Channel, ProtocolError
 
     sent: list[float | None] = []
 

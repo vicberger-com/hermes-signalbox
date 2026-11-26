@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from sy_testing import ManifestFactory, RecordingAudit
 
-from switchyard.capabilities import PolicyEngine
-from switchyard.errors import StateError
-from switchyard.state import SqliteGrantStore, StateStore, load_migrations
+from hermes_signalbox.capabilities import PolicyEngine
+from hermes_signalbox.errors import StateError
+from hermes_signalbox.state import SqliteGrantStore, StateStore, load_migrations
 
 M1 = (1, "CREATE TABLE one (x INTEGER);")
 M2 = (2, "CREATE TABLE two (y INTEGER);")
@@ -227,7 +227,7 @@ def test_double_underscore_cannot_forge_a_namespace(tmp_path: Path) -> None:
 
 
 def test_module_queries_have_a_work_budget_and_row_cap(tmp_path: Path) -> None:
-    from switchyard import state as state_mod
+    from hermes_signalbox import state as state_mod
 
     store = StateStore(tmp_path / "state.db", backup_dir=tmp_path / "backup")
     store.migrate()

@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 from sy_testing import ManifestFactory, RecordingAudit
 
-from switchyard.capabilities import CAPABILITIES, MemoryGrantStore, PolicyEngine
-from switchyard.errors import CapabilityDenied, ManifestError, UsageError
-from switchyard.manifest import load_schema
+from hermes_signalbox.capabilities import CAPABILITIES, MemoryGrantStore, PolicyEngine
+from hermes_signalbox.errors import CapabilityDenied, ManifestError, UsageError
+from hermes_signalbox.manifest import load_schema
 
 
 def _engine(audit: RecordingAudit) -> tuple[PolicyEngine, MemoryGrantStore]:

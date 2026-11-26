@@ -59,5 +59,5 @@ python -m pytest -q
 
 The `hermes-integration` job runs the plugin inside a real Hermes Agent pinned by commit (`HERMES_REF` in
 `.github/workflows/ci.yml`, currently tag v0.23.2). To support a newer Hermes, bump `HERMES_REF` in the same
-pull request that adapts Switchyard, and keep `tests/integration/requirements.txt` in step with that Hermes's
+pull request that adapts Signalbox, and keep `tests/integration/requirements.txt` in step with that Hermes's
 `uv.lock` (the job must not change Hermes's own pins).

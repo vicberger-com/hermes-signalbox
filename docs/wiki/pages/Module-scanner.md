@@ -10,7 +10,7 @@
 | **Default activation** | manual |
 | **Requests** | [[Capability process.spawn]], [[Capability schedule]], [[Capability ui.panel]] |
 | **Optional** | [[Capability notify]] |
-| **Spec** | [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/scanner/README.md) |
+| **Spec** | [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/scanner/README.md) |
 
 ## What it does
 
@@ -28,11 +28,11 @@
 ## Turn it on
 
 ```bash
-switchyard module grant scanner --capability process.spawn
-switchyard module grant scanner --capability schedule
-switchyard module grant scanner --capability notify
-switchyard module grant scanner --capability ui.panel
-switchyard module activate scanner
+hermes-signalbox module grant scanner --capability process.spawn
+hermes-signalbox module grant scanner --capability schedule
+hermes-signalbox module grant scanner --capability notify
+hermes-signalbox module grant scanner --capability ui.panel
+hermes-signalbox module activate scanner
 ```
 
 ## Settings (`[modules.scanner]`)
@@ -49,11 +49,11 @@ switchyard module activate scanner
 
 ## Events and audit records
 
-<From [Reference](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/REFERENCE.md).>
+<From [Reference](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/REFERENCE.md).>
 
 ## Security notes
 
 <Summary; link the "Security review" table in the README.>
 
 ---
-**Sources:** [module README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/scanner/README.md) · [module.toml](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/scanner/module.toml)
+**Sources:** [module README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/scanner/README.md) · [module.toml](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/scanner/module.toml)

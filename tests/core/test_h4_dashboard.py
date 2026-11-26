@@ -21,9 +21,9 @@ from typing import Any
 import pytest
 from sy_testing import FakeHermesCtx, write_module
 
-from switchyard import hermes as adapter_mod
-from switchyard.core import Core
-from switchyard.hermes import HermesAdapter
+from hermes_signalbox import hermes as adapter_mod
+from hermes_signalbox.core import Core
+from hermes_signalbox.hermes import HermesAdapter
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -105,7 +105,7 @@ class Hermes:
 
     def plugin_dir(self) -> Path:
         """``ctx.state.data_dir`` of the agent plugin."""
-        return Path(self.PluginState("switchyard").data_dir)
+        return Path(self.PluginState("signalbox").data_dir)
 
     def listing(self) -> list[str]:
         root = self.home / "plugin-data"
@@ -114,7 +114,7 @@ class Hermes:
 
 @pytest.fixture
 def hermes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Hermes:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     home = tmp_path / "hermes-home"
     home.mkdir()
     return Hermes(home, monkeypatch)
@@ -150,7 +150,7 @@ def test_h4_r1_f10_dashboard_resolves_the_agent_plugins_data_dir(
     hermes: Hermes, api: Any, adapters: Callable[..., HermesAdapter]
 ) -> None:
     adapter = adapters(hermes.plugin_dir())
-    assert adapter.core.data_dir.name.startswith("agent-plugin-switchyard-")
+    assert adapter.core.data_dir.name.startswith("agent-plugin-signalbox-")
     assert api._data_dir() == adapter.core.data_dir
 
 
@@ -158,7 +158,7 @@ def test_h4_r1_f10_dashboard_follows_the_plugins_data_dir_setting(
     hermes: Hermes, api: Any, adapters: Callable[..., HermesAdapter], tmp_path: Path
 ) -> None:
     elsewhere = tmp_path / "elsewhere"
-    hermes.config = {"plugins": {"entries": {"switchyard": {"settings": {"data_dir": str(elsewhere)}}}}}
+    hermes.config = {"plugins": {"entries": {"signalbox": {"settings": {"data_dir": str(elsewhere)}}}}}
     adapter = adapters(hermes.plugin_dir(), {"data_dir": str(elsewhere)})
     assert adapter.core.data_dir == elsewhere
     assert api._data_dir() == elsewhere
@@ -168,9 +168,9 @@ def test_h4_r1_f10_the_setting_beats_the_environment_variable_as_in_the_plugin(
     hermes: Hermes, api: Any, adapters: Callable[..., HermesAdapter], tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:  # fmt: skip
-    monkeypatch.setenv("SWITCHYARD_DATA_DIR", str(tmp_path / "from-env"))
+    monkeypatch.setenv("SIGNALBOX_DATA_DIR", str(tmp_path / "from-env"))
     chosen = tmp_path / "from-setting"
-    hermes.config = {"plugins": {"entries": {"switchyard": {"settings": {"data_dir": str(chosen)}}}}}
+    hermes.config = {"plugins": {"entries": {"signalbox": {"settings": {"data_dir": str(chosen)}}}}}
     adapter = adapters(hermes.plugin_dir(), {"data_dir": str(chosen)})
     assert adapter.core.data_dir == chosen == api._data_dir()
 
@@ -178,7 +178,7 @@ def test_h4_r1_f10_the_setting_beats_the_environment_variable_as_in_the_plugin(
 def test_h4_r1_f10_the_environment_variable_still_wins_over_the_plugin_dir(
     hermes: Hermes, api: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("SWITCHYARD_DATA_DIR", str(tmp_path / "from-env"))
+    monkeypatch.setenv("SIGNALBOX_DATA_DIR", str(tmp_path / "from-env"))
     assert api._data_dir() == tmp_path / "from-env"
 
 
@@ -224,7 +224,7 @@ def routed(hermes: Hermes, api: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: 
         def request(self, noun: str, verb: str, params: dict[str, Any]) -> Any:
             return core.run(noun, verb, params, actor="api")
 
-    monkeypatch.setattr("switchyard.api.ApiClient.from_data_dir", lambda d: Client())
+    monkeypatch.setattr("hermes_signalbox.api.ApiClient.from_data_dir", lambda d: Client())
     yield core
     core.close()
 
@@ -246,12 +246,12 @@ def test_h4_r1_f11_a_failing_check_says_so(api: Any, routed: Core, monkeypatch: 
 def test_h4_r1_f11_a_health_call_that_errors_leaves_the_list_intact(
     api: Any, routed: Core, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from switchyard.errors import SwitchyardError
+    from hermes_signalbox.errors import SignalboxError
 
     routed.run("module", "activate", {"id": "aaa"}, actor="cli")
 
     def boom(module_id: str) -> tuple[bool, str]:
-        raise SwitchyardError("gone")
+        raise SignalboxError("gone")
 
     monkeypatch.setattr(routed.manager, "health", boom)
     rows = {r["id"]: r for r in asyncio.run(api.modules())}

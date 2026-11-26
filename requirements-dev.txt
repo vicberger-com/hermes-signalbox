@@ -72,7 +72,7 @@ attrs==26.1.0 \
 bandit==1.9.4 \
     --hash=sha256:b589e5de2afe70bd4d53fa0c1da6199f4085af666fde00e8a034f152a52cd628 \
     --hash=sha256:f89ffa663767f5a0585ea075f01020207e966a9c0f2b9ef56a57c7963a3f6f8e
-    # via hermes-switchyard (pyproject.toml)
+    # via hermes-signalbox (pyproject.toml)
 boolean-py==5.0 \
     --hash=sha256:60cbc4bad079753721d32649545505362c754e121570ada4658b852a3a318d95 \
     --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
@@ -80,7 +80,7 @@ boolean-py==5.0 \
 build==1.6.1 \
     --hash=sha256:51cc11666391ab6f092070437ac747002ff46f3e4113a3622177ee6b488bfc53 \
     --hash=sha256:ecd351a4be9d35a9eaaba244a7687143c9c7d4aea6ac964e7e7ddab20cbcf4e7
-    # via hermes-switchyard (pyproject.toml)
+    # via hermes-signalbox (pyproject.toml)
 cachecontrol==0.15.0 \
     --hash=sha256:10b7ab4387355ad9361d5b89bc0f6758e48099017be173241c4e0f20d9e1dad2 \
     --hash=sha256:52157b539eb64d85c8c793660e86cf05cf95fad7b98c8ef6846e4a0ddffdb193
@@ -446,7 +446,7 @@ coverage==7.17.3 \
 cyclonedx-bom==9.0.0 \
     --hash=sha256:15ccb78616831688cab1d1ddd5e0ba2e7886cd83462f63d11d1b922f43a294c0 \
     --hash=sha256:23394e24ff47bbf4c614e8a7d5ca5e18c64869a091f7e35f3baa2faea2390972
-    # via hermes-switchyard (pyproject.toml)
+    # via hermes-signalbox (pyproject.toml)
 cyclonedx-python-lib==11.12.0 \
     --hash=sha256:0e807521a921a5c3cb8ce1153f8a61d29eedfe76a46aac2796b7c6b573391a54 \
     --hash=sha256:16767c4039de90c04e9f03348f8f0ed4b8ff842eaa7eefcad3a95685f970dacf
@@ -464,7 +464,7 @@ distlib==0.4.4 \
 editables==0.6 \
     --hash=sha256:1163834902381c4613787951c5914800fdf155ae08848a373b8ea5006780977c \
     --hash=sha256:d70e4698078a1d033e7786d9c64e5be070d058a67c21417024d38a58ac20aa43
-    # via hermes-switchyard (pyproject.toml)
+    # via hermes-signalbox (pyproject.toml)
 filelock==4.2.12 \
     --hash=sha256:21decfec02f116ed4c954433cdb31f28c3b346b784543177b6d7059da2702ee9 \
     --hash=sha256:7e7da24d3ac39268b0f156e56870001de44886318f092f9d851e692f7114d6dd
@@ -479,7 +479,7 @@ fqdn==1.6.0 \
 hatchling==1.33.0 \
     --hash=sha256:415290b84f464d2884303fca8974d38e7b85579069fab02a15db0828fbb1446d \
     --hash=sha256:4c422bd4d554fcff5de5b73e9596f85e41e9f97f7e553d8f7595ecb31a627bef
-    # via hermes-switchyard (pyproject.toml)
+    # via hermes-signalbox (pyproject.toml)
 identify==2.6.20 \
     --hash=sha256:6a16b69b93187244e0548cbfd25b3e4a6f9a7a2ad784625c3bec2b8d27b81aaa \
     --hash=sha256:ad729860a923858d26917c2f4fb0a1d83d27a75b1e090c06440c573f048f3285
@@ -975,7 +975,7 @@ mypy==2.4.1 \
     --hash=sha256:ef8d5be90032261197ac388d945d8ff4f476c95880798a1911760af64ddfe71f \
     --hash=sha256:f44dd4c5ab22df21206dd926c98381ebdbf5bfd696df37dd38ded2d23143fcb6 \
     --hash=sha256:f9118a3f50de264b614861bb11814833a742138ac3c8e2e49a860b6977fb2704
-    # via hermes-switchyard (pyproject.toml)
+    # via hermes-signalbox (pyproject.toml)
 mypy-extensions==1.2.0 \
     --hash=sha256:993e7a20aa5671eb41a7132cf555af30062da99729601601b9a8382b11cae768 \
     --hash=sha256:c6e275a07f1c2fc096b62940452d0eaa3f3af7de45d704787866240a7c6d5a51
@@ -1020,11 +1020,11 @@ pip-api==0.0.35 \
 pip-audit==2.10.1 \
     --hash=sha256:1eb4565d19ebe5d48996f4b770b4d2b32887e12cb12cfa637f1a064011b55ffc \
     --hash=sha256:99ef3f600a317c1945f1e89e227ef26e1c2d618429b8bd3fa6f4f7c440c4611a
-    # via hermes-switchyard (pyproject.toml)
+    # via hermes-signalbox (pyproject.toml)
 pip-licenses==5.5.5 \
     --hash=sha256:60750c006adf7a0910347b726e8ee9fee3bc8d2e7c8307a5c4ec0776c8e2a276 \
     --hash=sha256:f4c4c6d9e6a03612cf59f29f19dc8ab54904d82e055b8e191498f2279a224e14
-    # via hermes-switchyard (pyproject.toml)
+    # via hermes-signalbox (pyproject.toml)
 pip-requirements-parser==32.0.1 \
     --hash=sha256:4659bc2a667783e7a15d190f6fccf8b2486685b6dba4c19c3876314769c57526 \
     --hash=sha256:b4fa3a7a0be38243123cf9d1f3518da10c51bdb165a2b2985566247f9155a7d3
@@ -1047,7 +1047,7 @@ pluggy==1.7.0 \
 pre-commit==4.7.0 \
     --hash=sha256:1f3deee12b914c8fa184bd2b5953391c2e4f36763e403d4a23dc9983fa7c6e86 \
     --hash=sha256:2e229038ad3656081b70c27913157e4b636ef306f643f024a8a8e3f0f7b2f877
-    # via hermes-switchyard (pyproject.toml)
+    # via hermes-signalbox (pyproject.toml)
 prettytable==3.19.0 \
     --hash=sha256:0ecedd6d9a560b330503bef15791b77954fa46b7123203d91e463330b61959ba \
     --hash=sha256:66d0eaf75f21198e92ce09e59a12c140be76c78b8a89252e7e87ac8994f96383
@@ -1074,12 +1074,12 @@ pytest==9.2.0 \
     --hash=sha256:07acdcf88ec174f907dc01af70bf52d49b014bbab03faeeade31c96b18c2e588 \
     --hash=sha256:97c4f3b1f3c7414aa36465e09b8220f1d03627993bd51b1282e193753c80557b
     # via
-    #   hermes-switchyard (pyproject.toml)
+    #   hermes-signalbox (pyproject.toml)
     #   pytest-cov
 pytest-cov==7.1.0 \
     --hash=sha256:30674f2b5f6351aa09702a9c8c364f6a01c27aae0c1366ae8016160d1efc56b2 \
     --hash=sha256:a0461110b7865f9a271aa1b51e516c9a95de9d696734a2f71e3e78f46e1d4678
-    # via hermes-switchyard (pyproject.toml)
+    # via hermes-signalbox (pyproject.toml)
 python-dateutil==4.0.0 \
     --hash=sha256:a5e246f79eb80475e691bf93862cead98decd8a498cf53ba0516fcdc0f50dc1c \
     --hash=sha256:d7295ff14fdc0f92f662100bfb6c551d160ca090f2939f1ec5b9794265c03f06
@@ -1347,7 +1347,7 @@ ruff==0.17.6 \
     --hash=sha256:d8b14e1473dc86ab9069cf7a2ba5041dc012f59110201844ed04cfddf07055a0 \
     --hash=sha256:fb589e032806bb942e4fb526f30b80a1a64112147ed9f1d38cc3de2e255b6f45 \
     --hash=sha256:fd661702202a89c00a4c9d0339008805fa5876bfa1c57e165495c2e62230dfbf
-    # via hermes-switchyard (pyproject.toml)
+    # via hermes-signalbox (pyproject.toml)
 six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81

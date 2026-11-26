@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from switchyard.errors import CapabilityDenied, StateError, SwitchyardError
-from switchyard.rpc import MAX_FRAME_BYTES, Channel, ProtocolError, RemoteError, read_frame, write_frame
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError, StateError
+from hermes_signalbox.rpc import MAX_FRAME_BYTES, Channel, ProtocolError, RemoteError, read_frame, write_frame
 
 
 def test_frame_round_trip() -> None:
@@ -122,7 +122,7 @@ def test_core_errors_are_rebuilt_as_their_class() -> None:
     assert isinstance(err, CapabilityDenied) and str(err) == "nope"
     assert isinstance(RemoteError("StateError", "x").as_local(), StateError)
     other = RemoteError("ValueError", "").as_local()
-    assert type(other) is SwitchyardError and "ValueError" in str(other)
+    assert type(other) is SignalboxError and "ValueError" in str(other)
 
 
 @pytest.mark.parametrize(

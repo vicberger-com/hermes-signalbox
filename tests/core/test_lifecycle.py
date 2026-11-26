@@ -12,14 +12,14 @@ from typing import Any
 import pytest
 from sy_testing import GOOD, RecordingAudit, write_module
 
-from switchyard.capabilities import MemoryGrantStore, PolicyEngine
-from switchyard.context import MemoryPanelRegistry
-from switchyard.errors import CapabilityDenied, SwitchyardError
-from switchyard.events import Event, EventBus
-from switchyard.lifecycle import ModuleManager, ModuleStatus
-from switchyard.logs import JsonlLogSink
-from switchyard.scheduler import Scheduler, Trigger
-from switchyard.state import StateStore
+from hermes_signalbox.capabilities import MemoryGrantStore, PolicyEngine
+from hermes_signalbox.context import MemoryPanelRegistry
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError
+from hermes_signalbox.events import Event, EventBus
+from hermes_signalbox.lifecycle import ModuleManager, ModuleStatus
+from hermes_signalbox.logs import JsonlLogSink
+from hermes_signalbox.scheduler import Scheduler, Trigger
+from hermes_signalbox.state import StateStore
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -178,7 +178,7 @@ def test_disabled_module_cannot_be_activated(env: Env) -> None:
     write_module(env.trusted, "alpha")
     env.manager.discover([env.trusted])
     env.manager.set_mode("alpha", "disabled", actor="user")
-    with pytest.raises(SwitchyardError, match="disabled"):
+    with pytest.raises(SignalboxError, match="disabled"):
         env.manager.activate("alpha", actor="user")
 
 
@@ -188,7 +188,7 @@ def test_disabling_an_active_module_stops_it(env: Env) -> None:
     env.manager.activate("alpha", actor="user")
     env.manager.set_mode("alpha", "disabled", actor="user")
     assert env.manager.info("alpha").state is ModuleStatus.STOPPED
-    with pytest.raises(SwitchyardError, match="mode"):
+    with pytest.raises(SignalboxError, match="mode"):
         env.manager.set_mode("alpha", "sometimes", actor="user")
 
 
@@ -346,10 +346,10 @@ def test_remove_drops_grants_data_and_imports(tmp_path: Path, audit: RecordingAu
     env.manager.remove("alpha", actor="user")
     assert "alpha" not in env.manager.ids()
     assert store.module("alpha").kv_get("k") is None
-    assert not any(name.startswith("_switchyard_modules.alpha") for name in sys.modules)
+    assert not any(name.startswith("_signalbox_modules.alpha") for name in sys.modules)
     assert store.core_query("SELECT count(*) FROM modules WHERE id = 'alpha'") == [(0,)]
     assert env.event_types()[-1] == "module.removed"
-    with pytest.raises(SwitchyardError, match="unknown module"):
+    with pytest.raises(SignalboxError, match="unknown module"):
         env.manager.info("alpha")
     store.close()
 

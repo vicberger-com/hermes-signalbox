@@ -9,9 +9,9 @@ from typing import Any
 
 import pytest
 
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import SwitchyardError
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import SignalboxError
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "supervisor"
@@ -41,7 +41,7 @@ def grant(core: Core, module: str, *caps: str) -> None:
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "no-hermes"))
 
 
@@ -109,7 +109,7 @@ def test_findings_open_escalate_ack_and_resolve(core: Core) -> None:
         sv(core, "report")["open"] == []
         and sv(core, "findings", state="resolved")["findings"][0]["key"] == "quota:day"
     )
-    with pytest.raises(SwitchyardError, match="no open finding"):
+    with pytest.raises(SignalboxError, match="no open finding"):
         sv(core, "ack", key="quota:day")
 
 
@@ -178,16 +178,16 @@ def test_soak_stays_bounded_and_survives_restart(tmp_path: Path, clock: Clock) -
 
 def test_model_is_read_only_and_settings(core: Core, tmp_path: Path) -> None:
     for action, args in [("ack", {"key": "x"}), ("run_now", {})]:
-        with pytest.raises(SwitchyardError, match="read-only"):
+        with pytest.raises(SignalboxError, match="read-only"):
             sv(core, action, actor="hermes", **args)
     assert sv(core, "report", actor="hermes")["llm_calls"] == 0
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         sv(core, "findings", state="weird")
     assert (
         core.run("module", "panel", {"id": "supervisor", "panel": "supervisor.status"}, actor="t")["open"]
         == []
     )
-    with pytest.raises(SwitchyardError, match=r"llm\.paid"):
+    with pytest.raises(SignalboxError, match=r"llm\.paid"):
         core.run("module", "grant", {"id": "supervisor", "capability": "llm.paid"}, actor="t")
     data = tmp_path / "d2"
     data.mkdir()
@@ -228,7 +228,7 @@ def test_slow_jobs_do_not_stall_the_tick(core: Core) -> None:
 def test_schedule_broker_rules(core: Core) -> None:
     sched = core.manager._entry("supervisor").instance.ctx.schedule
     for name, seconds in [("Bad", 60), ("ok", 5), ("ok", True), ("ok", 100_000)]:
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             sched.every(name, seconds, lambda: None)
     sched.every("extra", 60, lambda: None)
     assert "supervisor.extra" in core.scheduler.ids() and sched.stats("extra")["fired"] == 0

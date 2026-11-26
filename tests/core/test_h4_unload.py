@@ -1,4 +1,4 @@
-"""H4 R1-F14: when Hermes unloads the plugin, Switchyard stops (ADR-0014, section "Unload").
+"""H4 R1-F14: when Hermes unloads the plugin, Signalbox stops (ADR-0014, section "Unload").
 
 Hermes runs the callbacks a plugin registered with ``ctx.on_unload`` when the plugin is disabled, uninstalled
 or force-reloaded in a running process. Without one, the host lock, the loopback API and the active modules
@@ -17,15 +17,15 @@ from typing import Any
 import pytest
 from sy_testing import FakeHermesCtx, write_module
 
-from switchyard import hermes as adapter_mod
-from switchyard.core import Core
-from switchyard.errors import SwitchyardError
-from switchyard.hostlock import HostLock
+from hermes_signalbox import hermes as adapter_mod
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.hostlock import HostLock
 
 
 @pytest.fixture(autouse=True)
 def _fast(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setattr(adapter_mod, "TICK_SECONDS", 0.05)
     monkeypatch.setattr(adapter_mod, "HOST_RETRY_SECONDS", 0.05)
     yield
@@ -60,7 +60,7 @@ def _lock_is_free(data_dir: Path) -> bool:
 
 
 def _tick_threads() -> list[threading.Thread]:
-    return [t for t in threading.enumerate() if t.name == "switchyard-tick" and t.is_alive()]
+    return [t for t in threading.enumerate() if t.name == "signalbox-tick" and t.is_alive()]
 
 
 def _hosting_adapter(data_dir: Path) -> tuple[FakeHermesCtx, Any, int]:
@@ -87,7 +87,7 @@ def test_h4_f14_unload_releases_the_lock_the_api_and_the_modules(data: Path) -> 
     assert not adapter.driver_alive() and len(_tick_threads()) == before
     stopped = [r for r in _records(data) if r["action"] == "module.deactivated" and r["module"] == "auto1"]
     assert [r["detail"].get("reason") for r in stopped] == ["unload"]
-    with pytest.raises(SwitchyardError, match="not registered"):
+    with pytest.raises(SignalboxError, match="not registered"):
         adapter_mod.current()
     with Core(data_dir=data, hosting=False) as reader:
         assert reader.host_pid() is None
@@ -100,8 +100,8 @@ def test_h4_f14_after_unload_stale_hermes_references_do_nothing(data: Path) -> N
     assert ctx.hooks["pre_llm_call"](user_message="hi") is None
     assert ctx.middleware["llm_request"](request={"model": "x"}) is None
     assert ctx.hooks["transform_terminal_output"](output="x", returncode=0) is None
-    assert '"ok": false' in ctx.tools["switchyard_modules"]["handler"]({"action": "list"})
-    assert ctx.commands["switchyard"]("module list").startswith("error")
+    assert '"ok": false' in ctx.tools["signalbox_modules"]["handler"]({"action": "list"})
+    assert ctx.commands["signalbox"]("module list").startswith("error")
     assert not adapter.core.hosting and _lock_is_free(data)
     assert len(_records(data)) == count  # nothing recorded, in particular no core.not_hosting
 
@@ -197,5 +197,5 @@ def test_h4_f14_adapter_close_closes_the_core(data: Path) -> None:
     _ctx, adapter, port = _hosting_adapter(data)
     adapter.close()
     assert _lock_is_free(data) and not _listening(port)
-    with pytest.raises(SwitchyardError, match="closed"):
+    with pytest.raises(SignalboxError, match="closed"):
         adapter.core.run("module", "list", {}, actor="cli")

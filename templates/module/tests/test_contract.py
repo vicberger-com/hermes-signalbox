@@ -43,9 +43,10 @@ def test_contributed_panel_matches_manifest_and_returns_plain_data() -> None:
 
 def test_full_contract_through_a_real_core() -> None:
     """The shared contract suite: manifest, discovery, denial, activation, health, panels, removal, audit."""
-    from switchyard.contract import run_contract
+    from hermes_signalbox.contract import run_contract
 
-    # bundled=True: an in-process module belongs in this repository's switchyard/modules. A module shipped
+    # bundled=True: an in-process module belongs in this repository's hermes_signalbox/modules. A module
+    # shipped
     # on its own declares isolation = "subprocess" and drops the flag (the contract then checks trust).
     report = run_contract(Path(__file__).resolve().parents[1], bundled=True)
     assert report.ok, report.summary()

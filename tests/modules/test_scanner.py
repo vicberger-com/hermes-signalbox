@@ -12,10 +12,10 @@ from typing import Any
 
 import pytest
 
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import SwitchyardError
-from switchyard.modules.scanner import parsers  # type: ignore[import-not-found,unused-ignore]
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.modules.scanner import parsers  # type: ignore[import-not-found,unused-ignore]
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "scanner"
@@ -44,7 +44,7 @@ def fake_tool(bin_dir: Path, name: str, stdout_file: Path | None, code: int = 1,
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "no-hermes"))
 
 
@@ -184,12 +184,12 @@ def test_settings_and_permissions(tmp_path: Path, fakes: Path) -> None:
             c.close()
     c = start(tmp_path / "ok", "")
     try:
-        with pytest.raises(SwitchyardError, match="no targets"):
+        with pytest.raises(SignalboxError, match="no targets"):
             sc(c, "run_now")
         for action in ("run_now", "findings"):
-            with pytest.raises(SwitchyardError, match="read-only"):
+            with pytest.raises(SignalboxError, match="read-only"):
                 sc(c, action, actor="hermes")
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             sc(c, "findings", state="weird")
         assert "scanner.scan" in c.scheduler.ids()
     finally:
@@ -273,7 +273,7 @@ def test_process_broker_bounds(core: Core, tmp_path: Path, fakes: Path) -> None:
         launcher.chmod(0o755)
     spawn = core.manager._entry("scanner").instance.ctx.spawn
     started = time.monotonic()
-    with pytest.raises(SwitchyardError, match="timed out"):
+    with pytest.raises(SignalboxError, match="timed out"):
         spawn.run(["bandit", "30"], timeout=1)
     assert time.monotonic() - started < 15  # a grandchild holding output no longer blocks the timeout
     done = spawn.run(["bandit", "0"], timeout=20, max_output=100)

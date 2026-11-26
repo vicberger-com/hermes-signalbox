@@ -18,15 +18,15 @@ from typing import Any, ClassVar
 
 import pytest
 
-from switchyard import api, cli
-from switchyard.api import ApiClient, ApiOutcomeUnknown, ApiUnavailable, ApiUntrusted, ControlServer
-from switchyard.core import Core
+from hermes_signalbox import api, cli
+from hermes_signalbox.api import ApiClient, ApiOutcomeUnknown, ApiUnavailable, ApiUntrusted, ControlServer
+from hermes_signalbox.core import Core
 
 TOKEN = "tok-" + "9b2c7d1e5f3a8b4c6d0e2f1a3b5c7d9e"
 
 
 def _proof(token: str, challenge: str) -> str:
-    return hmac.new(token.encode(), ("switchyard-api-v1:" + challenge).encode(), hashlib.sha256).hexdigest()
+    return hmac.new(token.encode(), ("signalbox-api-v1:" + challenge).encode(), hashlib.sha256).hexdigest()
 
 
 class _Fake(http.server.BaseHTTPRequestHandler):

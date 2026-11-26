@@ -9,8 +9,8 @@ from typing import Any
 import pytest
 from sy_testing import write_module
 
-from switchyard.core import Core
-from switchyard.errors import CapabilityDenied, SwitchyardError
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError
 
 OBSERVER = """
 class Mod:
@@ -64,7 +64,7 @@ def _manifest(d: Path, hooks: list[str], commands: list[str]) -> None:
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -112,23 +112,23 @@ def test_bridge_dispatch_isolation_and_model_only_rewrites(core: Core) -> None:
 
 
 def test_undeclared_or_unsupported_hooks(core: Core, tmp_path: Path) -> None:
-    from switchyard.context import ContextServices, ModuleContext
+    from hermes_signalbox.context import ContextServices, ModuleContext
 
     core.run("module", "grant", {"id": "watch", "capability": "hermes.hooks"}, actor="t")
     services = ContextServices(policy=core.policy, logs=None, panels=None, bus=None, bridge=core.bridge)  # type: ignore[arg-type]
     ctx = ModuleContext(core.manager.manifest("watch"), services)
-    with pytest.raises(SwitchyardError, match="unsupported"):
+    with pytest.raises(SignalboxError, match="unsupported"):
         ctx.hermes_hook("on_session_start", lambda kw: None)
-    with pytest.raises(SwitchyardError, match="unsupported"):
+    with pytest.raises(SignalboxError, match="unsupported"):
         ctx.hermes_middleware("tool_execution", lambda r, c: None)
-    with pytest.raises(SwitchyardError, match="not declared"):
+    with pytest.raises(SignalboxError, match="not declared"):
         ctx.hermes_hook("post_llm_call", lambda kw: None)
     core.run("module", "revoke", {"id": "watch", "capability": "hermes.hooks"}, actor="t")
     with pytest.raises(CapabilityDenied):
         ctx.hermes_hook("post_api_request", lambda kw: None)
     plain = ContextServices(policy=core.policy, logs=None, panels=None, bus=None)  # type: ignore[arg-type]
     bare = ModuleContext(core.manager.manifest("asker"), plain)
-    with pytest.raises(SwitchyardError, match="not available"):
+    with pytest.raises(SignalboxError, match="not available"):
         bare.call("watch", "seen")
 
 
@@ -137,7 +137,7 @@ def test_cross_module_calls_are_read_only(core: Core) -> None:
     for mid in ("watch", "asker"):
         core.run("module", "activate", {"id": mid}, actor="t")
     assert core.run("module", "action", {"id": "asker", "action": "ask"}, actor="t") == {"n": 0, "keys": []}
-    with pytest.raises(SwitchyardError, match="read-only"):
+    with pytest.raises(SignalboxError, match="read-only"):
         core.run("module", "action", {"id": "asker", "action": "write"}, actor="t")
     assert "module:asker" in {r["actor"] for r in core.run("audit", "tail", {"n": 50}, actor="t")}
 
@@ -145,8 +145,8 @@ def test_cross_module_calls_are_read_only(core: Core) -> None:
 def test_middleware_cannot_mutate_or_smuggle_and_is_time_bounded(tmp_path: Path) -> None:
     import threading
 
-    from switchyard.bridge import HermesBridge
-    from switchyard.capabilities import AuditSink
+    from hermes_signalbox.bridge import HermesBridge
+    from hermes_signalbox.capabilities import AuditSink
 
     records: list[dict[str, Any]] = []
 
@@ -204,7 +204,7 @@ def test_middleware_cannot_mutate_or_smuggle_and_is_time_bounded(tmp_path: Path)
 
 
 def test_observer_payloads_hold_no_text() -> None:
-    from switchyard.bridge import metadata_only
+    from hermes_signalbox.bridge import metadata_only
 
     class SdkMessage:
         content = "secret answer"
@@ -258,7 +258,7 @@ def test_observer_payloads_hold_no_text() -> None:
 def test_gates_block_with_a_core_sentence_and_fail_open() -> None:
     import threading
 
-    from switchyard.bridge import HermesBridge
+    from hermes_signalbox.bridge import HermesBridge
 
     records: list[dict[str, Any]] = []
 
@@ -277,8 +277,8 @@ def test_gates_block_with_a_core_sentence_and_fail_open() -> None:
     bridge.add_gate("stopper", lambda meta: "quota_exhausted")
     message = bridge.dispatch_gate({"turn_id": "t", "user_message": "secret"})
     assert message == (
-        "[switchyard] This request was stopped by the stopper module (quota exhausted). "
-        "Ask the operator to check Switchyard."
+        "[signalbox] This request was stopped by the stopper module (quota exhausted). "
+        "Ask the operator to check Signalbox."
     )
     assert (
         records[-1]["action"] == "module.gate_blocked" and records[-1]["detail"]["code"] == "quota_exhausted"
@@ -303,8 +303,8 @@ def test_h1_middleware_fallback_and_claim(tmp_path: Path) -> None:
     import threading
     import time
 
-    from switchyard.bridge import HermesBridge
-    from switchyard.capabilities import AuditSink
+    from hermes_signalbox.bridge import HermesBridge
+    from hermes_signalbox.capabilities import AuditSink
 
     records: list[dict[str, Any]] = []
 
@@ -383,7 +383,7 @@ def test_h1_c2_hung_observer_is_paused_and_bounded() -> None:
     import threading
     import time
 
-    from switchyard.bridge import MAX_INFLIGHT, HermesBridge
+    from hermes_signalbox.bridge import MAX_INFLIGHT, HermesBridge
 
     sink = _Sink()
     bridge = HermesBridge(sink, timeout=0.2)  # type: ignore[arg-type]
@@ -408,7 +408,7 @@ def test_h1_c2_observers_share_one_deadline() -> None:
     import threading
     import time
 
-    from switchyard.bridge import HermesBridge
+    from hermes_signalbox.bridge import HermesBridge
 
     bridge = HermesBridge(_Sink(), timeout=0.3)  # type: ignore[arg-type]
     release = threading.Event()
@@ -424,7 +424,7 @@ def test_h1_c2_observers_share_one_deadline() -> None:
 def test_h1_c3_hostile_output_fails_open_within_the_budget() -> None:
     import time
 
-    from switchyard.bridge import HermesBridge
+    from hermes_signalbox.bridge import HermesBridge
 
     sink = _Sink()
     bridge = HermesBridge(sink, timeout=2.0)  # type: ignore[arg-type]
@@ -438,7 +438,7 @@ def test_h1_c3_hostile_output_fails_open_within_the_budget() -> None:
 
 
 def test_h1_c5_hooks_carry_the_model_actually_sent() -> None:
-    from switchyard.bridge import HermesBridge
+    from hermes_signalbox.bridge import HermesBridge
 
     bridge = HermesBridge(_Sink(), timeout=1.0)  # type: ignore[arg-type]
     seen: list[dict[str, Any]] = []

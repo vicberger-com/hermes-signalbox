@@ -1,8 +1,9 @@
-"""Validate Switchyard ``module.toml`` files. Thin CLI over ``switchyard.manifest``.
+"""Validate Signalbox ``module.toml`` files. Thin CLI over ``hermes_signalbox.manifest``.
 
 Usage: ``python tools/validate_manifest.py PATH [...]`` where PATH is a ``module.toml`` or a directory that is
 searched recursively. Exit code 0 when every manifest is valid and every directory holds at least one.
-Rules are documented in ``switchyard.manifest``; schema: ``src/switchyard/schemas/module.schema.json``.
+Rules are documented in ``hermes_signalbox.manifest``; schema:
+``src/hermes_signalbox/schemas/module.schema.json``.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from switchyard.manifest import check, cross_field, validate_document, validate_file
+from hermes_signalbox.manifest import check, cross_field, validate_document, validate_file
 
 __all__ = ["check", "cross_field", "main", "validate_document", "validate_file"]
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from switchyard.errors import SwitchyardError
-from switchyard.fsread import check_local_path
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.fsread import check_local_path
 
 
 @pytest.mark.parametrize(
@@ -24,7 +24,7 @@ from switchyard.fsread import check_local_path
     ],
 )
 def test_h1_b6_device_aliases_are_refused(path: str) -> None:
-    with pytest.raises(SwitchyardError, match="device names"):
+    with pytest.raises(SignalboxError, match="device names"):
         check_local_path(path, windows=True)
 
 

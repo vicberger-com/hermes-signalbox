@@ -13,9 +13,9 @@ from typing import Any
 
 import pytest
 
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import CapabilityDenied, SwitchyardError
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "offload"
@@ -75,7 +75,7 @@ def server() -> Iterator[int]:
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "no-hermes"))
 
 
@@ -113,7 +113,7 @@ def test_open_connector_and_data_sent_enforced(core: Core) -> None:
     RECEIVED.clear()
     out = off(core, "run", connector="jevk5", payload=json.dumps({"state": "doc", "questions": {"q": {}}}))
     assert out["result"] == {"answer": "yes", "echo": ["questions", "state"]}
-    with pytest.raises(SwitchyardError, match="refused \\['api_key'\\]"):
+    with pytest.raises(SignalboxError, match="refused \\['api_key'\\]"):
         off(core, "run", connector="jevk5", payload=json.dumps({"state": "doc", "api_key": "sk-x"}))
     assert len(RECEIVED) == 1  # nothing sent for the refused payload
     tail = [
@@ -121,7 +121,7 @@ def test_open_connector_and_data_sent_enforced(core: Core) -> None:
     ]
     assert tail and "doc" not in json.dumps(tail)  # field names only
     for bad in ("not json", "[]", "{}"):
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             off(core, "run", connector="jevk5", payload=bad)
 
 
@@ -140,7 +140,7 @@ def test_proprietary_connectors_off_until_allowed(
         ("claude-code", {"prompt": "hi"}),
         ("codex", {"prompt": "hi"}),
     ):
-        with pytest.raises(SwitchyardError, match="allow it by name"):
+        with pytest.raises(SignalboxError, match="allow it by name"):
             off(core, "run", connector=name, payload=json.dumps(payload))
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -165,10 +165,10 @@ def test_proprietary_connectors_off_until_allowed(
         assert off(c, "run", connector="n8n", payload=json.dumps({"task": "t"}))["result"]["answer"] == "yes"
         out = off(c, "run", connector="claude-code", payload=json.dumps({"prompt": "hello"}))["result"]
         assert out.strip() == "echo:hello []"  # ran in an empty working directory
-        from switchyard.modules.offload.offload_module import ARGV  # type: ignore[import-not-found,unused-ignore]
+        from hermes_signalbox.modules.offload.offload_module import ARGV  # type: ignore[import-not-found,unused-ignore]
 
         assert ARGV["claude"][-2:] == ["--tools", ""]  # no tools: the agent cannot read local files
-        with pytest.raises(SwitchyardError, match="allow it by name"):
+        with pytest.raises(SignalboxError, match="allow it by name"):
             off(c, "run", connector="codex", payload=json.dumps({"prompt": "x"}))
         assert off(c, "report")["runs"]["n8n"] == {"runs": 1, "failures": 0}
     finally:
@@ -181,27 +181,27 @@ def test_net_broker_rules(core: Core, server: int) -> None:
     with pytest.raises(CapabilityDenied):
         net.request("POST", "http://example.com/x", json={})
     for bad in ("ftp://127.0.0.1/x", f"http://user:pw@127.0.0.1:{server}/x", "http:///x"):
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             net.request("POST", bad, json={})
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         net.request("TRACE", base + "/x")
     resp = net.request("POST", base + "/redirect", json={})
     assert resp.status == 302  # not followed
     big = net.request("POST", base + "/big", json={})
     assert big.truncated
     assert net.request("POST", base + "/fail", json={}).status == 500
-    with pytest.raises(SwitchyardError, match="failed"):
+    with pytest.raises(SignalboxError, match="failed"):
         net.request("POST", "http://127.0.0.1:1/x", json={}, timeout=1)
     import time
 
     started = time.monotonic()
-    with pytest.raises(SwitchyardError, match="failed"):  # total deadline, not per read
+    with pytest.raises(SignalboxError, match="failed"):  # total deadline, not per read
         net.request("POST", base + "/trickle", json={}, timeout=1)
     assert time.monotonic() - started < 5
-    with pytest.raises(SwitchyardError, match="failed"):  # closed before Content-Length: not a success
+    with pytest.raises(SignalboxError, match="failed"):  # closed before Content-Length: not a success
         net.request("POST", base + "/short", json={})
     for bad in ("http://127.0.0.1:99999/x", "http://127.0.0.1:abc/x", "http://[127.0.0.1]:8090/x"):
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             net.request("POST", bad, json={})
     actions = [r for r in core.run("audit", "tail", {"n": 50}, actor="t") if r["action"] == "net.request"]
     assert actions and all("/" not in r["detail"]["host"] for r in actions)
@@ -210,14 +210,14 @@ def test_net_broker_rules(core: Core, server: int) -> None:
 def test_failures_settings_and_rights(core: Core, tmp_path: Path, server: int) -> None:
     c = start(tmp_path / "d3", f'jevk5_url = "http://127.0.0.1:{server}/fail"')
     try:
-        with pytest.raises(SwitchyardError, match="HTTP 500"):
+        with pytest.raises(SignalboxError, match="HTTP 500"):
             off(c, "run", connector="jevk5", payload=json.dumps({"state": "x"}))
         assert off(c, "report")["runs"]["jevk5"] == {"runs": 1, "failures": 1}
     finally:
         c.close()
-    with pytest.raises(SwitchyardError, match="read-only"):
+    with pytest.raises(SignalboxError, match="read-only"):
         off(core, "run", actor="hermes", connector="jevk5", payload="{}")
-    with pytest.raises(SwitchyardError, match="unknown connector"):
+    with pytest.raises(SignalboxError, match="unknown connector"):
         off(core, "run", connector="nope", payload="{}")
     for i, bad in enumerate(
         (
@@ -235,9 +235,9 @@ def test_failures_settings_and_rights(core: Core, tmp_path: Path, server: int) -
             c.close()
     c = start(tmp_path / "d4", "allow = ['codex', 'n8n']", spawn=False)
     try:
-        with pytest.raises(SwitchyardError, match=r"process\.spawn"):
+        with pytest.raises(SignalboxError, match=r"process\.spawn"):
             off(c, "run", connector="codex", payload=json.dumps({"prompt": "x"}))
-        with pytest.raises(SwitchyardError, match=r"n8n_webhook"):
+        with pytest.raises(SignalboxError, match=r"n8n_webhook"):
             off(c, "run", connector="n8n", payload=json.dumps({"task": "x"}))
     finally:
         c.close()
@@ -265,7 +265,7 @@ def test_h1_1_cleanup_failure_after_a_successful_run_does_not_fail_the_run(
     held: list[str] = []
 
     def held_open(path: Any, *args: Any, **kwargs: Any) -> None:
-        if "switchyard-offload-" in str(path):
+        if "signalbox-offload-" in str(path):
             held.append(str(path))
             raise PermissionError(13, "The process cannot access the file", str(path))
         real_rmtree(path, *args, **kwargs)
@@ -287,7 +287,7 @@ def test_h1_1_cleanup_failure_after_a_successful_run_does_not_fail_the_run(
 
 
 def _offload_mod() -> Any:
-    from switchyard.modules.offload import offload_module  # type: ignore[import-not-found,unused-ignore]
+    from hermes_signalbox.modules.offload import offload_module  # type: ignore[import-not-found,unused-ignore]
 
     return offload_module
 

@@ -21,10 +21,10 @@ def _section(number: int) -> str:
 
 def test_h4_r1_f1_install_by_owner_and_repository_not_the_catalog_name() -> None:
     install = _section(1)
-    assert "hermes plugins install hermes-switchyard" in install  # named as the command to avoid
-    assert "different, unrelated project" in install
-    assert "vicberger-com/hermes-switchyard" in install and "--ref" in install
-    assert "unrelated project" in README and "vicberger-com/hermes-switchyard --ref" in README
+    # H5: the rename removed the catalog name collision; the owner/repository + commit rule stays.
+    assert "Install by owner/repository and commit" in install
+    assert "vicberger-com/hermes-signalbox" in install and "--ref" in install
+    assert "vicberger-com/hermes-signalbox --ref" in README
 
 
 def test_h4_r1_f2_custom_source_warning_is_expected() -> None:
@@ -39,13 +39,13 @@ def test_h4_r1_f3_tools_reach_the_model_in_a_new_chat() -> None:
 def test_h4_r1_f6_a_grant_does_not_start_a_module_in_a_running_hermes() -> None:
     grants = _section(3)
     assert "never starts a module" in grants
-    assert "/switchyard module activate <id>" in grants
+    assert "/signalbox module activate <id>" in grants
 
 
 def test_h4_r1_f13_update_commands_are_chat_only_when_hermes_hosts() -> None:
     updates = _section(7)
-    assert "chat-only" in updates and "/switchyard module check_updates" in updates
-    assert "/switchyard report show" in _section(6)
+    assert "chat-only" in updates and "/signalbox module check_updates" in updates
+    assert "/signalbox report show" in _section(6)
 
 
 def test_h4_doc_1_sections_are_numbered_once_in_order() -> None:
@@ -55,10 +55,10 @@ def test_h4_doc_1_sections_are_numbered_once_in_order() -> None:
 
 def test_h4_doc_1_uninstall_disables_first_and_names_every_data_directory() -> None:
     uninstall = _section(9)
-    disable = uninstall.index("hermes plugins disable switchyard")
-    remove = uninstall.index("hermes plugins remove switchyard")
+    disable = uninstall.index("hermes plugins disable signalbox")
+    remove = uninstall.index("hermes plugins remove signalbox")
     assert disable < remove
     assert "hermes gateway restart" in uninstall  # what to do when the gateway did not unload it
-    assert "agent-plugin-switchyard-<digest>" in uninstall
-    assert "plugin-data/switchyard" in uninstall
-    assert "SWITCHYARD_DATA_DIR" in uninstall
+    assert "agent-plugin-signalbox-<digest>" in uninstall
+    assert "UPGRADING-1.1.md" in uninstall  # H5: the 1.0.2 leftover gave way to the pre-rename directory
+    assert "SIGNALBOX_DATA_DIR" in uninstall

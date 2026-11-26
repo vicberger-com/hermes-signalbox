@@ -14,7 +14,7 @@
 
 - <Effect.>
 
-Full record: [ADR-0009](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0009-notifications-dashboard.md)
+Full record: [ADR-0009](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0009-notifications-dashboard.md)
 
 ---
-**Sources:** [ADR-0009](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0009-notifications-dashboard.md)
+**Sources:** [ADR-0009](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0009-notifications-dashboard.md)

@@ -15,7 +15,7 @@ are active, who may use them, what they cost, and what happens when they fail or
   logging, reporting and update source. A module can be added, enabled, disabled, updated or removed without
   touching the core or other modules.
 
-It runs standalone (`switchyard` CLI and a loopback daemon) and as a Hermes plugin. The Hermes plugin is a thin
+It runs standalone (`signalbox` CLI and a loopback daemon) and as a Hermes plugin. The Hermes plugin is a thin
 adapter over the same core, so Hermes has full control without the core depending on Hermes internals.
 
 ## 2. Constraints from the requirement
@@ -66,7 +66,7 @@ adapter over the same core, so Hermes has full control without the core dependin
 | Host profiler | CPU, RAM, GPU, disk, network class | Selects `tiny`, `laptop`, `workstation` or `server` profile |
 | Update control | Pinned sources, verify, stage, apply, roll back | Produces an SBOM delta per update |
 | Control API | Loopback HTTP + local token, JSON | Binds 127.0.0.1 only; no remote listener in core |
-| CLI | `switchyard <noun> <verb>` | Same operations as the API |
+| CLI | `signalbox <noun> <verb>` | Same operations as the API |
 
 ### Stack
 
@@ -90,10 +90,10 @@ hardening listed in section 4. Modules that need a library declare it in their o
 Python cannot sandbox code inside one process. Capability checks on T1 modules are a correctness and audit
 control, not a containment boundary. Anything not reviewed in this repository runs as T2.
 
-**The same-user boundary (R1 review).** Switchyard runs as your OS user and keeps its state in files your user
+**The same-user boundary (R1 review).** Signalbox runs as your OS user and keeps its state in files your user
 can read and write. Anything else running as that user is outside its control: a T2 module process (it can
 open `state.db`, read `api.token`, or open sockets without asking the core), and a model with an unrestricted
-shell tool (it can run `switchyard` itself). For those, the T2 host is a fault and request boundary, not a
+shell tool (it can run `signalbox` itself). For those, the T2 host is a fault and request boundary, not a
 security boundary, and the audit log is tamper-evident only against changes to one of its two files. Real
 containment needs the operating system: run untrusted modules only after review, and restrict the model's
 shell with Hermes's command approval or sandbox. A future release may run T2 modules under a separate,
@@ -112,7 +112,7 @@ restricted account.
    (1.1, H1 B-10); without a list it may run any program, and `module show` says `programs: any`.
 4. Paid-resource gate. `llm.paid` is a separate capability with budget limits. The supervisor can never hold it.
 5. Tamper-evident audit. Every grant, activation, routing decision above a threshold, secret use (name only),
-   update and policy change is written to the hash-chained log. `switchyard audit verify` checks the chain.
+   update and policy change is written to the hash-chained log. `hermes-signalbox audit verify` checks the chain.
 6. Supply chain. Dependencies pinned with hashes; license allow-list enforced in CI; SBOM (CycloneDX) per
    release; build provenance attestation; module updates verified against a pinned commit or signature before
    staging; automatic rollback when the post-update health check fails.
@@ -128,7 +128,7 @@ misuse through the control API, tampered audit trail, dependency confusion.
 
 ## 5. Module contract
 
-A module is a directory with `module.toml` (schema: `src/switchyard/schemas/module.schema.json`), an entry class and tests.
+A module is a directory with `module.toml` (schema: `src/hermes_signalbox/schemas/module.schema.json`), an entry class and tests.
 Template: `templates/module/`.
 
 | A module may contribute | Through |
@@ -153,7 +153,7 @@ activate and deactivate without leaks, denied-capability behaviour, and one test
 
 ## 6. Hermes integration (verified names)
 
-What the plugin uses (H1 WP10: this list is exactly what `switchyard/hermes/` calls and what
+What the plugin uses (H1 WP10: this list is exactly what `hermes_signalbox/hermes/` calls and what
 `plugin.yaml` declares; other Hermes mechanisms are not used).
 
 | Need | Hermes mechanism |

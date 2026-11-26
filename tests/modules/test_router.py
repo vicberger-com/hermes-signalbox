@@ -11,10 +11,10 @@ from typing import Any
 
 import pytest
 
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import SwitchyardError
-from switchyard.modules.router.engine import TIERS, Candidate, need_for, rank, tier_for
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.modules.router.engine import TIERS, Candidate, need_for, rank, tier_for
 
 pytestmark = pytest.mark.bundled_modules
 MODULE_DIR = Path(BUILTIN_MODULES) / "router"
@@ -85,7 +85,7 @@ def fail(core: Core, model: str, status: int = 429, turn: str = "t1") -> None:
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -213,7 +213,7 @@ def test_model_actor_is_read_only_and_explain(core: Core) -> None:
         ("auto", {"consumer": "main"}),
     ]
     for action, args in writes:
-        with pytest.raises(SwitchyardError, match="read-only"):
+        with pytest.raises(SignalboxError, match="read-only"):
             rt(core, action, actor="hermes", **args)
     out = rt(core, "explain", actor="hermes", tokens=20_000, tools=True)
     assert out["tier"] == "T3" and out["paid_allowed"] is False
@@ -236,7 +236,7 @@ def test_invalid_inputs_and_settings(core: Core, tmp_path: Path) -> None:
         ("explain", {"tokens": 0}),
     ]
     for action, args in bad_calls:
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             rt(core, action, **args)
     data = tmp_path / "data2"
     data.mkdir()
@@ -470,7 +470,7 @@ def test_h1_c1_router_db_wait_is_shorter_than_the_bridge_deadline(core: Core) ->
     held.wait(2)
     try:
         started = time.monotonic()
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             inst.route(request(model="paid/big"), {"provider": OR, "turn_id": "tw", "api_request_id": "w1"})
         assert time.monotonic() - started < core.bridge.timeout  # fails fast, so the fallback can run
     finally:

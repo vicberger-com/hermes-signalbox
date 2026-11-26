@@ -10,7 +10,7 @@
 | **Default activation** | manual |
 | **Requests** | [[Capability schedule]], [[Capability core.read]], [[Capability ui.panel]] |
 | **Optional** | [[Capability notify]] |
-| **Spec** | [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/updates/README.md) |
+| **Spec** | [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/updates/README.md) |
 
 ## What it does
 
@@ -28,11 +28,11 @@
 ## Turn it on
 
 ```bash
-switchyard module grant updates --capability schedule
-switchyard module grant updates --capability core.read
-switchyard module grant updates --capability notify
-switchyard module grant updates --capability ui.panel
-switchyard module activate updates
+hermes-signalbox module grant updates --capability schedule
+hermes-signalbox module grant updates --capability core.read
+hermes-signalbox module grant updates --capability notify
+hermes-signalbox module grant updates --capability ui.panel
+hermes-signalbox module activate updates
 ```
 
 ## Settings (`[modules.updates]`)
@@ -48,11 +48,11 @@ switchyard module activate updates
 
 ## Events and audit records
 
-<From [Reference](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/REFERENCE.md).>
+<From [Reference](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/REFERENCE.md).>
 
 ## Security notes
 
 <Summary; link the "Security review" table in the README.>
 
 ---
-**Sources:** [module README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/updates/README.md) · [module.toml](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/updates/module.toml)
+**Sources:** [module README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/updates/README.md) · [module.toml](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/updates/module.toml)

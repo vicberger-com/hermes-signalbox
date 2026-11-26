@@ -41,25 +41,25 @@ def test_h1_d24_release_notes_come_from_the_changelog() -> None:
 
 def test_h1_d24_release_notes_cli(capsys: pytest.CaptureFixture[str]) -> None:
     current = CHANGELOG.read_text(encoding="utf-8")
-    assert "[Unreleased]: https://github.com/vicberger-com/hermes-switchyard/compare/" in current
+    assert "[Unreleased]: https://github.com/vicberger-com/hermes-signalbox/compare/" in current
     assert main(["v1.0.0"]) == 0 and "### Added" in capsys.readouterr().out
     assert main(["9.9.9"]) == 1 and "no section" in capsys.readouterr().err
     assert main([]) == 2
 
 
 def test_h1_d5_wheel_list_is_checked(tmp_path: Path) -> None:
-    wheel = tmp_path / "hermes_switchyard-9.9.9-py3-none-any.whl"
+    wheel = tmp_path / "hermes_signalbox-9.9.9-py3-none-any.whl"
     with zipfile.ZipFile(wheel, "w") as zf:
-        zf.writestr("switchyard/__init__.py", "")
-        zf.writestr("hermes_switchyard-9.9.9.dist-info/METADATA", "")
+        zf.writestr("hermes_signalbox/__init__.py", "")
+        zf.writestr("hermes_signalbox-9.9.9.dist-info/METADATA", "")
     files = wheel_files(wheel)
-    assert files == ["hermes_switchyard.dist-info/METADATA", "switchyard/__init__.py"]
-    assert diff(files, ["switchyard/__init__.py", "switchyard/py.typed"]) == [
-        "unexpected in wheel: hermes_switchyard.dist-info/METADATA",
-        "missing from wheel: switchyard/py.typed",
+    assert files == ["hermes_signalbox.dist-info/METADATA", "hermes_signalbox/__init__.py"]
+    assert diff(files, ["hermes_signalbox/__init__.py", "hermes_signalbox/py.typed"]) == [
+        "unexpected in wheel: hermes_signalbox.dist-info/METADATA",
+        "missing from wheel: hermes_signalbox/py.typed",
     ]
     expected = expected_files(EXPECTED)
-    for required in ("switchyard/py.typed", "switchyard/_plugin/plugin.yaml",
-                     "switchyard/_plugin/dashboard/manifest.json"):  # fmt: skip
+    for required in ("hermes_signalbox/py.typed", "hermes_signalbox/_plugin/plugin.yaml",
+                     "hermes_signalbox/_plugin/dashboard/manifest.json"):  # fmt: skip
         assert required in expected
     assert project_version().count(".") == 2

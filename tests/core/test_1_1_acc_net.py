@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from switchyard import net
+from hermes_signalbox import net
 
 
 @pytest.mark.parametrize(

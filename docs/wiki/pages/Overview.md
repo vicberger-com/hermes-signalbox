@@ -21,4 +21,4 @@
 - <related pages>
 
 ---
-**Sources:** [README.md](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/README.md)
+**Sources:** [README.md](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/README.md)

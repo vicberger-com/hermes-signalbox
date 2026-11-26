@@ -12,12 +12,12 @@ from typing import Any
 
 import pytest
 
-from switchyard import cli
-from switchyard import hermes as hermes_mod
-from switchyard.api import ApiClient, ControlServer
-from switchyard.core import Core
-from switchyard.errors import CapabilityDenied, SwitchyardError
-from switchyard.secrets import MemoryBackend
+from hermes_signalbox import cli
+from hermes_signalbox import hermes as hermes_mod
+from hermes_signalbox.api import ApiClient, ControlServer
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError
+from hermes_signalbox.secrets import MemoryBackend
 
 TEMPLATE = Path(__file__).resolve().parents[2] / "templates" / "module"
 CANARY = "canary-" + "acc3pt4nce-value"
@@ -108,7 +108,7 @@ class Fetcher:
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 def _actions(core: Core) -> list[str]:
@@ -241,13 +241,13 @@ def _cli(data: Path, capsys: pytest.CaptureFixture[str], *args: str) -> Any:
 
 
 def _slash(ctx: FakeHermesCtx, line: str) -> Any:
-    reply = ctx.commands["switchyard"](line)
+    reply = ctx.commands["signalbox"](line)
     assert not reply.startswith("error"), reply
     return json.loads(reply)
 
 
 def _tool(ctx: FakeHermesCtx, **args: Any) -> Any:
-    out = json.loads(ctx.tools["switchyard_modules"](args))
+    out = json.loads(ctx.tools["signalbox_modules"](args))
     assert out["ok"], out
     return out["result"]["untrusted_data"]  # module text reaches the model labelled as data (R1)
 
@@ -272,7 +272,7 @@ def test_same_operations_from_cli_api_and_hermes(
             next(m["mode"] for m in _tool(ctx, action="list") if m["id"] == "example"),
         ]
 
-    # disable / enable (operation `module mode`): from the CLI, the API and Hermes (/switchyard: human path)
+    # disable / enable (operation `module mode`): from the CLI, the API and Hermes (/signalbox: human path)
     _cli(data, capsys, "module", "mode", "example", "--mode", "disabled")
     assert mode() == ["disabled"] * 3
     api.request("module", "mode", {"id": "example", "mode": "manual"})
@@ -285,7 +285,7 @@ def test_same_operations_from_cli_api_and_hermes(
     assert api.request("module", "activate", {"id": "example"})["status"] == "active"
     assert _tool(ctx, action="health", id="example") == api.request("module", "health", {"id": "example"})
     assert api.request("module", "deactivate", {"id": "example"})["status"] != "active"
-    refused = json.loads(ctx.tools["switchyard_modules"]({"action": "deactivate", "id": "example"}))
+    refused = json.loads(ctx.tools["signalbox_modules"]({"action": "deactivate", "id": "example"}))
     assert not refused["ok"]  # operator only (R1 review)
 
 
@@ -295,27 +295,27 @@ def test_secret_canary_never_appears_in_any_output(
     data, ctx, api = surfaces
     seen: list[str] = []
     for capability in ("ui.panel", "secrets.read"):
-        seen.append(ctx.commands["switchyard"](f"module grant probe capability={capability}"))
-    seen.append(ctx.commands["switchyard"]("module mode probe mode=auto"))  # H1 C-6: model starts auto only
-    seen.append(ctx.tools["switchyard_modules"]({"action": "activate", "id": "probe"}))
+        seen.append(ctx.commands["signalbox"](f"module grant probe capability={capability}"))
+    seen.append(ctx.commands["signalbox"]("module mode probe mode=auto"))  # H1 C-6: model starts auto only
+    seen.append(ctx.tools["signalbox_modules"]({"action": "activate", "id": "probe"}))
     assert json.loads(seen[-1])["result"]["untrusted_data"]["status"] == "active"
     assert api.request("module", "panel", {"id": "probe", "panel": "probe.status"}) == {"length": len(CANARY)}
     for panel in ("probe.leak", "probe.raise", "probe.net"):
-        seen.append(ctx.commands["switchyard"](f"module panel probe panel={panel}"))
-        with pytest.raises(SwitchyardError) as info:
+        seen.append(ctx.commands["signalbox"](f"module panel probe panel={panel}"))
+        with pytest.raises(SignalboxError) as info:
             api.request("module", "panel", {"id": "probe", "panel": panel})
         seen.append(str(info.value))
     assert any("contained the secret value" in s for s in seen)
     assert any("secret use failed: RuntimeError" in s for s in seen)
     assert any("net.outbound" in s for s in seen)
     for tool, args in (
-        ("switchyard_modules", {"action": "list"}),
-        ("switchyard_audit", {"action": "tail", "n": 500}),
-        ("switchyard_host", {}),
+        ("signalbox_modules", {"action": "list"}),
+        ("signalbox_audit", {"action": "tail", "n": 500}),
+        ("signalbox_host", {}),
     ):
         seen.append(ctx.tools[tool](args))
     seen.append(json.dumps(_cli(data, capsys, "audit", "tail", "--n", "500")))
-    seen.append(ctx.tools["switchyard_modules"]({"action": "deactivate", "id": "probe"}))
+    seen.append(ctx.tools["signalbox_modules"]({"action": "deactivate", "id": "probe"}))
     for text in seen:
         assert CANARY not in text
     # every file the core wrote: logs, audit log, state database, API files (host.lock holds a PID and is

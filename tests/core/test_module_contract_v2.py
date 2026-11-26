@@ -9,9 +9,9 @@ from typing import Any
 import pytest
 from sy_testing import write_module
 
-from switchyard.core import Core
-from switchyard.errors import CapabilityDenied, SwitchyardError
-from switchyard.ops import MODEL_ACTOR, UsageError
+from hermes_signalbox.core import Core
+from hermes_signalbox.errors import CapabilityDenied, SignalboxError
+from hermes_signalbox.ops import MODEL_ACTOR, UsageError
 
 CANARY = "canary-" + "b4ck3nd-value"
 
@@ -81,7 +81,7 @@ def _secrets_request(d: Path) -> None:
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture
@@ -133,15 +133,15 @@ def test_undeclared_backend_is_refused(tmp_path: Path) -> None:
 
 
 def test_subprocess_module_cannot_provide_a_backend(tmp_path: Path) -> None:
-    from switchyard.context import ContextServices, ModuleContext
-    from switchyard.manifest import load_manifest
+    from hermes_signalbox.context import ContextServices, ModuleContext
+    from hermes_signalbox.manifest import load_manifest
 
     root = tmp_path / "modules"
     d = write_module(root, "ext", PROVIDER, request=("secrets.read",), isolation="subprocess")
     _secrets_request(d)
     _declare(d, backends=["vault"])
     ctx = ModuleContext(load_manifest(d), ContextServices(policy=None, logs=None, panels=None, bus=None))  # type: ignore[arg-type]
-    with pytest.raises(SwitchyardError, match="in-process"):
+    with pytest.raises(SignalboxError, match="in-process"):
         ctx.provide_secret_backend(object())
 
 
@@ -158,9 +158,9 @@ def test_actions_from_every_surface_with_validation(core: Core) -> None:
         run("module", "action", {"id": "prov", "action": "bump", "args": {"by": 1, "x": 1}}, actor="t")
     with pytest.raises(UsageError, match="missing"):
         run("module", "action", {"id": "prov", "action": "bump"}, actor="t")
-    with pytest.raises(SwitchyardError, match="unknown action"):
+    with pytest.raises(SignalboxError, match="unknown action"):
         run("module", "action", {"id": "prov", "action": "nope"}, actor="t")
-    with pytest.raises(SwitchyardError) as info:
+    with pytest.raises(SignalboxError) as info:
         run("module", "action", {"id": "prov", "action": "crash"}, actor="t")
     assert "must not escape" not in str(info.value) and "RuntimeError" in str(info.value)
     assert "module.action" in [r["action"] for r in run("audit", "tail", {"n": 50}, actor="t")]
@@ -169,7 +169,7 @@ def test_actions_from_every_surface_with_validation(core: Core) -> None:
 def test_model_actor_runs_read_only_actions_only(core: Core) -> None:
     core.run("module", "activate", {"id": "prov"}, actor="t")
     assert core.run("module", "action", {"id": "prov", "action": "status"}, actor=MODEL_ACTOR) == {"ok": True}
-    with pytest.raises(SwitchyardError, match="read-only"):
+    with pytest.raises(SignalboxError, match="read-only"):
         core.run("module", "action", {"id": "prov", "action": "bump", "args": {"by": 1}}, actor=MODEL_ACTOR)
 
 
@@ -183,13 +183,13 @@ def test_action_results_are_redacted(core: Core) -> None:
 def test_actions_need_declaration_and_go_away_on_stop(core: Core, tmp_path: Path) -> None:
     core.run("module", "activate", {"id": "prov"}, actor="t")
     core.run("module", "deactivate", {"id": "prov"}, actor="t")
-    with pytest.raises(SwitchyardError):
+    with pytest.raises(SignalboxError):
         core.run("module", "action", {"id": "prov", "action": "status"}, actor="t")
 
 
 def test_action_surfaces_cli_slash_and_model_tool(core: Core, capsys: pytest.CaptureFixture[str]) -> None:
-    from switchyard import cli
-    from switchyard.hermes import HermesAdapter
+    from hermes_signalbox import cli
+    from hermes_signalbox.hermes import HermesAdapter
 
     core.run("module", "activate", {"id": "prov"}, actor="t")
     adapter = HermesAdapter.__new__(HermesAdapter)
@@ -216,23 +216,23 @@ def test_duplicate_backend_name_is_refused(core: Core) -> None:
         name = "vault"
 
     core.run("module", "activate", {"id": "prov"}, actor="t")
-    with pytest.raises(SwitchyardError, match="already provided"):
+    with pytest.raises(SignalboxError, match="already provided"):
         core.secrets.add_backend("other", B())
 
 
 def test_action_registration_rules(core: Core, tmp_path: Path) -> None:
-    from switchyard.context import ContextServices, ModuleContext
+    from hermes_signalbox.context import ContextServices, ModuleContext
 
     manifest = core.manager.manifest("prov")
     bare = ModuleContext(manifest, ContextServices(policy=core.policy, logs=None, panels=None, bus=None))  # type: ignore[arg-type]
-    with pytest.raises(SwitchyardError, match="not declared"):
+    with pytest.raises(SignalboxError, match="not declared"):
         bare.register_action("undeclared", lambda: None)
-    with pytest.raises(SwitchyardError, match="bool, int or str"):
+    with pytest.raises(SignalboxError, match="bool, int or str"):
         bare.register_action("status", lambda: None, params={"x": float})
-    with pytest.raises(SwitchyardError, match="not available"):
+    with pytest.raises(SignalboxError, match="not available"):
         bare.register_action("status", lambda: None)
     core.run("module", "activate", {"id": "prov"}, actor="t")
-    with pytest.raises(SwitchyardError, match="broker is not available"):
+    with pytest.raises(SignalboxError, match="broker is not available"):
 
         class V:
             name = "vault"
@@ -247,7 +247,7 @@ def test_redaction_survives_json_escaping(core: Core) -> None:
 
 
 def test_slash_command_handles_odd_numbers(core: Core) -> None:
-    from switchyard.hermes import HermesAdapter
+    from hermes_signalbox.hermes import HermesAdapter
 
     core.run("module", "activate", {"id": "prov"}, actor="t")
     adapter = HermesAdapter.__new__(HermesAdapter)

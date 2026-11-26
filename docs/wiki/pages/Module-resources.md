@@ -10,7 +10,7 @@
 | **Default activation** | auto |
 | **Requests** | [[Capability fs.read]], [[Capability ui.panel]] |
 | **Optional** | — |
-| **Spec** | [README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/resources/README.md) |
+| **Spec** | [README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/resources/README.md) |
 
 ## What it does
 
@@ -26,9 +26,9 @@
 ## Turn it on
 
 ```bash
-switchyard module grant resources --capability fs.read
-switchyard module grant resources --capability ui.panel
-switchyard module activate resources
+hermes-signalbox module grant resources --capability fs.read
+hermes-signalbox module grant resources --capability ui.panel
+hermes-signalbox module activate resources
 ```
 
 ## Settings (`[modules.resources]`)
@@ -60,11 +60,11 @@ switchyard module activate resources
 
 ## Events and audit records
 
-<From [Reference](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/REFERENCE.md).>
+<From [Reference](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/REFERENCE.md).>
 
 ## Security notes
 
 <Summary; link the "Security review" table in the README.>
 
 ---
-**Sources:** [module README](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/resources/README.md) · [module.toml](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules/resources/module.toml)
+**Sources:** [module README](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/resources/README.md) · [module.toml](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules/resources/module.toml)

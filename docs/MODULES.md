@@ -2,7 +2,7 @@
 
 Each section is the starting scope. The phase's research and pre-work Q&A refine it into `docs/modules/<id>.md`.
 "Sources" lists upstream projects to study or reuse; the reuse class for each is in
-[THIRD-PARTY.md](THIRD-PARTY.md). Capabilities use the names in `src/switchyard/schemas/module.schema.json`.
+[THIRD-PARTY.md](THIRD-PARTY.md). Capabilities use the names in `src/hermes_signalbox/schemas/module.schema.json`.
 
 ## M0 core
 
@@ -26,7 +26,7 @@ the API and a Hermes tool.
 - **Does:** catalog of providers, models, local endpoints, agents and tools with attachment controls. Each
   resource has state (manual, auto, disabled), cost class (free, paid, self-hosted), capability tags, limits and
   priority. Pools group resources; consumers (main agent, a sub-agent, a function) are bound to pools.
-- **Hermes:** reads provider config and the models.dev cache; tool `switchyard_resources`.
+- **Hermes:** reads provider config and the models.dev cache; tool `signalbox_resources`.
 - **Capabilities:** `fs.read`, `net.outbound` (catalog refresh hosts only), `ui.panel`.
 - **Sources:** mnfst/awesome-free-llm-apis (CC0 data), open-free-llm-api/awesome-freellm-apis,
   mvalentsev/awesome-free-ai-coding, ClawLabsAI/free-ai-models.

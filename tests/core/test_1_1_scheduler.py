@@ -8,9 +8,9 @@ from datetime import datetime
 
 from sy_testing import RecordingAudit
 
-from switchyard.events import EventBus
-from switchyard.schedule import ScheduleBroker
-from switchyard.scheduler import Scheduler, Trigger
+from hermes_signalbox.events import EventBus
+from hermes_signalbox.schedule import ScheduleBroker
+from hermes_signalbox.scheduler import Scheduler, Trigger
 
 
 class _Clock:

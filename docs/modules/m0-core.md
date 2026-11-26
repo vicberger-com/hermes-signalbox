@@ -7,12 +7,12 @@ contract need an ADR.
 ## 1. Package layout
 
 ```
-src/switchyard/
+src/hermes_signalbox/
   __init__.py        version, public re-exports
-  errors.py          SwitchyardError; the kinds UsageError, PolicyRefused (CapabilityDenied), NotAvailable;
+  errors.py          SignalboxError; the kinds UsageError, PolicyRefused (CapabilityDenied), NotAvailable;
                      ManifestError, ConfigError, AuditError, StateError, UpdateError
   paths.py           data-directory resolution
-  config.py          CoreConfig (TOML, tomllib), defaults, env override SWITCHYARD_DATA_DIR
+  config.py          CoreConfig (TOML, tomllib), defaults, env override SIGNALBOX_DATA_DIR
   manifest.py        load + validate module.toml -> Manifest (frozen dataclass)
   capabilities.py    capability ids, Grant, PolicyEngine
   context.py         ModuleContext and the per-capability broker facades
@@ -29,21 +29,21 @@ src/switchyard/
   gitfetch.py        GitFetcher: pinned-commit fetch and channel heads with git
   sbom.py            tree inventory and digest, SBOM delta, patch notes, version order
   api.py             Loopback control API server and bounded client
-  cli.py             `switchyard` entry point (argparse)
+  cli.py             `signalbox` entry point (argparse)
   core.py            Core: wires all of the above; the only object adapters hold
   hermes/__init__.py Hermes adapter: register(ctx)
 ```
 
-Root `plugin.yaml` + `__init__.py` (thin re-export of `switchyard.hermes.register`) for `hermes plugins install`;
-entry point `[project.entry-points."hermes_agent.plugins"] switchyard = "switchyard.hermes"` for pip installs.
-CLI entry point `[project.scripts] switchyard = "switchyard.cli:main"`.
+Root `plugin.yaml` + `__init__.py` (thin re-export of `hermes_signalbox.hermes.register`) for `hermes plugins install`;
+entry point `[project.entry-points."hermes_agent.plugins"] signalbox = "hermes_signalbox.hermes"` for pip installs.
+CLI entry point `[project.scripts] signalbox = "hermes_signalbox.cli:main"`.
 
 ## 2. Data directory
 
-Resolution order: an explicit directory (`--data-dir`, or `Core(data_dir=...)`; H1 A-1), then `SWITCHYARD_DATA_DIR`,
+Resolution order: an explicit directory (`--data-dir`, or `Core(data_dir=...)`; H1 A-1), then `SIGNALBOX_DATA_DIR`,
 then inside Hermes `ctx.state.data_dir`, else
-platform default: Windows `%LOCALAPPDATA%\switchyard`, macOS `~/Library/Application Support/switchyard`, other
-`$XDG_DATA_HOME/switchyard` or `~/.local/share/switchyard`. Created with mode 0700 where POSIX applies.
+platform default: Windows `%LOCALAPPDATA%\signalbox`, macOS `~/Library/Application Support/signalbox`, other
+`$XDG_DATA_HOME/signalbox` or `~/.local/share/signalbox`. Created with mode 0700 where POSIX applies.
 
 ```
 <data_dir>/config.toml   state.db   audit/audit-<n>.jsonl   logs/<stream>.jsonl
@@ -55,7 +55,7 @@ platform default: Windows `%LOCALAPPDATA%\switchyard`, macOS `~/Library/Applicat
 ### Manifest
 
 `load_manifest(path) -> Manifest`. Same rules as `tools/validate_manifest.py` (which becomes a thin CLI over
-`switchyard.manifest`). Additional core checks: `entry` is `module:Class` with identifier parts only; the resolved
+`hermes_signalbox.manifest`). Additional core checks: `entry` is `module:Class` with identifier parts only; the resolved
 module file is inside the module directory; `isolation = "in-process"` is allowed only for modules whose
 directory is inside the package's `modules/` root or a test-registered trusted root.
 
@@ -89,7 +89,7 @@ The context never exposes the core, other modules or the policy engine.
 
 ### State store
 
-`StateStore(path)`; `migrate()` applies `switchyard/migrations/NNNN_*.sql` in order inside a transaction after
+`StateStore(path)`; `migrate()` applies `hermes_signalbox/migrations/NNNN_*.sql` in order inside a transaction after
 copying the file to `backup/`. `ModuleState(module_id)`: `create_table(name, columns, primary_key)` (STRICT tables; types TEXT, INTEGER, REAL,
 BLOB), `execute(sql, params)` (one statement), `kv_get`, `kv_set`, `drop_all()`. Confinement uses SQLite's
 authorizer callback, not SQL parsing: while a module statement is prepared, any table outside `m_<id>__`
@@ -142,7 +142,7 @@ States: `verified`, `active`, `stopped`, `failed`. `activate(id)` refuses (`Capa
 `policy.denied`) while a requested, non-optional capability is not granted, before importing any module code
 (H1 A-5); the module keeps its state. The `module activate` operation also refuses the model actor unless the
 module's mode is `auto` (H1 C-6). Modes persist in the `modules` table; the hosting process reads a module's mode from it before every decision, so a mode set by another process applies there (H4 R1-F9, ADR-0014 "Mode"). Each module is imported as
-the synthetic package `_switchyard_modules.<id>` rooted at its directory (no name clashes, relative imports work,
+the synthetic package `_signalbox_modules.<id>` rooted at its directory (no name clashes, relative imports work,
 removal purges `sys.modules`). In-process modules are accepted only under trusted roots (resolved paths). Any
 exception from import, construction, `activate`, `health` or a bus handler fails that module closed (audited by
 class name); deactivation always closes the context and removes the module's triggers. `health()` may return a
@@ -152,9 +152,9 @@ Release signature verification of T1 modules is deferred until a signing key exi
 
 ### T2 subprocess host
 
-Child started with `[sys.executable, "-I", "-m", "switchyard.host_t2_child"]`, cwd = module dir, stderr discarded,
+Child started with `[sys.executable, "-I", "-m", "hermes_signalbox.host_t2_child"]`, cwd = module dir, stderr discarded,
 environment reduced to an allow-list (`PATH`, `SYSTEMROOT`, `SYSTEMDRIVE`, `WINDIR`, `TEMP`, `TMP`, `TMPDIR`, `HOME`,
-`USERPROFILE`, `LANG`, `LC_ALL`) plus `SWITCHYARD_T2=1`; module `print()` goes to stderr. Framing (`switchyard.rpc`):
+`USERPROFILE`, `LANG`, `LC_ALL`) plus `SIGNALBOX_T2=1`; module `print()` goes to stderr. Framing (`hermes_signalbox.rpc`):
 4-byte big-endian length + UTF-8 JSON-RPC 2.0, max frame 1 MiB both ways. One symmetric `Channel` on both sides serves
 nested calls while waiting for its own response (depth 16). Parent calls time out (default 10 s); a timeout, protocol
 violation or child exit kills the child and fails the module closed (`T2Timeout`, `ProtocolError`). `T2Module` presents
@@ -191,20 +191,20 @@ config. `capacity_metrics(data_dir)` gives `disk.free_ratio` and (where known) `
 
 ### Control API
 
-`switchyard api serve` binds `127.0.0.1` on `api.port` (0 = ephemeral; actual port written to `api.port` file).
+`hermes-signalbox api serve` binds `127.0.0.1` on `api.port` (0 = ephemeral; actual port written to `api.port` file).
 Token: `secrets.token_urlsafe(32)` written to `api.token` with user-only permissions, rotated per start.
 Request checks, in order: method `POST` (or `GET /v1/health`); `Host` is `127.0.0.1:<port>` or `localhost:<port>`;
 any `Origin` header (including `null`) is refused, since the only client is the CLI; `Authorization: Bearer` compared with
 `hmac.compare_digest`; `Content-Type: application/json`; no `Transfer-Encoding`; body <= 64 KiB, checked before
-reading. `GET /v1/health` needs no token; with an `X-Switchyard-Challenge` header (32-128 lowercase hex) it also
-returns `proof`, the HMAC-SHA256 of `switchyard-api-v1:<challenge>` keyed with the token. The client checks that
+reading. `GET /v1/health` needs no token; with an `X-Signalbox-Challenge` header (32-128 lowercase hex) it also
+returns `proof`, the HMAC-SHA256 of `signalbox-api-v1:<challenge>` keyed with the token. The client checks that
 proof before it sends the token, so a process that took over a dead daemon's port never receives it
 (`ApiUntrusted`). A failure to connect lets the CLI run an offline operation locally; a failure after the request
 was sent is `ApiOutcomeUnknown`: the daemon may have applied it, and nothing runs again. Status codes: 400 usage, 401 token, 403 Host/Origin/denied/policy refused, 404 route,
 409 operation error, 503 not available, 411/413/415 framing, 500 unexpected (class name only). Socket timeout 10 s per read, and the
 whole request must arrive within 10 s; at most 16 connections are handled at once, and further ones are closed at
 once. The token file is restricted before the token is written. Request lines are
-never logged; `Server: switchyard`. Routes `POST /v1/<noun>/<verb>` map 1:1 to CLI
+never logged; `Server: signalbox`. Routes `POST /v1/<noun>/<verb>` map 1:1 to CLI
 operations. Responses never echo request text into headers; a header writer rejects CR/LF. Client reads are
 capped at 1 MiB.
 
@@ -214,9 +214,9 @@ capped at 1 MiB.
 directory and is the only object adapters hold. Data dir: resolved per section 2, then `config.toml` there may
 redirect it once. `AnchoredAudit` writes the audit head to `meta['audit.head']` after every append; startup runs
 `verify(expected_head=...)` and on failure records `audit.verify_failed` and exposes `audit_status` (the core keeps
-running so it can report). Trusted and module roots default to the package's `switchyard/modules` (trusted) plus
+running so it can report). Trusted and module roots default to the package's `hermes_signalbox/modules` (trusted) plus
 `<data_dir>/modules` (untrusted, so subprocess only). `Core.run(noun, verb, params, actor)` dispatches through
-`switchyard.ops.OPERATIONS`; each `Operation` has typed parameters (`UsageError` on unknown, missing or mistyped
+`hermes_signalbox.ops.OPERATIONS`; each `Operation` has typed parameters (`UsageError` on unknown, missing or mistyped
 values), a description, an `offline` flag for operations that are safe without a running daemon, and a
 `locked` flag. Operations run under the core lock except `module update|preview|check_updates` (H1 B-2): their git
 work runs without it, and only the directory swap takes it (one update per module at a time). Every result passes
@@ -226,20 +226,20 @@ activate|deactivate|health|panel|remove`, `audit verify|tail`, `host profile`, `
 
 ### CLI
 
-`switchyard [--data-dir D] [--json] <noun> <verb> [id] [--param value]`, generated from the operations table, plus
-`switchyard api serve [--port N]` and `switchyard version`. With a daemon running for the data dir every operation goes
+`hermes-signalbox [--data-dir D] [--json] <noun> <verb> [id] [--param value]`, generated from the operations table, plus
+`hermes-signalbox api serve [--port N]` and `hermes-signalbox version`. With a daemon running for the data dir every operation goes
 through the API; otherwise `offline` operations run directly and live ones (activate, deactivate, health, panel) ask for
 the daemon. `api serve` runs `start_auto()`, then `Core.tick()` every second until interrupted. Exit 0 success,
 1 operation error, 2 usage error, 3 denied.
 
 ### Hermes adapter
 
-`switchyard.hermes.register(ctx)` (entry point `hermes_agent.plugins`; root `plugin.yaml` + shim `__init__.py` for
+`hermes_signalbox.hermes.register(ctx)` (entry point `hermes_agent.plugins`; root `plugin.yaml` + shim `__init__.py` for
 `hermes plugins install`). Builds `Core` with `data_dir` = setting `data_dir` or `ctx.state.data_dir`. Registers:
-model tools `switchyard_modules` (list, show, activate, deactivate, health), `switchyard_audit` (verify, tail),
-`switchyard_host` (toolset `switchyard`); slash command `/switchyard <noun> <verb> [id] [key=value]` (every operation);
-CLI command `hermes switchyard` (the full CLI; skipped by Hermes under `plugins.isolation: host`); daily idle task
-`switchyard-audit-verify`; the redactor's default patterns that start with two literal characters (Hermes rule).
+model tools `signalbox_modules` (list, show, activate, deactivate, health), `signalbox_audit` (verify, tail),
+`signalbox_host` (toolset `signalbox`); slash command `/signalbox <noun> <verb> [id] [key=value]` (every operation);
+CLI command `hermes signalbox` (the full CLI; skipped by Hermes under `plugins.isolation: host`); daily idle task
+`signalbox-audit-verify`; the redactor's default patterns that start with two literal characters (Hermes rule).
 **The model-facing tools cannot grant or revoke capabilities, change modes or remove modules** (a prompt-injected
 model could widen its own access); those are human paths only. Tool handlers catch every exception and return JSON
 with core messages only, because Hermes otherwise forwards exception text to the model. No Hermes plugin
@@ -282,10 +282,10 @@ last audited verification (1.1, #125).
 
 ## 5. Acceptance tests
 
-**Contract suite.** `switchyard.contract.run_contract(module_dir, *, settings=None, bundled=False) ->
+**Contract suite.** `hermes_signalbox.contract.run_contract(module_dir, *, settings=None, bundled=False) ->
 ContractReport` (stdlib only, usable from third-party module repositories). Copies the module into a temporary data
 directory and runs it through a real hosting core: `manifest`, `trust` (H1 A-4: an `in-process` module outside the
-bundled `switchyard/modules` fails unless the caller passes `bundled=True`, because a default install would not
+bundled `hermes_signalbox/modules` fails unless the caller passes `bundled=True`, because a default install would not
 load it), `discover`, `deny_ungranted` (probe `net.outbound`, or `process.spawn` if the module asks
 for net), `activate` (all requested capabilities granted; second activate is a no-op), `health`, `panels` (exactly
 the declared panels, JSON-serialisable), `deactivate` (twice; panels removed), `remove` (grants gone from the store, H1 A-21), `audit` (chain
@@ -296,7 +296,7 @@ verifies; grant/activation/denial/removal recorded). Later checks are skipped af
 the loopback API and the Hermes adapter on one data directory.
 
 As listed in [01-m0-prework.md](../qa/01-m0-prework.md) section 4, plus the threat tests in its question 5 table.
-Coverage target for `src/switchyard`: 90%.
+Coverage target for `src/hermes_signalbox`: 90%.
 
 ## 6. Security review (M0 gate)
 
@@ -322,7 +322,7 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
   `"action <name> failed: <ExceptionClass>"`. Audited as `module.action` (action name only). A read-only call
   from one module to another (`ctx.call`, actor `module:<caller>`) is audited once per caller, target and action
   per 60 s, with `calls` = the number of calls since the previous record (1.1, #124). The Hermes model tool
-  (`switchyard_modules` action `run`, actor `hermes`) may run `read_only` actions only; `/switchyard` uses actor
+  (`signalbox_modules` action `run`, actor `hermes`) may run `read_only` actions only; `/signalbox` uses actor
   `hermes-user`. CLI: `--args '<json object>'`; slash command: extra `key=value` words go into `args`.
 - `ModuleContext.provide_secret_backend(backend)`: in-process modules only, `secrets.read` granted, `backend.name`
   declared in `contributes.secret_backends` (`[a-z][a-z0-9_-]{0,31}`), unique across modules. Removed when the
@@ -339,12 +339,12 @@ secrets, state and audit) given only the M0 diff and the threat table, then tria
 - `ctx.call(module_id, action, args)`: another module's read-only action, actor `module:<caller>`.
 - Manifest `capabilities.optional` (M4): a subset of `request` that `start_auto` does not wait for; the module
   checks it at run time with `ctx.has`.
-- Observer hooks deliver metadata only (`switchyard.bridge.metadata_only`).
+- Observer hooks deliver metadata only (`hermes_signalbox.bridge.metadata_only`).
 - `ctx.hermes_config` (ADR-0005): `hermes.config.write`; allow-listed keys, backup, audit, read-back, rollback,
   `revert`. Provided only when the Hermes adapter supplies a config port.
 - ADR-0006: `ctx.schedule.every(name, seconds, fn)` (`schedule`), `ctx.core` (`core.read`), `ctx.hermes_gate(fn)`
   (`gate:pre_llm_call` declared; blocks a turn with a prefixed reason; fails open).
-- ADR-0007: `ctx.hermes_delegation(route, roles)` (`hermes.delegation`; one module); Hermes backend `switchyard`.
+- ADR-0007: `ctx.hermes_delegation(route, roles)` (`hermes.delegation`; one module); Hermes backend `signalbox`.
 - ADR-0008: `ctx.hermes_transform(kind, fn)` (`hermes.output`; returns kept line ranges; core rebuilds).
 - ADR-0009: `ctx.notify.send(severity, title, detail)` (`notify`); `report show`; dashboard tab via the control API.
 - ADR-0010: `ctx.net.request(...)` (`net.outbound`; manifest `net_hosts`; bare host = any port).

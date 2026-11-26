@@ -14,7 +14,7 @@
 
 - <Effect.>
 
-Full record: [ADR-0006](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0006-schedules-core-view-gates.md)
+Full record: [ADR-0006](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0006-schedules-core-view-gates.md)
 
 ---
-**Sources:** [ADR-0006](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/adr/0006-schedules-core-view-gates.md)
+**Sources:** [ADR-0006](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/adr/0006-schedules-core-view-gates.md)

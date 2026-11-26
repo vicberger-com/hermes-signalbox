@@ -22,4 +22,4 @@ every hosting process, `manual` ones when you activate them.
 | [[Module updates]] | M12 | manual | Checks git-installed modules against the head of their update channel on a schedule and announces available updates. It never applies one: preview and update are operator commands. |
 
 ---
-**Sources:** [MODULES.md](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/docs/MODULES.md) · [module.toml files](https://github.com/vicberger-com/hermes-switchyard/blob/v1.0.0/src/switchyard/modules)
+**Sources:** [MODULES.md](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/docs/MODULES.md) · [module.toml files](https://github.com/vicberger-com/hermes-signalbox/blob/v1.0.0/src/switchyard/modules)

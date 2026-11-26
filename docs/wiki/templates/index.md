@@ -9,4 +9,4 @@
 | [[<Page>]] | <summary> |
 
 ---
-**Sources:** [<document>](https://github.com/vicberger-com/hermes-switchyard/blob/v<X.Y.Z>/<path>) · [<document>](<link>)
+**Sources:** [<document>](https://github.com/vicberger-com/hermes-signalbox/blob/v<X.Y.Z>/<path>) · [<document>](<link>)

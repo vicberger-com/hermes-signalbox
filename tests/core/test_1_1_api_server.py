@@ -20,14 +20,14 @@ from typing import Any
 
 import pytest
 
-from switchyard import api
-from switchyard.api import ControlServer
-from switchyard.core import Core
+from hermes_signalbox import api
+from hermes_signalbox.api import ControlServer
+from hermes_signalbox.core import Core
 
 
 @pytest.fixture(autouse=True)
 def _no_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
 
 
 @pytest.fixture

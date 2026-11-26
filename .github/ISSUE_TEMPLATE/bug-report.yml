@@ -1,17 +1,17 @@
 name: Bug report
-description: Something in Switchyard or a bundled module does not work as documented.
+description: Something in Signalbox or a bundled module does not work as documented.
 labels: ["bug", "triage"]
 body:
   - type: markdown
     attributes:
       value: |
         Security problems go to the private advisory form, not here. Never paste secret values, tokens or
-        `api.token`; `switchyard audit tail` output is redacted, but check it before posting.
+        `api.token`; `hermes-signalbox audit tail` output is redacted, but check it before posting.
   - type: input
     id: version
     attributes:
-      label: Switchyard version
-      description: "`switchyard version`"
+      label: Signalbox version
+      description: "`hermes-signalbox version`"
       placeholder: "1.0.0"
     validations:
       required: true
@@ -38,7 +38,7 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: Commands you ran (`switchyard ...` or `/switchyard ...`) and the relevant config keys.
+      description: Commands you ran (`signalbox ...` or `/signalbox ...`) and the relevant config keys.
     validations:
       required: true
   - type: textarea

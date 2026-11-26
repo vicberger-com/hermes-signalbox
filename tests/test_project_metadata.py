@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-import switchyard
-from switchyard.errors import SwitchyardError
-from switchyard.modkit import default_models_dev_cache, int_setting
-from switchyard.ops import OPERATIONS
+import hermes_signalbox
+from hermes_signalbox.errors import SignalboxError
+from hermes_signalbox.modkit import default_models_dev_cache, int_setting
+from hermes_signalbox.ops import OPERATIONS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,7 +29,7 @@ def test_h1_d17_every_version_field_agrees() -> None:
         r"^## \[(\d+\.\d+\.\d+)\]", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), re.M
     )
     assert plugin is not None and released is not None
-    assert {switchyard.__version__, plugin.group(1), dashboard, released.group(1)} == {version}
+    assert {hermes_signalbox.__version__, plugin.group(1), dashboard, released.group(1)} == {version}
 
 
 def test_h1_d14_status_is_beta() -> None:
@@ -74,7 +74,7 @@ def test_h1_c13_shared_helpers() -> None:
     assert int_setting("demo", {"n": 5}, "n", 1, 1, 10) == 5
     assert int_setting("demo", {}, "n", 3, 1, 10) == 3
     for bad in (True, 0, 11, "5", 2.0):
-        with pytest.raises(SwitchyardError, match=r"\[modules\.demo\] n must be an integer from 1 to 10"):
+        with pytest.raises(SignalboxError, match=r"\[modules\.demo\] n must be an integer from 1 to 10"):
             int_setting("demo", {"n": bad}, "n", 1, 1, 10)
     assert default_models_dev_cache().name == "models_dev_cache.json"
 

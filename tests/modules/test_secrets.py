@@ -13,9 +13,9 @@ from typing import Any
 
 import pytest
 
-from switchyard.contract import run_contract
-from switchyard.core import BUILTIN_MODULES, Core
-from switchyard.errors import SwitchyardError
+from hermes_signalbox.contract import run_contract
+from hermes_signalbox.core import BUILTIN_MODULES, Core
+from hermes_signalbox.errors import SignalboxError
 
 pytestmark = pytest.mark.bundled_modules
 
@@ -76,7 +76,7 @@ activation = "manual"
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWITCHYARD_DATA_DIR", raising=False)
+    monkeypatch.delenv("SIGNALBOX_DATA_DIR", raising=False)
     monkeypatch.setenv(B.EnvBackend.variable("api.key"), CANARY)
 
 
@@ -145,15 +145,15 @@ def test_expire_and_status_report_by_name(core: Core) -> None:
     ]
     for bad in ({"name": "api.key", "date": "2000-13-01"}, {"name": "api.key", "date": "soon"},
                 {"name": "Bad Name", "date": "2000-01-01"}):  # fmt: skip
-        with pytest.raises(SwitchyardError):
+        with pytest.raises(SignalboxError):
             core.run("module", "action", {"id": "secrets", "action": "expire", "args": bad}, actor="t")
-    with pytest.raises(SwitchyardError, match="read-only"):
+    with pytest.raises(SignalboxError, match="read-only"):
         core.run("module", "action", act, actor="hermes")
 
 
 def test_rotate_without_a_writable_backend_fails(core: Core) -> None:
     core.run("module", "activate", {"id": "secrets"}, actor="t")
-    with pytest.raises(SwitchyardError, match="no writable"):
+    with pytest.raises(SignalboxError, match="no writable"):
         core.run(
             "module", "action", {"id": "secrets", "action": "rotate", "args": {"name": "api.key"}}, actor="t"
         )
@@ -271,7 +271,7 @@ def test_rotate_writes_a_new_value_and_never_returns_it() -> None:
     assert row["name"] == "db.password" and row["rotated_at"] and row["age_days"] == 0
     assert [e for e, _ in m.events] == ["rotated", "rotated"]
     assert all(vault.values["db.password"] not in json.dumps(d) for _, d in m.events)
-    with pytest.raises(SwitchyardError, match="no writable"):
+    with pytest.raises(SignalboxError, match="no writable"):
         m.rotate("db.password", backend="other")
 
 
@@ -293,7 +293,7 @@ class FakeRun:
 
 
 def test_keychain_backend() -> None:
-    run = FakeRun(_done(0, CANARY + "\n"), _done(44), _done(51))
+    run = FakeRun(_done(0, CANARY + "\n"), _done(44), _done(44), _done(51))  # H5: missing = both services
     k = B.KeychainBackend(run)
     assert k.get("api.key") == CANARY
     with pytest.raises(KeyError):
@@ -304,7 +304,7 @@ def test_keychain_backend() -> None:
         "security",
         "find-generic-password",
         "-s",
-        "switchyard",
+        "signalbox",
         "-a",
         "api.key",
         "-w",
@@ -313,7 +313,9 @@ def test_keychain_backend() -> None:
 
 
 def test_secret_tool_backend_reads_and_writes_through_stdin() -> None:
-    run = FakeRun(_done(0, CANARY), _done(1, ""), _done(1, "", "dbus"), _done(0), _done(3))
+    run = FakeRun(
+        _done(0, CANARY), _done(1, ""), _done(1, ""), _done(1, "", "dbus"), _done(0), _done(3)
+    )  # H5
     s = B.SecretToolBackend(run)
     assert s.get("api.key") == CANARY
     with pytest.raises(KeyError):
@@ -323,7 +325,7 @@ def test_secret_tool_backend_reads_and_writes_through_stdin() -> None:
     s.set("api.key", CANARY)
     with pytest.raises(B.SecretLocked):
         s.set("api.key", CANARY)
-    store = run.calls[3]
+    store = run.calls[4]
     assert store["input"] == CANARY and all(CANARY not in a for a in store["argv"])
 
 
@@ -354,7 +356,7 @@ def test_bad_names_are_rejected_before_any_spawn(name: str) -> None:
     run = FakeRun()
     for backend in (B.KeychainBackend(run), B.SecretToolBackend(run), B.BitwardenBackend(run, environ={}),
                     B.EnvBackend({}), B.WinCredBackend()):  # fmt: skip
-        with pytest.raises(SwitchyardError, match="invalid secret name"):
+        with pytest.raises(SignalboxError, match="invalid secret name"):
             backend.get(name)
     assert run.calls == []
 
@@ -363,19 +365,19 @@ def test_build_and_defaults() -> None:
     run = FakeRun()
     names = ["wincred", "keychain", "secret-tool", "bw"]
     assert [b.name for b in B.build(names, run, session_env="BW_SESSION", allow_env=False)] == names
-    with pytest.raises(SwitchyardError, match="development"):
+    with pytest.raises(SignalboxError, match="development"):
         B.build(["env"], run, session_env="X", allow_env=False)
-    with pytest.raises(SwitchyardError, match="unknown"):
+    with pytest.raises(SignalboxError, match="unknown"):
         B.build(["nope"], run, session_env="X", allow_env=False)
     assert B.default_order() in (["wincred"], ["keychain"], ["secret-tool"])
     assert B.EnvBackend({B.EnvBackend.variable("a.b-c"): "v"}).get("a.b-c") == "v"
-    assert B.EnvBackend.variable("a.b-c") == "SWITCHYARD_SECRET_A_B_C"
+    assert B.EnvBackend.variable("a.b-c") == "SIGNALBOX_SECRET_A_B_C"
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Credential Manager")
 def test_wincred_round_trip_on_windows() -> None:
     w = B.WinCredBackend()
-    name = "switchyard-test." + uuid.uuid4().hex[:12]
+    name = "signalbox-test." + uuid.uuid4().hex[:12]
     value = "canary-" + uuid.uuid4().hex
     assert w.available()
     with pytest.raises(KeyError):
@@ -416,11 +418,11 @@ class ReadOnly:
 def test_rotate_refuses_when_an_earlier_backend_still_serves_the_name() -> None:
     vault = Writable()
     m = _module_with([ReadOnly({"api": "old"}), vault])
-    with pytest.raises(SwitchyardError, match="served by 'ro'"):
+    with pytest.raises(SignalboxError, match="served by 'ro'"):
         m.rotate("api")
     assert vault.values == {}
     m = _module_with([ReadOnly({}, locked=True), vault])
-    with pytest.raises(SwitchyardError, match="cannot check 'ro'"):
+    with pytest.raises(SignalboxError, match="cannot check 'ro'"):
         m.rotate("api")
     m = _module_with([ReadOnly({}), vault])
     assert m.rotate("api")["backend"] == "vault"
@@ -434,7 +436,7 @@ def test_rotate_does_not_move_a_secret_off_its_recorded_backend() -> None:
     other = Writable()
     other.name = "other"
     m.backends = [vault, other]
-    with pytest.raises(SwitchyardError, match="recorded backend 'vault'"):
+    with pytest.raises(SignalboxError, match="recorded backend 'vault'"):
         m.rotate("api")
     assert other.values == {}
 
