@@ -82,6 +82,8 @@ Run every step; do not skip to code.
 | SBOM | CycloneDX JSON generated and attached |
 | Docs | Every public function, tool, command, config key and event documented |
 | Security behaviour | Denied-capability test, secret-never-in-output test, audit-chain test |
+| Presentation | Every user-facing output answers pre-work question 12: plain-language summary first, terms explained, JSON only on request |
+| Operator usability (release only) | Before a release counts as accepted, the operator uses each changed user-facing surface (chat, CLI, dashboard, reports, inbox) on a real install; every finding is fixed or recorded with a disposition |
 
 ## Definition of done for a module
 

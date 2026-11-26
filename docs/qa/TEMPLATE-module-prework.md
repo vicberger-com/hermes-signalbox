@@ -34,9 +34,12 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 | 9 | Update source and rollback check | | | |
 | 10 | Does anything need a core contract change (ADR)? | | | |
 | 11 | Operator input needed (names only for secrets)? | | | |
+| 12 | Audience and presentation: for each user-facing output (chat reply, CLI text, dashboard view, report, notification), who reads it, what question it answers, and what the human format is (summary first, plain-language labels, local times; JSON only on request)? | | | |
 
 ## 4. Acceptance tests (written before code)
 
+- [ ] Every user-facing output from question 12 starts with a plain-language summary, explains its terms, and shows
+      JSON only on request; a test fixes the summary text for known inputs.
 - [ ] 
 
 ## 5. Retro (fill in after merge)

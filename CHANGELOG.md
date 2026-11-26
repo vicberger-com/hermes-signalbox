@@ -4,6 +4,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+### Process
+
+- Pre-work Q&A question 12 (audience and presentation) and two gates: presentation, and an operator usability
+  review before a release counts as accepted. From v1.0.3 user testing (#205, #206, #207).
+
 ## [1.0.3] - 2026-11-24
 
 Maintenance release from phase H4: fixes every finding of the first install acceptance of v1.0.2 on a real
