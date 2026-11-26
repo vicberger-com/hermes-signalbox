@@ -68,7 +68,7 @@ payload alone, so the same data always gives the same text.
 | `module grant` | `id`, `--capability` | Grant a requested capability to a module. |  |  |
 | `module health` | `id` | Run a module's health check. | yes |  |
 | `module list` |  | List every discovered module with status, mode and capabilities. | yes | yes |
-| `module mode` | `id`, `--mode` | Set activation mode: manual, auto or disabled. |  |  |
+| `module mode` | `id`, `--mode` | Set activation mode: manual, auto or disabled. |  | yes |
 | `module panel` | `id`, `--panel` | Render one of a running module's panels as plain data. | yes | yes |
 | `module preview` | `id`, `--ref` | Stage a commit without applying it: SBOM delta, patch notes and tree digest. |  |  |
 | `module remove` | `id`, `--keep-data` (optional) | Stop and forget a module; drops its grants, and its data unless keep_data is true. |  |  |
