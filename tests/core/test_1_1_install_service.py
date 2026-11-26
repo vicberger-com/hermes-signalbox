@@ -64,7 +64,7 @@ def test_s4_health_is_served_by_the_hermes_api(
     core.run("module", "grant", {"id": "ext", "capability": "schedule"}, actor="t")
     core.run("module", "activate", {"id": "ext"}, actor="t")
     assert main(["--data-dir", str(data), "module", "health", "ext"]) == 0
-    assert "ok: True" in capsys.readouterr().out
+    assert "ext is healthy" in capsys.readouterr().out  # H5 WP2 (#205): a sentence, not "ok: True"
 
 
 def test_s4_refused_command_names_the_routes_that_work(

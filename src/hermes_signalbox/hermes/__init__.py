@@ -39,6 +39,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from hermes_signalbox import present
 from hermes_signalbox.api import ControlServer
 from hermes_signalbox.bridge import OBSERVER_HOOKS
 from hermes_signalbox.capabilities import CORE_ACTOR
@@ -432,7 +433,7 @@ class HermesAdapter:
     # human paths --------------------------------------------------------------------------------------
 
     def _help(self) -> str:
-        lines = ["Usage: /signalbox <noun> <verb> [id] [key=value ...]"]
+        lines = ["Usage: /signalbox <noun> <verb> [id] [key=value ...]   (add json=true for the raw data)"]
         lines += [f"  {n} {v}: {op.description}" for (n, v), op in sorted(OPERATIONS.items())]
         return "\n".join(lines)
 
@@ -444,6 +445,9 @@ class HermesAdapter:
         if len(words) < 2:
             return self._help()
         noun, verb, rest = words[0], words[1], words[2:]
+        # H5 WP2 (#205): a chat reply is for a person. ``json=true`` asks for the payload as it was before.
+        as_json = any(w.lower() in ("json=true", "json=1", "json=yes") for w in rest)
+        rest = [w for w in rest if not w.lower().startswith("json=")]
         operation = OPERATIONS.get((noun, verb))
         if operation is None:
             return f"error: unknown operation '{noun} {verb}'"
@@ -474,7 +478,20 @@ class HermesAdapter:
         reply = json.loads(self._call(noun, verb, params, actor=USER_ACTOR))
         if not reply["ok"]:
             return f"error: {reply['message'] or reply['error']}"
-        return json.dumps(reply["result"], indent=2, default=str)
+        if as_json:
+            return json.dumps(reply["result"], indent=2, default=str)
+        subject = params.get("id") if isinstance(params.get("id"), str) else None
+        return present.render(noun, verb, reply["result"], summaries=self._summaries(), subject=subject)
+
+    def _summaries(self) -> dict[str, str]:
+        """Module id to its one-line description, from the manifests (never from the reply payload)."""
+        out: dict[str, str] = {}
+        for module_id in self.core.manager.ids():
+            try:
+                out[module_id] = self.core.manager.manifest(module_id).summary
+            except SignalboxError:  # removed meanwhile: the table shows the row without a description
+                continue
+        return out
 
     def _cli_setup(self, parser: argparse.ArgumentParser) -> None:
         # REMAINDER does not capture a leading option, so the CLI's global --json flag is declared here.
@@ -485,7 +502,8 @@ class HermesAdapter:
         from hermes_signalbox.cli import main
 
         flags = ["--json"] if getattr(args, "signalbox_json", False) else []
-        return main(["--data-dir", str(self.core.data_dir), *flags, *args.signalbox_args])
+        argv = ["--data-dir", str(self.core.data_dir), *flags, *args.signalbox_args]
+        return main(argv, prog="hermes signalbox")
 
     def _idle_verify(self, run: Any) -> str:
         result = self.core.verify_audit()

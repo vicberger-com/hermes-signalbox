@@ -100,6 +100,9 @@ Answer every question. Take the recommended option, mark it **default accepted**
 
 | Issue / item | WP | Status |
 |---|---|---|
+| #205 chat replies and CLI text are raw data | WP2 | Fixed: Markdown chat replies and text CLI output from one formatter; `json=true` and `--json` return the payload unchanged |
+| #207 reports have no summary (core part) | WP2 | Fixed: `purpose` and a deterministic `summary` per report kind; the dashboard views follow in WP4 |
+| #208 no glossary (label source) | WP2 | Fixed: `hermes_signalbox.labels` with a completeness test; the served route and the published glossary follow in WP3 and WP5 |
 
 ## 7. Retro (fill in after phase close)
 

@@ -170,8 +170,10 @@ def test_slash_command_is_the_human_path_for_grants(ctx: FakeCtx) -> None:
     assert "error" in (handler("module grant ext capability=net.outbound") or "")
     assert "error" in (handler("module launch") or "")
     assert "error" in (handler("module grant ext capability") or "")  # malformed key=value
-    assert '"removed": "ext"' in (handler("module remove ext keep_data=true") or "")
-    assert handler("module list") == "[]"
+    # H5 WP2 (#205): replies are Markdown for a person; json=true gives the payload as before
+    assert "**removed:** ext" in (handler("module remove ext keep_data=true") or "")
+    assert (handler("module list") or "").startswith("**No modules are installed.**")
+    assert handler("module list json=true") == "[]"
 
 
 def test_cli_command_delegates_to_the_signalbox_cli(ctx: FakeCtx, capsys: pytest.CaptureFixture[str]) -> None:

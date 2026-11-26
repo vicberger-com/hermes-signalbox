@@ -71,6 +71,8 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
 "src/hermes_signalbox/modules/resources/resources_module.py" = ["S608"]
 "src/hermes_signalbox/modules/router/router_module.py" = ["S608"]
 "src/hermes_signalbox/modules/meter/meter_module.py" = ["S608"]
+# The label tables are one entry per line (id, label, meaning); wrapping them would hide the columns.
+"src/hermes_signalbox/labels.py" = ["E501"]
 "src/hermes_signalbox/modules/activation/activation_module.py" = ["S608"]
 "src/hermes_signalbox/modules/supervisor/supervisor_module.py" = ["S608"]
 "src/hermes_signalbox/modules/workers/workers_module.py" = ["S608"]

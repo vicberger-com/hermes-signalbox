@@ -6,6 +6,13 @@ operation is listed here). How to use them: [USER-GUIDE.md](USER-GUIDE.md).
 Global CLI options, before the noun: `--json` (print results as JSON) and `--data-dir PATH` (use this data
 directory; it wins over `SIGNALBOX_DATA_DIR`).
 
+Output formats (1.1): without `--json` the CLI prints text for a person: a summary line first, then a table
+or a short list with plain-language labels, local times and a next step where one exists. A `/signalbox` chat
+reply is the same content as Markdown; add `json=true` for the payload (`/signalbox module list json=true`).
+`--json`, `json=true` and the model tools return the operation's payload unchanged, so scripts should read
+those and never the text form. The labels come from one table (`hermes_signalbox.labels`): every capability,
+status, mode, severity, actor and core audit action has a label and a one-sentence meaning.
+
 Module states: `verified` (manifest valid, not running), `active` (running), `stopped` (deactivated or idle-stopped)
 and `failed` (activation, health or a hook failed; `error` names the exception class). Modes: `manual` (only the
 operator starts it), `auto` (started with the host; the model may start it too) and `disabled` (never started).
@@ -35,6 +42,17 @@ CLI exit codes: 0 success; 1 operation error, or a result that reports failure (
 
 `report show --kind usage` has one section per usage module (`meter`, `router`, `trimmer`, `workers`); a
 module that cannot report shows `unavailable` with the reason `not installed`, `not active` or `action failed`.
+
+Every report carries `purpose` (the question it answers) and `summary` (1.1): `headline` (one sentence),
+`counts` (the numbers behind it) and `lines` (what needs attention). The summary is computed from the report
+payload alone, so the same data always gives the same text.
+
+| Kind | Question it answers | Headline, for example |
+|---|---|---|
+| `health` | Is everything working, and what needs your attention? | `2 of 12 modules running · 0 failed · 10 waiting for permissions` |
+| `usage` | What did Hermes route and use, and what did it cost? | `1 of 4 usage sources reporting` |
+| `security` | Has the audit log been tampered with, and what was refused? | `Audit log intact: 72 records, chain verified · 3 recent refusals` |
+| `changes` | Who changed what, and when? | `2 changes recorded; latest: Dashboard started router` |
 
 | Command | Parameters | What it does | Model | Dashboard |
 |---|---|---|---|---|
@@ -67,7 +85,7 @@ module that cannot report shows `unavailable` with the reason `not installed`, `
 | `signalbox_modules` | `action`: list, show, activate, health, run; `id`; `name` and `args` for run | `run` reaches read-only module actions only; results are wrapped as `{"untrusted_data": ..., "note": ...}` |
 | `signalbox_audit` | `action`: verify, tail; `n` | |
 | `signalbox_host` | none | Host profile |
-| `/signalbox <noun> <verb> [args]` | as the CLI, `key=value` arguments | Runs as the operator (`user` actor) |
+| `/signalbox <noun> <verb> [args]` | as the CLI, `key=value` arguments; `json=true` for the payload | Runs as the operator (`user` actor); replies in Markdown |
 
 ## Core settings (`<data_dir>/config.toml`)
 

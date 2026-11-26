@@ -34,6 +34,7 @@ hermes_signalbox/host_t2.py
 hermes_signalbox/host_t2_child.py
 hermes_signalbox/hostinfo.py
 hermes_signalbox/hostlock.py
+hermes_signalbox/labels.py
 hermes_signalbox/legacy.py
 hermes_signalbox/lifecycle.py
 hermes_signalbox/logs.py
@@ -84,6 +85,7 @@ hermes_signalbox/net.py
 hermes_signalbox/notify.py
 hermes_signalbox/ops.py
 hermes_signalbox/paths.py
+hermes_signalbox/present.py
 hermes_signalbox/process.py
 hermes_signalbox/py.typed
 hermes_signalbox/reports.py
