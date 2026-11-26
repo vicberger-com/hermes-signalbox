@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from hermes_signalbox import __version__
+from hermes_signalbox import __version__, present
 from hermes_signalbox.api import ApiClient, ApiRestricted, ApiUnavailable, ControlServer, clear_stale_files
 from hermes_signalbox.core import Core
 from hermes_signalbox.errors import PolicyRefused, SignalboxError
@@ -86,21 +86,35 @@ def _params(operation: Operation, args: argparse.Namespace) -> dict[str, Any]:
     return out
 
 
-def _print(result: Any, as_json: bool) -> None:
+def _summaries(data_dir: Path | None) -> dict[str, str]:
+    """Module descriptions for the text output, read from the manifests on disk (no daemon needed)."""
+    try:
+        with Core(data_dir=data_dir, hosting=False) as core:
+            return {i: core.manager.manifest(i).summary for i in core.manager.ids()}
+    except (SignalboxError, OSError):  # the list still prints, without the description column filled
+        return {}
+
+
+def _print(
+    result: Any, as_json: bool, operation: Operation, data_dir: Path | None, prog: str, subject: str | None
+) -> None:
     if as_json:
         print(json.dumps(result, indent=2, default=str))
-    elif isinstance(result, list):
-        for row in result:
-            print("  ".join(f"{k}={v}" for k, v in row.items()) if isinstance(row, dict) else row)
-    elif isinstance(result, dict):
-        for key, value in result.items():
-            if isinstance(value, dict) and value and all(not isinstance(v, dict) for v in value.values()):
-                for sub, inner in value.items():  # one level of nesting as dotted keys (H1 D-26)
-                    print(f"{key}.{sub}: {inner}")
-            else:
-                print(f"{key}: {value}")
-    elif result is not None:
-        print(result)
+        return
+    # H5 WP2 (#205): the same formatter as the chat reply, in plain text
+    wants_names = (operation.noun, operation.verb) in (("module", "list"), ("report", "show"))
+    summaries = _summaries(data_dir) if wants_names else {}
+    text = present.render(
+        operation.noun,
+        operation.verb,
+        result,
+        style=present.TEXT,
+        summaries=summaries,
+        prog=prog,
+        subject=subject,
+    )
+    if result is not None:
+        print(text)
 
 
 def _failure(result: Any) -> str | None:
@@ -184,7 +198,7 @@ def _needs_host(operation: Operation, params: dict[str, Any], hosted: bool) -> s
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, prog: str = "hermes-signalbox") -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     if args.noun is None:
@@ -201,7 +215,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     operation = OPERATIONS[(args.noun, args.verb)]
     try:
-        result = _run(operation, _params(operation, args), args.data_dir)
+        params = _params(operation, args)
+        result = _run(operation, params, args.data_dir)
     except UsageError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -211,7 +226,8 @@ def main(argv: list[str] | None = None) -> int:
     except SignalboxError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    _print(result, args.json)
+    subject = params.get("id") if isinstance(params.get("id"), str) else None
+    _print(result, args.json, operation, args.data_dir, prog, subject)
     failure = _failure(result)
     if failure is not None:
         print(f"error: {failure}", file=sys.stderr)

@@ -194,7 +194,7 @@ def test_action_surfaces_cli_slash_and_model_tool(core: Core, capsys: pytest.Cap
     core.run("module", "activate", {"id": "prov"}, actor="t")
     adapter = HermesAdapter.__new__(HermesAdapter)
     adapter.core = core
-    assert json.loads(adapter.command("module action prov bump by=3 loud=true note=hi")) == {
+    assert json.loads(adapter.command("module action prov bump by=3 loud=true note=hi json=true")) == {
         "by": 3, "note": "hi", "loud": True,
     }  # fmt: skip
     out = json.loads(adapter.tool_modules({"action": "run", "id": "prov", "name": "status"}))

@@ -14,6 +14,25 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   one, after its audit chain verifies; `core.migrated` is recorded and the old directory is left for rollback.
   Refused, with nothing written, while a 1.0.x process still holds it.
 
+### Added
+
+- **Plain-language labels** (#205, #208): one table, `hermes_signalbox.labels`, with a label and a one-sentence
+  meaning for every capability, module status, start mode, alert severity, actor and core audit action. A test
+  fails when one is missing.
+- **Report summaries** (#207): every `report show` result now carries `purpose` (the question the report
+  answers) and `summary` (`headline`, `counts`, `lines`), computed from the report data alone.
+
+### Changed
+
+- **Chat replies are readable** (#205): `/signalbox <noun> <verb>` answers in Markdown, with a summary line,
+  a table with each module's description and state in plain words, and the next step (for example the grant
+  command). Add `json=true` for the previous JSON reply, unchanged.
+- **CLI text output uses the same formatter** (#205): `module list` prints a summary and a table instead of
+  `key=value` rows; `module health` prints a sentence. **Scripts that parse the text output must switch to
+  `--json`**, which is unchanged. The model tools are unchanged too.
+- A module action argument named `json` can no longer be passed from the chat command, because `json=` now
+  selects the reply format; pass it from the CLI (`--args`) instead.
+
 ### Deprecated
 
 - `SWITCHYARD_DATA_DIR` and `SWITCHYARD_SECRET_<NAME>` are still read in 1.1.x with a warning; rename them to

@@ -40,7 +40,8 @@ def test_list_offline_json(data: Path, capsys: pytest.CaptureFixture[str]) -> No
 def test_human_output(data: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(_run(data, "module", "list")) == 0
     out = capsys.readouterr().out
-    assert "id=ext" in out and "status=verified" in out
+    # H5 WP2 (#205): a summary line and a readable table, not key=value rows
+    assert "0 of 1 modules running" in out and "Ready, needs permissions" in out and "id=ext" not in out
     assert main(_run(data, "host", "profile")) == 0
     assert "profile_name:" in capsys.readouterr().out
 

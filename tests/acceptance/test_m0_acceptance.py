@@ -241,7 +241,7 @@ def _cli(data: Path, capsys: pytest.CaptureFixture[str], *args: str) -> Any:
 
 
 def _slash(ctx: FakeHermesCtx, line: str) -> Any:
-    reply = ctx.commands["signalbox"](line)
+    reply = ctx.commands["signalbox"](line + " json=true")  # H5 WP2 (#205): the default reply is Markdown
     assert not reply.startswith("error"), reply
     return json.loads(reply)
 
