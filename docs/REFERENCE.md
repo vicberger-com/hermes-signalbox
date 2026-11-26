@@ -43,6 +43,13 @@ CLI exit codes: 0 success; 1 operation error, or a result that reports failure (
 `report show --kind usage` has one section per usage module (`meter`, `router`, `trimmer`, `workers`); a
 module that cannot report shows `unavailable` with the reason `not installed`, `not active` or `action failed`.
 
+`module show` also reports (1.1): `source` (`bundled`, or `git` with `url`, the installed `ref` and `channel`);
+`links` (`homepage`, `docs`) and `based_on`, from the optional manifest keys `[module] homepage`, `docs` and
+`based_on = [{name, url, license}]`, which accept plain `https://` URLs only (a manifest with any other link
+fails to load); and `update`, the last known update state: `bundled` (updates with Signalbox), `not_checked`,
+`up_to_date`, `available` (with `available`, the new commit) or `check_failed`, with `checked_minutes_ago`.
+`module show` never contacts the network: checks are made by the `updates` module or `module check_updates`.
+
 Every report carries `purpose` (the question it answers) and `summary` (1.1): `headline` (one sentence),
 `counts` (the numbers behind it) and `lines` (what needs attention). The summary is computed from the report
 payload alone, so the same data always gives the same text.

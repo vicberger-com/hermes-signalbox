@@ -361,6 +361,18 @@ class UpdateController:
         rows = self.check_all()
         return rows
 
+    def last_check(self, module_id: str) -> tuple[float, dict[str, Any]] | None:
+        """The last check result for one module and its age in seconds, or ``None`` if none was made since
+        this process started. Never fetches: for status displays (H5 WP3, #210)."""
+        with self._check_state:
+            cached = self._last_check
+        if cached is None:
+            return None
+        for row in cached[1]:
+            if row.get("id") == module_id:
+                return max(0.0, time.monotonic() - cached[0]), dict(row)
+        return None
+
     def check_all(self) -> list[dict[str, Any]]:
         if not self._checking.acquire(blocking=False):
             with self._check_state:

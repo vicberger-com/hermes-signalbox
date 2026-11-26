@@ -133,6 +133,23 @@ def _module_show(doc: _Doc, m: Mapping[str, Any], prog: str) -> None:
         value = m.get(key)
         if value:
             items.append(f"{title}: {value if isinstance(value, str) else ', '.join(map(str, value))}")
+    source = m.get("source")
+    if isinstance(source, Mapping) and source.get("kind") == "git":
+        ref = doc.code(str(source.get("ref") or "?")[:7])
+        items.append(f"Source: git, {source.get('url')} at {ref} (channel {source.get('channel')})")
+    elif isinstance(source, Mapping) and source.get("kind") == "bundled":
+        items.append("Source: bundled with Signalbox")
+    if isinstance(m.get("update"), Mapping):
+        items.append(f"Update: {labels.update_state(m['update'])}")
+    raw_links = m.get("links")
+    links: Mapping[str, Any] = raw_links if isinstance(raw_links, Mapping) else {}
+    for key, title in (("homepage", "Homepage"), ("docs", "Documentation")):
+        if links.get(key):
+            items.append(f"{title}: {links[key]}")
+    for entry in m.get("based_on") or ():
+        if isinstance(entry, Mapping):
+            extra = ", ".join(str(v) for v in (entry.get("license"), entry.get("url")) if v)
+            items.append(f"Based on: {entry.get('name')}" + (f" ({extra})" if extra else ""))
     panels = m.get("panels")
     if panels:
         names = [str(p.get("id", p)) if isinstance(p, Mapping) else str(p) for p in panels]

@@ -67,10 +67,15 @@ def _check(pattern: re.Pattern[str], value: str) -> str:
 
 @router.get("/modules")
 async def modules() -> Any:
-    from hermes_signalbox.hermes.dashboard import rows_with_health
+    from hermes_signalbox.hermes.dashboard import module_rows
 
-    # H4 R1-F11: the Health column, from each running module's own check
-    return rows_with_health(_call("module", "list", {}), lambda mid: _call("module", "health", {"id": mid}))
+    # H4 R1-F11: the Health column, from each running module's own check. H5 WP3 (#206, #210): plus each
+    # module's description, source, links and last known update state. No call here contacts the network.
+    return module_rows(
+        _call("module", "list", {}),
+        lambda mid: _call("module", "show", {"id": mid}),
+        lambda mid: _call("module", "health", {"id": mid}),
+    )
 
 
 @router.get("/modules/{module_id}")
