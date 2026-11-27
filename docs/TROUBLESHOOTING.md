@@ -22,6 +22,11 @@ hermes -p default signalbox module activate <module>
 hermes gateway restart
 ```
 
+If the module is in `auto` mode and still missing a permission, Signalbox says so at start-up. Look in the
+Hermes log (or the terminal running `hermes-signalbox serve`) for a line that begins
+`Signalbox: 1 module set to start with Hermes was not started`. The lines after it name each module, the
+permissions it needs and the `module grant` command to run.
+
 ---
 
 ## "audit verify" Fails

@@ -136,6 +136,13 @@ def _stop(signum: int, frame: Any) -> None:
     raise KeyboardInterrupt  # run the same clean shutdown as Ctrl+C
 
 
+def _announce_waiting(skipped: dict[str, list[str]], prog: str) -> None:
+    """#221: say which ``auto`` modules were not started and why. On stderr: stdout carries the readiness line
+    that service managers parse."""
+    for line in present.start_notice(skipped, prog):
+        print(line, file=sys.stderr, flush=True)
+
+
 def _serve(data_dir: Path | None, port: int | None) -> int:
     # H1 D-9: SIGTERM and Ctrl+Break (Windows) stop the daemon cleanly, so api.port and api.token are removed
     for name in ("SIGTERM", "SIGBREAK"):
@@ -149,7 +156,7 @@ def _serve(data_dir: Path | None, port: int | None) -> int:
             flush=True,  # H1 D-26: service managers read this line through a pipe
         )
         try:
-            core.manager.start_auto(actor="core")
+            _announce_waiting(core.manager.start_auto(actor="core"), "hermes-signalbox")
             while True:
                 core.tick()
                 time.sleep(TICK_SECONDS)

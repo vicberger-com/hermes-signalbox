@@ -323,19 +323,24 @@ class ModuleManager(ModuleDirectory):
             self._persist_mode(e)  # H4 R1-F9: the mode column only; the hosting process owns ``state``
         self._record("module.mode_changed", module_id, actor, mode=mode)
 
-    def start_auto(self, *, actor: str) -> None:
+    def start_auto(self, *, actor: str) -> dict[str, list[str]]:
         """Activate every ``auto`` module that is stopped or verified and holds every capability it requests
         except those listed as ``optional``.
 
-        A module still waiting for grants is left alone (``module.auto_skipped``) rather than failed."""
+        A module still waiting for grants is left alone (``module.auto_skipped``) rather than failed. Returns
+        those modules with the capabilities each still needs, so the hosting process can tell the operator
+        (#221)."""
+        skipped: dict[str, list[str]] = {}
         for module_id in self.ids():
             e = self._entries[module_id]
             if self._current_mode(e) == "auto" and e.status in (ModuleStatus.VERIFIED, ModuleStatus.STOPPED):
                 missing = sorted(e.manifest.requested - e.manifest.optional - self._policy.granted(module_id))
                 if missing:
                     self._record("module.auto_skipped", module_id, actor, missing=",".join(missing))
+                    skipped[module_id] = missing
                     continue
                 self.activate(module_id, actor=actor)
+        return skipped
 
     def touch(self, module_id: str) -> None:
         """Mark a module as used now (resets its idle timer)."""

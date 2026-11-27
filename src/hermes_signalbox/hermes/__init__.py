@@ -229,7 +229,10 @@ class HermesAdapter:
 
     def _start_hosting(self) -> None:
         with self.core._lock:  # hooks and tools of running turns use the core meanwhile
-            self.core.manager.start_auto(actor=CORE_ACTOR)
+            skipped = self.core.manager.start_auto(actor=CORE_ACTOR)
+        # #221: a module that is waiting for permissions used to be skipped silently. Say so once per start.
+        for line in present.start_notice(skipped, "hermes signalbox"):
+            _log.warning("%s", line)
         if self.core.config.api.enabled:  # M9: the dashboard tab talks to this loopback API
             try:
                 server = ControlServer(self.core, port=self.core.config.api.port, profile="dashboard")
