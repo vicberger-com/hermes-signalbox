@@ -34,6 +34,22 @@ from hermes_signalbox.ops import OPERATIONS, Operation, UsageError
 TICK_SECONDS = 1.0
 
 
+class _Once(argparse.Action):
+    """Stores one value. A second use of the option is an error: argparse would keep the last value and
+    drop the first without a word, so ``--capability a --capability b`` granted only ``b``."""
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: Any,
+        option_string: str | None = None,
+    ) -> None:
+        if getattr(namespace, self.dest, None) is not None:
+            parser.error(f"{option_string} was given more than once; run one command for each value")
+        setattr(namespace, self.dest, values)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hermes-signalbox", description="Hermes Signalbox control plane.")
     parser.add_argument(
@@ -61,9 +77,13 @@ def _parser() -> argparse.ArgumentParser:
             elif spec.kind is bool:
                 sub.add_argument(flag, dest=name, action="store_true", help=spec.help)
             elif spec.kind is dict:
-                sub.add_argument(flag, dest=name, type=_json_object, required=spec.required, help=spec.help)
+                sub.add_argument(
+                    flag, dest=name, type=_json_object, required=spec.required, help=spec.help, action=_Once
+                )
             else:
-                sub.add_argument(flag, dest=name, type=spec.kind, required=spec.required, help=spec.help)
+                sub.add_argument(
+                    flag, dest=name, type=spec.kind, required=spec.required, help=spec.help, action=_Once
+                )
     return parser
 
 

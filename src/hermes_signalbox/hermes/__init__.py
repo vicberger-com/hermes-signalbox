@@ -488,6 +488,8 @@ class HermesAdapter:
                     continue
                 return f"error: expected key=value, got {word!r}"
             key, _, value = word.partition("=")
+            if key in params or key in extra:  # the last value used to win silently
+                return f"error: {key} was given more than once; send one command for each value"
             spec = operation.params.get(key)
             if spec is None and "args" in operation.params:
                 extra[key] = int(value) if _INT.fullmatch(value) else _bool_or_str(value)

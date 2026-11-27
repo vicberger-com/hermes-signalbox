@@ -91,6 +91,19 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 - Stray build artifacts `bandit-report.json` and `pr_body.md` from the repository root.
 
+### Fixed
+
+- **An option given twice is refused** (repository review D-1): `module grant <id> --capability a --capability b`
+  kept the last value and dropped the first without a word, at the terminal and in chat, so a pasted grant
+  line gave one permission out of several. It now stops with "was given more than once; run one command for
+  each value". Grant one permission per command.
+- **Quick start and troubleshooting pages corrected** (D-2): the quick start granted only `ui.panel` to each
+  module (see above) and appended a line to `config.toml` that is not valid TOML; the troubleshooting page
+  showed commands that do not exist (`module run`, `secrets add <name> <value>`, `audit tail -n`, a bare
+  `signalbox` command) and told the reader to start a second daemon beside Hermes. Every command on both
+  pages is now parsed by a test, and the quick start's grant list is checked against the bundled manifests.
+- ROADMAP no longer lists subprocess isolation as future work; CONTRIBUTING explains the commit title prefix.
+
 ### Security
 
 - **Phase-end review of 1.1.0** ([record](docs/qa/19-h5-prework.md), section 8). Fixed before release:

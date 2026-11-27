@@ -1,7 +1,7 @@
 # Roadmap — Signalbox (Hermes Control Plane)
 
 **Status**: Planning  
-**Current**: v1.0.3 (Switchyard) → v1.1.0 (Signalbox rename merged in #212)  
+**Current**: v1.0.3 is the latest release (published under the former name). v1.1.0, the first release under the name Signalbox, is complete on `main` and not yet tagged.  
 **Repository**: vicberger-com/hermes-signalbox
 
 ---
@@ -25,7 +25,7 @@
 
 | Enhancement | Description | Module(s) |
 |-------------|-------------|-----------|
-| **Grant wizard** | First-run interactive prompt: "Grant all required capabilities for all modules?" | Core |
+| **Grant wizard** | First-run interactive prompt: "Grant all required capabilities for all modules?" (#221). Done in v1.1.0: a start-up notice names each module that is waiting and the command to run | Core |
 | **Auto-activate on grant** | When last missing grant given, auto-start `auto` modules (no restart needed) | Core |
 | **Unified data directory** | Default `SIGNALBOX_DATA_DIR` to Hermes plugin data dir when installed as plugin | Core |
 | **Dashboard module cards** | Version, description, start/stop and start mode are done in v1.1.0. Still open: granting from the page (today a deliberate limit: grants stay at the terminal or in chat) | Dashboard |
@@ -53,7 +53,7 @@
 
 | Enhancement | Description |
 |-------------|-------------|
-| **Subprocess isolation (T2)** | Run third-party modules in separate processes with JSON-RPC |
+| **Stronger isolation for third-party modules** | Subprocess isolation exists since 1.0 (`isolation = "subprocess"`). Open: running those processes under a restricted OS account (#68) |
 | **Multi-profile support** | Signalbox data per Hermes profile (currently single data dir) |
 | **Remote dashboard auth** | OAuth/OIDC for dashboard API (currently loopback only) |
 | **Module marketplace** | Signed module registry with dependency resolution |
