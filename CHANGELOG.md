@@ -28,6 +28,12 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - **Optional manifest links** (#210): `[module] homepage`, `docs` and `based_on = [{name, url, license}]`.
   Plain `https://` URLs only; a manifest with any other link (http, `javascript:`, credentials, spaces,
   quotes) fails to load.
+- **Command-line tables fit the terminal.** When a table is wider than the window (`module list` on a normal
+  terminal), each row is written as a block: the name, then `Column: value` lines wrapped to the width. Wide
+  windows and `--json` are unchanged.
+- **The chat command accepts command-line style arguments.** `/signalbox report show --kind health`,
+  `--kind=health` and `kind=health` now mean the same, and `--json` works like `json=true`. A flag without
+  its value gets a message saying what is missing instead of `expected key=value`.
 - **Documentation for the new output and dashboard** (#205-#208, #210): the user guide describes each
   dashboard view and what the page cannot do (section 5), how to read chat and command-line output and get
   the raw data, and a glossary of every label generated from the program's label table (section 12,

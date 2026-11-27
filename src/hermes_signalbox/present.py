@@ -7,6 +7,7 @@ Pure functions of the result: nothing here reads state, so the same result alway
 
 from __future__ import annotations
 
+import textwrap
 from collections.abc import Mapping, Sequence
 from datetime import datetime, tzinfo
 from typing import Any
@@ -20,8 +21,9 @@ _ORDER = {"active": 0, "failed": 1}
 class _Doc:
     """Collects a headline, paragraphs, bullet lists and tables, then writes them in one of the two styles."""
 
-    def __init__(self, style: str) -> None:
+    def __init__(self, style: str, width: int | None = None) -> None:
         self.md = style == MARKDOWN
+        self.width = None if self.md or width is None else max(40, width)  # text only: the terminal's width
         self._blocks: list[str] = []
 
     def code(self, text: str) -> str:
@@ -44,11 +46,30 @@ class _Doc:
             lines = [_md_row(headers), "|" + "---|" * len(headers), *(_md_row(r) for r in rows)]
         else:
             widths = [max(len(str(r[i])) for r in (headers, *rows)) for i in range(len(headers))]
+            if self.width is not None and sum(widths) + 2 * (len(widths) - 1) > self.width:
+                # A table wider than the terminal wraps mid-row and loses its columns, so each row becomes
+                # a block instead: its first cell, then "Column: value" lines wrapped to the width.
+                self._blocks.append("\n\n".join(self._row_block(headers, r) for r in rows))
+                return
             lines = [
                 "  ".join(str(c).ljust(w) for c, w in zip(r, widths, strict=True)).rstrip()
                 for r in (headers, *rows)
             ]
         self._blocks.append("\n".join(lines))
+
+    def _row_block(self, headers: Sequence[str], row: Sequence[str]) -> str:
+        lines = [str(row[0])]
+        for header, cell in zip(headers[1:], row[1:], strict=True):
+            if str(cell):
+                lines += textwrap.wrap(
+                    f"{header}: {cell}",
+                    width=self.width or 100,
+                    initial_indent="  ",
+                    subsequent_indent="    ",
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+        return "\n".join(lines)
 
     def text(self) -> str:
         return "\n\n".join(self._blocks)
@@ -273,12 +294,14 @@ def render(
     prog: str = "hermes signalbox",
     subject: str | None = None,
     tz: tzinfo | None = None,
+    width: int | None = None,
 ) -> str:
     """``result`` of operation ``noun verb`` for a human reader. ``summaries`` maps module ids to their
     one-line descriptions; ``prog`` is the command prefix used in next-step hints; ``subject`` is the module
     the command named, for results that do not repeat it; ``tz`` is the reader's time zone (the local one
-    when ``None``)."""
-    doc = _Doc(style)
+    when ``None``); ``width`` is the terminal's width for the text style (a table that does not fit is written
+    as one block per row; ``None`` never reshapes, and Markdown ignores it)."""
+    doc = _Doc(style, width)
     names = summaries or {}
     op = (noun, verb)
     if op == ("module", "list") and isinstance(result, list):
