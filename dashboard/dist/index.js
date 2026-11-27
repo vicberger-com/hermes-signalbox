@@ -210,8 +210,8 @@
 
   function Legend(props) {
     var groups = [["Status", props.labels.statuses], ["Start mode", props.labels.modes]];
-    return h("section", { className: "sy-legend", "aria-labelledby": "sy-legend-h", "data-sy": "legend" },
-      h("h2", { id: "sy-legend-h" }, "What the columns mean"),
+    return h("details", { className: "sy-legend", "data-sy": "legend" },
+      h("summary", null, "What the columns mean"),
       groups.map(function (g) {
         return h("dl", { key: g[0] }, h("dt", { className: "sy-legend-group" }, g[0]),
           Object.keys(g[1] || {}).map(function (k) {
