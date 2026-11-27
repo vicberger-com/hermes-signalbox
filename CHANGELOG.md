@@ -28,6 +28,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - **Optional manifest links** (#210): `[module] homepage`, `docs` and `based_on = [{name, url, license}]`.
   Plain `https://` URLs only; a manifest with any other link (http, `javascript:`, credentials, spaces,
   quotes) fails to load.
+- **Report and Inbox data for the dashboard** (#207, #208): the dashboard backend's `GET /report/{kind}` adds
+  `view` (a timeline of sentences for changes, grouped and labelled refusals for security, module rows with
+  failures first for health, readable lines per source for usage), and `GET /inbox` adds `groups` (identical
+  notices merged with a count, severity and detail fields labelled) and `open`. The stored report and items
+  are returned unchanged next to them. The views that use this follow in the next change.
 - **Label glossary for the dashboard** (#208): `GET /labels` in the dashboard backend serves the label tables.
   It is static and makes no call to the core.
 

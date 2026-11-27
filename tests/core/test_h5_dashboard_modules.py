@@ -170,3 +170,18 @@ def test_h5_wp3_auto_mode_from_the_dashboard_does_not_start_a_module_without_its
     asyncio.run(api.module_mode("aaa", _Request({"mode": "auto"})))
     core.manager.start_auto(actor="core")
     assert core.manager.info("aaa").status.value == "verified"  # "schedule" is not granted
+
+
+def test_h5_wp4_the_report_route_adds_what_the_page_lays_out(api: Any, core: Core) -> None:
+    shown = asyncio.run(api.report("health"))
+    assert shown["kind"] == "health" and shown["summary"]["headline"].startswith("0 of 1 modules running")
+    assert shown["view"]["rows"] == [
+        {
+            "id": "aaa",
+            "state": "Ready, needs permissions",
+            "detail": "",
+            "needs": ["Run on a timer (schedule)"],
+        }
+    ]
+    changes = asyncio.run(api.report("changes"))
+    assert changes["view"] == {"rows": []} and "changes" in changes  # the raw records are still there
