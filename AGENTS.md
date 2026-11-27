@@ -50,4 +50,8 @@ subagents only the context they need.
 - No secret values in the repository, logs, issues, PRs, test fixtures or prompts.
 - No code copied from a source whose license class in `docs/THIRD-PARTY.md` is `reference-only`.
 - Tests are written before implementation. Report only what real execution returned.
+- Trust but validate ([ADR-0016](docs/adr/0016-trust-but-validate.md)). Completed actions are not passed, they
+  are performed: an acceptance item names the test that was run or the surface that was looked at; a review says
+  what was executed and what was only read. Every function ships with the operator's means to see that it was
+  done, check that it was done right, and correct it: configuration in effect, controls, status, results, log.
 - Every release ships an SBOM and updated docs. Every dependency is pinned and recorded.

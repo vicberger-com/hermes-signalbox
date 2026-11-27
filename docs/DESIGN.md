@@ -126,6 +126,17 @@ restricted account.
 tool output, secret exfiltration through logs or model context, runaway spend, quota exhaustion, local privilege
 misuse through the control API, tampered audit trail, dependency confusion.
 
+### Trust but validate
+
+Being trusted to do something does not remove the duty to show that it was done and done right
+([ADR-0016](adr/0016-trust-but-validate.md)). For every function the operator can answer, without reading
+code or raw data: is it safe and secure, was it done, was it done right, and what should improve. Every
+module therefore has its own screen with its configuration in effect, its controls, its status, its results
+and its log, and the same at the command line and in chat. Visibility is complete on every surface; a change
+is made only on a surface trusted to make it, and where the dashboard may not perform an operation it shows
+the command that does. Where this is not yet true is recorded in
+[qa/20-validation-gap.md](qa/20-validation-gap.md).
+
 ## 5. Module contract
 
 A module is a directory with `module.toml` (schema: `src/hermes_signalbox/schemas/module.schema.json`), an entry class and tests.

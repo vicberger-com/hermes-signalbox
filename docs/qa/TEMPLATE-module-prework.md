@@ -35,6 +35,7 @@ match a stop condition in `AGENTS.md` go to `BLOCKERS.md`.
 | 10 | Does anything need a core contract change (ADR)? | | | |
 | 11 | Operator input needed (names only for secrets)? | | | |
 | 12 | Audience and presentation: for each user-facing output (chat reply, CLI text, dashboard view, report, notification), who reads it, what question it answers, and what the human format is (summary first, plain-language labels, local times; JSON only on request)? | | | |
+| 13 | Validation (ADR-0016): for each function this phase adds or changes, how does the operator see its configuration in effect, operate it, see its status, see what it did and whether that was right, and read its log? On which surface, and how was each observed for the acceptance list? What can the operator correct, and where? | | | |
 
 ## 4. Acceptance tests (written before code)
 
