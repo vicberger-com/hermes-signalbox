@@ -266,3 +266,22 @@ def test_h5_short_cells_do_not_wrap_and_the_start_button_names_its_module_for_a_
     assert ".sy-nowrap { white-space: nowrap; }" in css
     js = INDEX.read_text(encoding="utf-8")
     assert '"Source", "Update"' not in js
+
+
+def test_h5_the_legend_is_folded_away_like_the_page_introduction() -> None:
+    legend = _by(_run()["tree"], "legend")
+    assert legend["type"] == "details" and "open" not in legend["props"]
+    [summary] = _all(legend, lambda n: n["type"] == "summary")
+    assert _text(summary) == "What the columns mean"
+    assert not _all(legend, lambda n: n["type"] == "h2")  # the summary is its title
+    css = STYLE.read_text(encoding="utf-8")
+    assert ".sy-legend { margin-top: 1rem; }" in css  # clear of the table's last line
+
+
+def test_h5_the_page_is_as_wide_as_its_content_needs_and_no_wider() -> None:
+    css = STYLE.read_text(encoding="utf-8")
+    # a table takes the width of its content, never more than the page; the page stops growing at a
+    # readable width and is free to shrink below it
+    assert ".sy-table { border-collapse: collapse; width: auto; max-width: 100%; }" in css
+    assert "max-width: 76rem;" in css[css.index(".sy-root {") : css.index("}", css.index(".sy-root {"))]
+    assert "{ width: 100%" not in css and "; width: 100%" not in css

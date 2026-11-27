@@ -187,7 +187,7 @@ A line above the table counts the modules that are running, failed and waiting f
 
 A button that cannot work is disabled, with the reason beside it. A module that still needs permissions lists
 them in plain words with the command that grants the first one, ready to copy. If an action is refused anyway,
-the row shows "Refused:" and the reason, and keeps it until your next action. A legend under the table explains
+the row shows "Refused:" and the reason, and keeps it until your next action. **What the columns mean**, folded away under the table, explains
 every state and start mode; the same words are in the glossary (section 12).
 
 ### Inbox
