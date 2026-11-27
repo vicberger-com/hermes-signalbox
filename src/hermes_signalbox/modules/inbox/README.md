@@ -26,6 +26,10 @@ Notifications below `min_severity` (default `low`) are dropped. Nothing leaves t
 
 ## Dashboard
 
+The Inbox view of the Signalbox tab shows each notice with its time, severity (a word and a symbol), sender and
+labelled details, merges identical notices with a count, and filters by Open, Acknowledged or All. The tab
+shows how many are open. User guide, section 5.
+
 The control API that Hermes starts for the dashboard serves only a dashboard profile: module list, show, panels,
 activate/deactivate, reports, audit reads and the inbox actions. Other module actions run with the model's
 rights (read-only only). The start mode can be set there (1.1). Grants, installs, updates, removal and config

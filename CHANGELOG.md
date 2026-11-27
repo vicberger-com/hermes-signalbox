@@ -28,6 +28,12 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - **Optional manifest links** (#210): `[module] homepage`, `docs` and `based_on = [{name, url, license}]`.
   Plain `https://` URLs only; a manifest with any other link (http, `javascript:`, credentials, spaces,
   quotes) fails to load.
+- **Documentation for the new output and dashboard** (#205-#208, #210): the user guide describes each
+  dashboard view and what the page cannot do (section 5), how to read chat and command-line output and get
+  the raw data, and a glossary of every label generated from the program's label table (section 12,
+  `tools/gen_glossary.py`). REFERENCE lists the dashboard routes. Install commands in QUICKSTART and
+  TROUBLESHOOTING name the repository `vicberger-com/hermes-signalbox`. Every bundled module's manifest has
+  a `docs` link, shown in the Modules view.
 - **The dashboard's Reports and Inbox views are readable** (#207, #208). A report opens with its one-line
   summary and what it is for, then a table (module health, refusals grouped with a count, changes as
   sentences) with local times; the stored JSON is one click away under "Raw data" and is no longer cut off

@@ -85,6 +85,26 @@ payload alone, so the same data always gives the same text.
 | `module update` | `id`, `--ref`, `--digest` (optional), `--accept-wider` (optional), `--allow-downgrade` (optional) | Update a git-installed module to a pinned commit; rolls back if it fails. An older version needs `--allow-downgrade`. |  |  |
 | `report show` | `--kind` | Operator report: health, usage, security or changes (redacted; M9). | yes | yes |
 
+## Dashboard tab
+
+The Signalbox tab in the Hermes dashboard talks to the plugin's own routes under `/api/plugins/signalbox`, which
+pass a fixed list of operations to the loopback API under the dashboard profile ("Dashboard" column above).
+Writes are refused for requests that do not come from the dashboard page itself.
+
+| Route | Serves |
+|---|---|
+| `GET /modules` | One row per module: `module list` plus summary, state in words, source, links, update text and missing grants |
+| `GET /modules/{id}` | `module show` |
+| `POST /modules/{id}/activate`, `/deactivate` | Start or stop a module |
+| `POST /modules/{id}/mode` | Set the start mode (`auto`, `manual`, `disabled`); it cannot grant anything, and `auto` starts nothing that lacks a grant |
+| `GET /labels` | The label table behind the tooltips and the legend (the glossary in the user guide, section 12) |
+| `GET /report/{kind}` | `report show`, plus `view`: what the page lays out (module rows with failures first, refusals grouped with a count, changes as sentences, usage lines per source) |
+| `GET /inbox?state=open\|acked\|all` | The stored `items`, plus `groups` (identical notices merged with a count, severity and detail fields labelled) and `open` (how many are still open) |
+| `POST /inbox/{id}/ack`, `/inbox/ack_all` | Acknowledge one notice or all open ones |
+| `GET /panel/{id}/{panel}` | A module's panel data |
+
+Grants, installs, updates, removal and settings are not served: use the command line or `/signalbox` in a chat.
+
 ## Hermes tools and command
 
 | Name | Arguments | Notes |

@@ -2,7 +2,7 @@
 
 **Status**: Planning  
 **Current**: v1.0.3 (Switchyard) → v1.1.0 (Signalbox rename merged in #212)  
-**Repository**: vicberger-com/hermes-switchyard
+**Repository**: vicberger-com/hermes-signalbox
 
 ---
 

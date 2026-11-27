@@ -157,11 +157,61 @@ for that.
 
 ## 5. Dashboard
 
-Set `[api] enabled = true` in `config.toml` and restart Hermes. The Hermes dashboard then shows a Signalbox tab
-(module status, panels, reports, the inbox). Requests go through Hermes's authenticated dashboard to a loopback
-API that accepts a fixed allow-list of read operations plus activate, deactivate and inbox acknowledgements.
-The tab uses the plugin's own data directory; its Health column shows each running module's check. No extra
-setting is needed for the tab to find the API.
+Set `[api] enabled = true` in `config.toml` and restart Hermes. The Hermes dashboard then shows a **Signalbox**
+tab with three views: Modules, Inbox and Reports. Requests go through Hermes's authenticated dashboard to a
+loopback API that serves a fixed list of operations (section "What the page cannot do" below). The tab uses the
+plugin's own data directory; no extra setting is needed for it to find the API.
+
+The page opens with a collapsed **What is this page?** introduction, and each view starts with a line saying
+what it is for. **Refresh** reloads the view you are on: the button reads "Refreshing…" while it works, and the
+time beside it ("Updated 14:02:07") is when the page last loaded.
+
+### Modules
+
+One row per installed module:
+
+| Column | What it shows |
+|---|---|
+| Module | The module's name and one sentence on what it does |
+| State | Running, Ready, Stopped or Error in plain words. Point at it, or move to it with Tab, for the meaning; Esc closes the note |
+| Start mode | A selector: **Starts with Hermes**, **Manual start** or **Disabled**. Changing it takes effect at once and is written to the audit log |
+| Health | What the module's own check reports while it runs |
+| Version, Source | The installed version; "Bundled with Signalbox" or the git commit and channel, with links to the repository and documentation where the module names them |
+| Update | The last known update state. The page never contacts the network: it says so when nothing has been checked, and a check needs the `updates` module (section 7) |
+| Action | **Start** or **Stop** |
+
+A button that cannot work is disabled, with the reason beside it. A module that still needs permissions lists
+them in plain words with the command that grants the first one, ready to copy. If an action is refused anyway,
+the row shows "Refused:" and the reason, and keeps it until your next action. A legend under the table explains
+every state and start mode; the same words are in the glossary (section 12).
+
+### Inbox
+
+Notices from Signalbox and its modules that need a person: a module failed, a limit was reached, something was
+refused. It needs the `inbox` module running (section 6). Each notice shows when it arrived, how serious it is
+(a word and a symbol, with the meaning on focus), which module sent it, and its details as labelled fields.
+Identical notices are merged into one with a count. Show **Open, Acknowledged or All** with the buttons above the
+list; **Acknowledge** marks a notice (or every copy of a merged one) as seen, and the Inbox tab shows how many
+are still open. Notices stay on this computer, and the model cannot list or acknowledge them.
+
+### Reports
+
+Choose Health, Usage, Security or Changes. Each report starts with a one-line summary and the question it
+answers, then a table: modules with what each still needs, refusals grouped with a count, or changes as
+sentences ("Dashboard started router"), with times in your time zone. A broken audit log is announced as an
+alert. The stored report is under **Raw data (JSON)** at the bottom, collapsed until you open it. Reports only
+read; choosing one changes nothing.
+
+### What the page cannot do
+
+The page can start and stop modules, set their start mode, show reports and acknowledge notices. It cannot
+grant or revoke permissions, install, update or remove a module, or change settings: those stay with you at a
+terminal or in a Hermes chat, so a web page can never widen what a module may do.
+
+```text
+hermes-signalbox module grant inbox --capability core.read      (terminal)
+/signalbox module grant id=inbox capability=core.read            (Hermes chat)
+```
 
 ## 6. Notifications and reports
 
@@ -174,7 +224,8 @@ hermes-signalbox module activate inbox                # [daemon]
 ```
 
 Reports (`--kind` is `health`, `usage`, `security` or `changes`; all need the daemon). When Hermes hosts the
-modules, run them in a chat instead: `/signalbox report show --kind health`. In the usage report, a module that
+modules, run them in a chat instead: `/signalbox report show kind=health` (a chat takes `key=value`, not
+`--key value`). In the usage report, a module that
 cannot report shows `unavailable: not installed`, `not active` or `action failed`.
 
 ```bash
@@ -318,3 +369,149 @@ its `api.port` and `api.token`. Ending the task in Task Scheduler terminates the
 **H3-26: Challenge context versioning.** The API challenge-response proof uses a static context string (`signalbox-api-v1:`). If the proof format ever changes, the context string will be versioned (e.g., `signalbox-api-v2:`). Clients should not hardcode the context string.
 
 **H3-27: Unix environment variable hardening.** The process broker blocks dangerous environment variables on both Windows and Unix. On Unix, variables like `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `PYTHONPATH`, `PYTHONHOME`, `JAVA_TOOL_OPTIONS`, and variables with prefixes `LD_`, `DYLD_`, `PYTHON`, `SSH_`, `GPG_`, `PINENTRY_` are refused. See `src/hermes_signalbox/process.py` for the complete list.
+
+## 12. Reading the output, and a glossary
+
+Chat replies and command-line output are written for a person: a summary line first, then a table or a short
+list with plain labels, then the next step when there is one. For example, `hermes-signalbox module list` on a
+new install begins and ends with:
+
+```text
+0 of 12 modules running · 0 failed · 12 waiting for permissions
+
+Next step: a module starts once it has every permission it needs. Grant one with hermes-signalbox module grant activation --capability hermes.config.write.
+```
+
+In a Hermes chat, `/signalbox module list` gives the same content as Markdown.
+
+For scripts, ask for the data instead: `--json` before the noun at a terminal
+(`hermes-signalbox --json module list`), or `json=true` in a chat (`/signalbox module list json=true`). Both
+return the operation's payload unchanged from earlier versions. The model's tools always receive that payload,
+never the text for people.
+
+The tables below list every label the program shows, with its internal name (what `--json` and the audit log
+contain) and its meaning. They are generated from the program's own label table, so they cannot drift from what
+you see.
+
+<!-- glossary:start (generated by tools/gen_glossary.py; do not edit by hand) -->
+### Permissions
+
+| Capability | Shown as | Meaning |
+|---|---|---|
+| `core.read` | Read Signalbox state | See the module list, audit records and reports. It cannot change them. |
+| `fs.read` | Read files | Read the files and folders listed in its manifest, and nothing else. |
+| `fs.write` | Write files | Create and change files in the folders listed in its manifest. |
+| `hermes.config.write` | Change Hermes settings | Edit Hermes configuration; each change is audited and can be rolled back. |
+| `hermes.delegation` | Run sub-agents | Hand tasks to Hermes sub-agents and choose which model they use. |
+| `hermes.hooks` | Watch and steer Hermes requests | See Hermes events and act before a model call is made. |
+| `hermes.output` | Edit Hermes output | Shorten or transform tool output before the model sees it. |
+| `hermes.tools` | Add Hermes tools | Offer its own tools to the model. |
+| `llm.free` | Use free models | Make model calls on the free pool. No spend. |
+| `llm.paid` | Use paid models | Make model calls on paid providers. This can cost money. |
+| `net.outbound` | Network access | Connect to the hosts listed in its manifest, and to no others. |
+| `notify` | Send alerts | Post notices to the Inbox. |
+| `process.spawn` | Run programs | Start the programs listed in its manifest. |
+| `schedule` | Run on a timer | Run its jobs on a schedule while Signalbox is hosted. |
+| `secrets.read` | Use stored secrets | Use the secrets named in its manifest. Their values are never shown. |
+| `ui.panel` | Show a dashboard panel | Add its panel to the Signalbox dashboard tab. |
+
+### Module states
+
+| State | Shown as | Meaning |
+|---|---|---|
+| `active` | Running | Started and doing its work. |
+| `failed` | Error | Could not start or stopped with an error. The error text says why. |
+| `stopped` | Stopped | Was running and has been stopped. Start it again to use it. |
+| `verified` | Ready | Checked and installed, but not started. |
+
+### Start modes
+
+| Mode | Shown as | Meaning |
+|---|---|---|
+| `auto` | Starts with Hermes | Starts on its own once every permission it needs is granted. |
+| `disabled` | Disabled | Never starts until you change its mode. |
+| `manual` | Manual start | Starts only when you start it. |
+
+### Notice severities
+
+| Severity | Shown as | Meaning |
+|---|---|---|
+| `critical` | Critical | Act now: security or spending is at risk. |
+| `high` | High | Act today: a module failed or a limit was reached. |
+| `info` | Information | For your records. Nothing to do. |
+| `low` | Low | Worth a look when convenient. |
+| `medium` | Medium | Look at it soon: something is not working as intended. |
+
+### Who did it
+
+| Actor | Shown as | Meaning |
+|---|---|---|
+| `api` | Dashboard | A click in the Signalbox dashboard tab. |
+| `cli` | CLI | A command typed in a terminal. |
+| `core` | Signalbox | Signalbox itself, enforcing a rule or running a scheduled step. |
+| `hermes` | The model | The Hermes model, through its Signalbox tools. |
+| `hermes-user` | You (chat) | A /signalbox command typed in a Hermes chat. |
+
+### Audit log actions
+
+| Action | Shown as | Meaning |
+|---|---|---|
+| `api.start_failed` | Local API did not start | The local control API could not start; the detail says why. |
+| `audit.acknowledged` | Audit problem acknowledged | An operator confirmed they looked into an audit-log failure. |
+| `audit.verify_failed` | Audit check failed | The audit log failed its integrity check. Treat this as tampering until explained. |
+| `core.adapter_error` | Hermes adapter error | The link to Hermes hit an error and carried on. |
+| `core.hosting_acquired` | Started hosting modules | This process took over running the modules. |
+| `core.migrated` | Data copied from Switchyard | A 1.0.x data directory was copied to the new location. |
+| `core.not_hosting` | Not hosting modules | Another process runs the modules for this data directory. |
+| `core.tick_failed` | Scheduled step failed | A background step failed; the next run retries it. |
+| `core.transform_skipped` | Output edit skipped | An output transform was skipped to protect the request. |
+| `event.depth_exceeded` | Event loop stopped | Modules triggered each other too deeply; the chain was cut. |
+| `event.handler_failed` | Event handler failed | A module failed while handling an event. |
+| `fs.read` | File read | A module read a file it is allowed to read. |
+| `fs.read_failed` | File read refused | A module tried to read a file and was refused or failed. |
+| `hermes.config.rollback` | Hermes setting rolled back | A change to Hermes settings was undone. |
+| `hermes.config.write` | Hermes setting changed | A module changed a Hermes setting; a backup was kept. |
+| `module.action` | Module command run | A module command was run. |
+| `module.activated` | Module started | A module was started. |
+| `module.auto_skipped` | Auto-start skipped | A module set to start with Hermes was skipped; it lacks a permission. |
+| `module.deactivate_failed` | Module stop failed | A module raised an error while stopping. |
+| `module.deactivated` | Module stopped | A module was stopped. |
+| `module.delegation_failed` | Sub-agent routing failed | A module failed while routing a sub-agent. |
+| `module.delegation_refused` | Sub-agent routing refused | A sub-agent request was refused by a rule. |
+| `module.failed` | Module failed | A module could not start or crashed. |
+| `module.gate_blocked` | Request blocked | A module blocked a Hermes request by rule. |
+| `module.gate_rejected` | Block ignored | A module tried to block a request without the right to. |
+| `module.hook_failed` | Hook failed | A module failed while watching a Hermes event. |
+| `module.hook_timeout` | Hook too slow | A module took too long on a Hermes event and was skipped. |
+| `module.hooks_paused` | Hooks paused | A module's hooks were paused after repeated failures. |
+| `module.installed` | Module installed | A module was installed. |
+| `module.job_skipped` | Scheduled job skipped | A scheduled job was skipped because the last run was still going. |
+| `module.job_timeout` | Scheduled job too slow | A scheduled job ran past its time limit. |
+| `module.middleware_rejected` | Request change ignored | A module's change to a request was rejected. |
+| `module.mode_changed` | Start mode changed | A module's start mode was changed. |
+| `module.notify` | Alert sent | A module posted a notice to the Inbox. |
+| `module.rejected` | Module rejected | A module failed verification and was not loaded. |
+| `module.reloaded` | Module reloaded | A module's files were read again. |
+| `module.removed` | Module removed | A module was uninstalled. |
+| `module.rolled_back` | Update rolled back | A module was restored to its previous version. |
+| `module.transform_paused` | Output edits paused | A module's output edits were paused after failures. |
+| `module.update_check_failed` | Update check failed | Checking a module's update source failed. |
+| `module.update_previewed` | Update previewed | An update was staged for review; nothing was applied. |
+| `module.update_rejected` | Update refused | An update was refused by a safety check. |
+| `module.updated` | Module updated | A module was updated to a new version. |
+| `module.verified` | Module verified | A module passed verification. |
+| `net.request` | Network request | A module connected to an allowed host. |
+| `policy.denied` | Permission refused | Something was refused because a permission is missing. |
+| `policy.grant_refused` | Grant refused | A permission could not be granted; the module does not request it. |
+| `policy.granted` | Permission granted | A permission was granted to a module. |
+| `policy.grants_removed` | Permissions removed | All of a module's permissions were removed. |
+| `policy.revoked` | Permission revoked | A permission was taken away from a module. |
+| `process.spawned` | Program started | A module started an allowed program. |
+| `secret.backend_added` | Secret store added | A secret store was connected. |
+| `secret.backend_error` | Secret store error | A secret store returned an error. |
+| `secret.backend_removed` | Secret store removed | A secret store was disconnected. |
+| `secret.leak_blocked` | Secret leak blocked | A secret value was about to appear in output and was removed. |
+| `secret.unavailable` | Secret unavailable | A module asked for a secret that could not be read. |
+| `secret.used` | Secret used | A module used a stored secret (name only; the value is never recorded). |
+| `trigger.failed` | Trigger failed | A lazy-start trigger failed to start its module. |
+<!-- glossary:end -->

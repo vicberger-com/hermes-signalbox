@@ -92,7 +92,7 @@ signalbox module list
 **Fix**:
 ```bash
 # Must use hermes plugins install (not pip)
-hermes plugins install vicberger-com/hermes-switchyard --ref <SHA>
+hermes plugins install vicberger-com/hermes-signalbox --ref <SHA>
 hermes plugins enable signalbox
 
 # Restart Hermes Desktop completely
@@ -285,7 +285,7 @@ hermes -p default signalbox config show | grep data_dir
 
 1. Check `TROUBLESHOOTING.md` covers your issue
 2. Run `hermes -p default signalbox audit verify` — if chain fails, that's the root
-3. File an issue at https://github.com/vicberger-com/hermes-switchyard/issues with:
+3. File an issue at https://github.com/vicberger-com/hermes-signalbox/issues with:
    - `hermes -p default signalbox module list` output
    - `hermes -p default signalbox audit tail -n 20` output
    - Steps to reproduce
