@@ -4,6 +4,38 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-27
+
+Release from maintenance phase H5: the plugin is renamed from Switchyard to Signalbox, and the chat replies,
+command-line output and dashboard are made readable for a person, after the first user test of 1.0.3
+([Q&A](docs/qa/19-h5-prework.md), [ADR-0015](docs/adr/0015-rename-to-signalbox.md)).
+
+Signalbox is Beta. This release and later ones are published on GitHub as pre-releases until there is
+external use or an external review (operator decision, 2026-11-27).
+
+### Upgrading from 1.0.3
+
+Follow [UPGRADING-1.1.md](docs/UPGRADING-1.1.md); in short:
+
+- Remove the old plugin first (`hermes plugins disable switchyard`, then `hermes plugins remove switchyard`),
+  install the new one (`hermes plugins install vicberger-com/hermes-signalbox --ref <SHA> --no-enable`, then
+  `hermes plugins enable signalbox --no-allow-tool-override`) and restart the gateway
+  (`hermes gateway restart`).
+- Your data, grants and audit log are copied to the new data directory on the first start, once; the old
+  directory is kept for a rollback, with one file added (`migrated-to-signalbox.txt`). A directory that contains a link is refused: see the upgrade page.
+- Every name changed and the old ones do not work: `/signalbox`, `hermes signalbox`, `hermes-signalbox`, the
+  model tools `signalbox_*`, the Python package `hermes_signalbox`. Update scripts, saved prompts and services.
+- Rename `SWITCHYARD_DATA_DIR` and `SWITCHYARD_SECRET_<NAME>` to `SIGNALBOX_...`; the old ones still work in
+  1.1.x with a warning.
+- Scripts that read the text output of the command line must use `--json` (placed before the operation:
+  `hermes-signalbox --json module list`); the text is now written for a person. Chat replies are Markdown;
+  add `json=true` for the previous JSON.
+- In chat, web addresses in module text (a module's declared links included) are shown as plain text, not
+  links; the dashboard shows a module's links, with the host visible.
+- Grant one permission per command: `--capability` given twice is refused (it used to grant only the last).
+- Watch the Hermes log on the first start: a module set to start with Hermes that still lacks a permission is
+  named there with the command that grants it.
+
 ### Changed (breaking)
 
 - **Renamed from Switchyard to Signalbox** (ADR-0015, [UPGRADING-1.1.md](docs/UPGRADING-1.1.md)): plugin, chat
@@ -713,7 +745,8 @@ Repository bootstrap (phase P0). No runtime code.
 - Tooling is installed from a hash-pinned `requirements-dev.txt`; `ci-required` and `security-required` gate jobs added.
 - Secret scanning runs the pinned gitleaks CLI. Repository moved to the `vicberger-com` organization.
 
-[Unreleased]: https://github.com/vicberger-com/hermes-signalbox/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/vicberger-com/hermes-signalbox/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/vicberger-com/hermes-signalbox/compare/v1.0.3...v1.1.0
 [1.0.3]: https://github.com/vicberger-com/hermes-signalbox/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/vicberger-com/hermes-signalbox/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/vicberger-com/hermes-signalbox/compare/v1.0.0...v1.0.1

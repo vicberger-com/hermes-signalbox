@@ -3,7 +3,7 @@
   "label": "Signalbox",
   "description": "Signalbox modules, health, inbox and reports.",
   "icon": "Shield",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "tab": { "path": "/signalbox", "position": "end" },
   "entry": "dist/index.js",
   "css": "dist/style.css",
