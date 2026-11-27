@@ -10,9 +10,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from sy_dashboard import BASE, INDEX, render
+from sy_dashboard import BASE, INDEX, ROOT, render
 from sy_dashboard import by_marker as _by
 from sy_dashboard import find_all as _all
+from sy_dashboard import markers as _markers
 from sy_dashboard import text_of as _text
 
 from hermes_signalbox import labels
@@ -67,11 +68,11 @@ def test_h5_wp3_the_tab_still_registers_and_shows_every_column() -> None:
         _text(th)
         for th in _all(out["tree"], lambda n: n["type"] == "th" and n["props"].get("scope") == "col")
     ]
-    assert headers == ["Module", "State", "Start mode", "Health", "Version", "Source", "Update", "Action"]
+    assert headers == ["Module", "State", "Start mode", "Version", "Action"]
     row = _by(out["tree"], "row-meter")
     text = _text(row)
-    assert "What meter does." in text and "0.1.0" in text and "Updates with Signalbox" in text
-    assert "Bundled with Signalbox" in text and "Running" in text
+    assert "What meter does." in text and "0.1.0" in text and "Running" in text
+    assert "Bundled and updated with Signalbox" in text
     for raw in ("verified", "missing_grants", "in-process", "null", "undefined"):
         assert raw not in _text(out["tree"]), raw
 
@@ -93,7 +94,8 @@ def test_h5_wp3_a_disabled_module_says_how_to_enable_it_and_running_ones_can_be_
     assert _by(out["tree"], "action-scanner")["props"]["aria-disabled"] == "true"
     assert "start mode" in _text(_by(out["tree"], "reason-scanner")).lower()
     stop = _by(out["tree"], "action-meter")
-    assert stop["props"].get("aria-disabled") != "true" and _text(stop) == "Stop meter"
+    assert stop["props"].get("aria-disabled") != "true" and _text(stop) == "Stop"
+    assert stop["props"]["aria-label"] == "Stop meter"
     assert out["clicks"][0]["fetches"] == [[MODULES + "/meter/deactivate", {"method": "POST"}]]
     assert out["refreshed"] == 1
 
@@ -174,3 +176,93 @@ def test_h5_wp3_no_action_in_the_modules_view_discards_a_failure() -> None:
     view = js[js.index("// --- Modules view") : js.index("// --- Inbox view")]
     assert "props.refresh, props.refresh" not in view
     assert "innerHTML" not in js and "eval(" not in js
+
+
+# --- The view on an ordinary display (usability review of the 1.1.0 release candidate) ----------------------
+# Usability review of the 1.1.0 release candidate: the Modules view on an ordinary display.
+#
+# At 1366 pixels the eight-column table showed three modules of twelve: Source and Update said the same thing
+# on every row and forced every other cell to wrap. Where a module comes from, how it updates, its licence,
+# its permissions and its links now sit behind one "About" control beside the module's name; what differs
+# from the ordinary case (installed from git, an update available, a health problem) stays visible.
+
+STYLE = ROOT / "dashboard" / "dist" / "style.css"
+
+
+def test_h5_about_is_a_real_button_that_opens_by_click_keyboard_and_pointer() -> None:
+    out = _run(clicks=[{"target": "about-meter"}])
+    about = _by(out["tree"], "about-meter")
+    assert about["type"] == "button" and about["props"]["type"] == "button"
+    assert about["props"]["aria-label"] == "About meter"
+    assert about["props"]["aria-expanded"] == "false"
+    panel = _by(out["tree"], "about-panel-meter")
+    assert about["props"]["aria-controls"] == panel["props"]["id"]
+    assert any(value == "open" for _index, value in out["clicks"][0]["sets"])  # a click or tap opens it
+    wrapper = _by(out["tree"], "about-wrap-meter")
+    assert wrapper["props"]["onKeyDown"] == "[function]"  # Esc closes it
+    css = STYLE.read_text(encoding="utf-8")
+    assert ".sy-about:hover > .sy-about-panel" in css and ".sy-about:focus-within > .sy-about-panel" in css
+
+
+def test_h5_about_tells_the_whole_story_of_a_bundled_module() -> None:
+    asked, given = ["hermes.hooks", "llm.paid", "ui.panel"], ["hermes.hooks", "ui.panel"]
+    rows = [_row("meter", status="active", state="Running", health="ok", requested=asked, granted=given)]
+    text = _text(_by(_run(rows=rows)["tree"], "about-panel-meter"))
+    assert "Bundled and updated with Signalbox" in text
+    assert "Apache-2.0" in text and "inside the Signalbox process" in text
+    assert "Watch and steer Hermes requests" in text and "Show a dashboard panel" in text  # granted, in words
+    assert "Not granted" in text and "Use paid models" in text  # asked for, not granted
+    assert "in-process" not in text and "hermes.hooks" not in text
+
+
+def test_h5_about_of_a_git_module_names_the_commit_the_update_state_and_keeps_the_links() -> None:
+    panel = _by(_run()["tree"], "about-panel-ext")
+    text = _text(panel)
+    assert "aaaaaaa" in text and "channel main" in text
+    assert "Update available: aaaaaaa to bbbbbbb" in text
+    assert len(_all(panel, lambda n: n["type"] == "a")) == 3
+
+
+def test_h5_what_differs_from_the_ordinary_case_is_visible_without_opening_anything() -> None:
+    out = _run()
+    assert _text(_by(out["tree"], "tag-git-ext")) == "From git"
+    assert _text(_by(out["tree"], "tag-update-ext")) == "Update available"
+    assert _markers(_by(out["tree"], "row-meter"), "tag-") == []
+    row = _row("ext", source={"kind": "git", "url": "", "ref": "a" * 40}, update={"state": "check_failed"})
+    failed = _run(rows=[row])
+    assert _text(_by(failed["tree"], "tag-update-ext")) == "Update check failed"
+
+
+def test_h5_state_says_whether_it_runs_and_never_repeats_the_start_mode() -> None:
+    rows: list[dict[str, Any]] = [
+        *ROWS,
+        _row("sick", status="active", state="Running", health="degraded: no route"),
+        _row("broken", status="failed", state="Error", error="import failed"),
+    ]
+    tree = _run(rows=rows)["tree"]
+    shown = {
+        m: _text(_by(tree, "state-" + m)) for m in ("meter", "router", "scanner", "ext", "sick", "broken")
+    }
+    for mid, start in (("meter", "Running"), ("router", "Needs permissions"), ("scanner", "Not running"),
+                       ("ext", "Not running"), ("sick", "Running"), ("broken", "Error")):  # fmt: skip
+        assert shown[mid].startswith(start), (mid, shown[mid])
+    assert "degraded: no route" in _text(_by(tree, "health-sick"))
+    assert _markers(_by(tree, "row-meter"), "health-") == []  # a healthy module adds nothing
+    assert "import failed" in _text(_by(tree, "row-broken"))
+
+
+def test_h5_a_summary_line_counts_the_modules() -> None:
+    assert (
+        _text(_by(_run()["tree"], "summary"))
+        == "1 of 4 modules running · 0 failed · 1 waiting for permissions"
+    )
+
+
+def test_h5_short_cells_do_not_wrap_and_the_start_button_names_its_module_for_a_screen_reader() -> None:
+    out = _run()
+    start = _by(out["tree"], "action-ext")
+    assert _text(start) == "Start" and start["props"]["aria-label"] == "Start ext"
+    css = STYLE.read_text(encoding="utf-8")
+    assert ".sy-nowrap { white-space: nowrap; }" in css
+    js = INDEX.read_text(encoding="utf-8")
+    assert '"Source", "Update"' not in js

@@ -175,13 +175,15 @@ One row per installed module:
 
 | Column | What it shows |
 |---|---|
-| Module | The module's name and one sentence on what it does |
-| State | Running, Ready, Stopped or Error in plain words. Point at it, or move to it with Tab, for the meaning; Esc closes the note |
+| Module | The module's name, an **About** control (ⓘ) and one sentence on what it does |
+| State | **Running**, **Not running**, **Needs permissions** or **Error**. A running module whose own check reports a problem shows it underneath. Point at the state, or move to it with Tab, for the meaning; Esc closes the note |
 | Start mode | A selector: **Starts with Hermes**, **Manual start** or **Disabled**. Changing it takes effect at once and is written to the audit log |
-| Health | What the module's own check reports while it runs |
-| Version, Source | The installed version; "Bundled with Signalbox" or the git commit and channel, with links to the repository and documentation where the module names them |
-| Update | The last known update state. The page never contacts the network: it says so when nothing has been checked, and a check needs the `updates` module (section 7) |
+| Version | The installed version |
 | Action | **Start** or **Stop** |
+
+A line above the table counts the modules that are running, failed and waiting for permissions.
+
+**About** (ⓘ) opens on pointing at it, on moving to it with Tab, and on a click or tap; Esc closes it. It says where the module comes from ("Bundled and updated with Signalbox", or the git commit and channel with its last known update state), how it runs, which permissions it has and which it asked for and was not given, its licence, and links to its repository and documentation where the module names them. The page never contacts the network: an update state is what the `updates` module last found (section 7). What is out of the ordinary is shown beside the name without opening anything: **From git**, **Update available**, **Update check failed**.
 
 A button that cannot work is disabled, with the reason beside it. A module that still needs permissions lists
 them in plain words with the command that grants the first one, ready to copy. If an action is refused anyway,

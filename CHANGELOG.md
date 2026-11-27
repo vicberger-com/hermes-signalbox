@@ -93,6 +93,7 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ### Fixed
 
+- **Modules view fits an ordinary display** (usability review of the release candidate): at 1366 pixels wide the eight-column table showed three modules of twelve, because Source and Update said the same on every row and made every other cell wrap. The table now has five columns (Module, State, Start mode, Version, Action). Source, update state, how the module runs, its permissions, licence and links are behind one **About** control beside the name, which opens on hover, keyboard focus and click; "From git", "Update available" and "Update check failed" stay visible beside the name. State says whether the module runs (Running, Not running, Needs permissions, Error) and no longer repeats the start mode; a health problem shows under it. A summary line counts the modules, the view tabs look like tabs, and notes use the dashboard theme's colours.
 - **`--json` works at the end of a command** (usability review of the release candidate): the text output
   ends with "Raw data: add --json.", and `module list --json` was refused; the flag was only accepted before
   the noun. It is accepted in both places. Usage and error text now name the command that was typed

@@ -93,7 +93,8 @@
     var model = {
       id: m.id,
       action: active ? "deactivate" : "activate",
-      actionLabel: (active ? "Stop " : "Start ") + m.id,
+      actionLabel: active ? "Stop" : "Start",
+      actionName: (active ? "Stop " : "Start ") + m.id,
       reason: null,
       command: null,
     };
@@ -128,17 +129,72 @@
 
   function sourceText(m) {
     var source = m.source || {};
-    if (source.kind === "bundled") return "Bundled with Signalbox";
+    if (source.kind === "bundled") return "Bundled and updated with Signalbox";
     if (source.kind === "git") {
-      return "Git, commit " + String(source.ref || "?").slice(0, 7) + " (channel " + String(source.channel || "main") + ")";
+      return "Installed from git, commit " + String(source.ref || "?").slice(0, 7) + " (channel " + String(source.channel || "main") + ")";
     }
     return "Unknown";
   }
 
-  function healthText(m) {
-    if (m.status !== "active") return "Not running";
-    if (m.health === "ok") return "Healthy";
+  // State answers one question: is it running? The start mode has its own column.
+  function stateText(m) {
+    if (m.status === "failed") return "Error";
+    if (m.status === "active") return "Running";
+    if ((m.missing_grants || []).length && m.mode !== "disabled") return "Needs permissions";
+    return "Not running";
+  }
+
+  // Only a running module that does not report "ok" has something to say about its health.
+  function healthIssue(m) {
+    if (m.status !== "active" || m.health === "ok") return null;
     return m.health ? String(m.health) : "No answer";
+  }
+
+  // What differs from the ordinary case stays visible beside the name; everything else is in About.
+  function tagsOf(m) {
+    var out = [];
+    var kind = (m.source || {}).kind;
+    var update = (m.update || {}).state;
+    if (kind === "git") out.push(["tag-git-" + m.id, "From git"]);
+    else if (kind !== "bundled") out.push(["tag-source-" + m.id, "Unknown source"]);
+    if (update === "available") out.push(["tag-update-" + m.id, "Update available"]);
+    if (update === "check_failed") out.push(["tag-update-" + m.id, "Update check failed"]);
+    return out;
+  }
+
+  function aboutLines(m, labels) {
+    var caps = (labels && labels.capabilities) || {};
+    function names(list) { return list.map(function (c) { return entry(caps, c).label; }).join(", "); }
+    var granted = m.granted || [];
+    var rest = (m.requested || []).filter(function (c) { return granted.indexOf(c) < 0; });
+    var lines = [["Source", sourceText(m)]];
+    if ((m.source || {}).kind !== "bundled") lines.push(["Update", String(m.update_text || "Unknown")]);
+    lines.push(["Runs", m.isolation === "in-process" ? "inside the Signalbox process" : "in its own process"]);
+    lines.push(["Permissions granted", granted.length ? names(granted) : "none"]);
+    if (rest.length) lines.push(["Not granted", names(rest)]);
+    if (m.license) lines.push(["License", String(m.license)]);
+    return lines;
+  }
+
+  // One control beside the module's name: where it comes from, how it updates, what it may do, its links.
+  // It opens on hover, on keyboard focus and on click or tap; Esc closes it (WCAG 2.2, 1.4.13).
+  function About(props) {
+    var m = props.m;
+    var mode = useState("auto"); // "auto": hover and focus decide; "open": pinned by a click; "off": closed by Esc
+    var id = "sy-about-" + m.id;
+    function rest() { if (mode[0] === "off") mode[1]("auto"); }
+    return h("span", { className: "sy-about", "data-sy": "about-wrap-" + m.id, onBlur: rest, onMouseLeave: rest,
+      onKeyDown: function (e) { if (e && e.key === "Escape") mode[1]("off"); } },
+      h("button", { type: "button", className: "sy-about-button", "data-sy": "about-" + m.id, "aria-label": "About " + m.id,
+        "aria-expanded": mode[0] === "open" ? "true" : "false", "aria-controls": id,
+        onClick: function () { mode[1](mode[0] === "open" ? "off" : "open"); } }, "\u24D8"),
+      h("span", { id: id, className: "sy-about-panel" + (mode[0] === "auto" ? "" : " sy-about-" + mode[0]), "data-sy": "about-panel-" + m.id },
+        aboutLines(m, props.labels).map(function (line) {
+          return h("span", { key: line[0], className: "sy-about-line" }, h("strong", null, line[0] + ": "), line[1]);
+        }),
+        sourceLinks(m).map(function (l, i) {
+          return h("a", { key: i, className: "sy-link", href: l.href, rel: "noopener noreferrer", target: "_blank" }, l.text);
+        })));
   }
 
   // A term with its meaning: shown on hover and on keyboard focus, closed with Esc (WCAG 2.2, 1.4.13).
@@ -163,7 +219,10 @@
           }));
       }),
       h("dl", null, h("dt", { className: "sy-legend-group" }, "Health"),
-        h("dd", null, "What the module's own check reports while it runs.")),
+        h("dd", null, "A running module whose own check reports a problem shows it under its state.")),
+      h("dl", null, h("dt", { className: "sy-legend-group" }, "About (\u24D8)"),
+        h("dd", null, "Beside each name: where the module comes from, how it updates, its permissions, licence and links. " +
+          "Point at it, move to it with Tab, or click it; Esc closes it.")),
       h("dl", null, h("dt", { className: "sy-legend-group" }, "Action"),
         h("dd", null, "Start or stop a module. Permissions are granted from a terminal or a Hermes chat, never here.")));
   }
@@ -191,41 +250,46 @@
     }
 
     var failed = Object.keys(errors[0]).length;
+    var rows = st.data || [];
+    function count(test) { return rows.filter(test).length; }
+    var summary = count(function (m) { return m.status === "active"; }) + " of " + rows.length + " modules running \u00B7 " +
+      count(function (m) { return m.status === "failed"; }) + " failed \u00B7 " +
+      count(function (m) { return stateText(m) === "Needs permissions"; }) + " waiting for permissions";
     return h("section", { "aria-labelledby": "sy-modules-h" },
       h("h2", { id: "sy-modules-h" }, "Modules"),
       h("p", { className: "sy-help" }, "What is installed, whether it is running, and what each module needs before it can start."),
+      h("p", { className: "sy-summary", "data-sy": "summary" }, summary),
       h("p", { role: "status", "aria-live": "polite", "data-sy": "live", className: "sy-live" },
         failed ? failed + (failed === 1 ? " action was refused. See its row." : " actions were refused. See their rows.") : ""),
       h("table", { className: "sy-table" },
         h("caption", { className: "sy-caption" }, "Installed modules"),
         h("thead", null, h("tr", null,
-          ["Module", "State", "Start mode", "Health", "Version", "Source", "Update", "Action"].map(function (c) {
+          ["Module", "State", "Start mode", "Version", "Action"].map(function (c) {
             return h("th", { scope: "col", key: c }, c);
           }))),
-        h("tbody", null, (st.data || []).map(function (m) {
+        h("tbody", null, rows.map(function (m) {
           var model = rowModel(m, labels);
           var status = entry(labels.statuses, m.status);
           var reasonId = "sy-reason-" + m.id;
           var error = errors[0][m.id];
+          var issue = healthIssue(m);
           return h("tr", { key: m.id, "data-sy": "row-" + m.id },
-            h("th", { scope: "row" }, h("span", { className: "sy-name" }, m.id),
+            h("th", { scope: "row" },
+              h("span", { className: "sy-namerow" }, h("span", { className: "sy-name" }, m.id), h(About, { m: m, labels: labels }),
+                tagsOf(m).map(function (t) { return h("span", { key: t[0], className: "sy-badge sy-tag", "data-sy": t[0] }, t[1]); })),
               m.summary ? h("span", { className: "sy-desc" }, String(m.summary)) : null),
-            h("td", null, h(Term, { marker: "state-" + m.id, text: String(m.state || status.label), meaning: status.meaning }),
+            h("td", null, h(Term, { marker: "state-" + m.id, text: stateText(m), meaning: status.meaning }),
+              issue ? h("span", { className: "sy-desc", "data-sy": "health-" + m.id }, "Health: " + issue) : null,
               m.status === "failed" && m.error ? h("span", { className: "sy-desc" }, String(m.error)) : null),
-            h("td", null, h("select", { "data-sy": "mode-" + m.id, "aria-label": "Start mode for " + m.id, value: m.mode || "manual",
+            h("td", { className: "sy-nowrap" }, h("select", { "data-sy": "mode-" + m.id, "aria-label": "Start mode for " + m.id, value: m.mode || "manual",
               onChange: function (e) { run(m, "/mode", { mode: e.target.value }); } },
               ["auto", "manual", "disabled"].map(function (k) {
                 var mode = entry(labels.modes, k);
                 return h("option", { key: k, value: k, title: mode.meaning }, mode.label);
               }))),
-            h("td", null, healthText(m)),
-            h("td", null, String(m.version || "")),
-            h("td", null, sourceText(m), sourceLinks(m).map(function (l, i) {
-              return h("a", { key: i, className: "sy-link", href: l.href, rel: "noopener noreferrer", target: "_blank" }, l.text);
-            })),
-            h("td", null, String(m.update_text || "Unknown")),
+            h("td", { className: "sy-nowrap" }, String(m.version || "")),
             h("td", null,
-              h("button", { type: "button", "data-sy": "action-" + m.id, className: "sy-button",
+              h("button", { type: "button", "data-sy": "action-" + m.id, className: "sy-button", "aria-label": model.actionName,
                 "aria-disabled": model.reason ? "true" : "false", "aria-describedby": model.reason ? reasonId : null,
                 onClick: function () { if (!model.reason) run(m, "/" + model.action); } }, model.actionLabel),
               model.reason ? h("span", { id: reasonId, className: "sy-reason", "data-sy": "reason-" + m.id }, model.reason,
