@@ -5,7 +5,7 @@
 .sy-table th, .sy-table td { text-align: left; padding: .25rem .5rem; border-bottom: 1px solid currentColor; }
 .sy-root button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .sy-sev-high, .sy-sev-critical { font-weight: 700; }
-.sy-pre { white-space: pre-wrap; overflow-x: auto; max-height: 30rem; }
+.sy-pre { white-space: pre-wrap; overflow-x: auto; }
 .sy-table th, .sy-table td { vertical-align: top; }
 .sy-name { font-weight: 600; display: block; }
 .sy-desc, .sy-help, .sy-reason { display: block; font-weight: 400; font-size: .875em; opacity: .85; max-width: 32rem; }
@@ -23,3 +23,21 @@
 .sy-legend dl { margin: .25rem 0; }
 .sy-legend-group { font-weight: 600; }
 .sy-legend dd { margin-left: 1rem; }
+.sy-bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.sy-bar .sy-desc { display: inline; }
+.sy-button[aria-pressed="true"] { font-weight: 600; text-decoration: underline; }
+.sy-headline { font-size: 1.1em; font-weight: 600; margin: .5rem 0 .25rem; }
+.sy-headline[role="alert"] { border-left: 3px solid currentColor; padding-left: .5rem; }
+.sy-caption { text-align: left; font-weight: 600; padding: .25rem 0; }
+.sy-empty { opacity: .85; }
+.sy-raw, .sy-intro { margin-top: .5rem; }
+.sy-raw > summary, .sy-intro > summary { cursor: pointer; }
+.sy-notices { list-style: none; margin: 0; padding: 0; display: grid; gap: .75rem; }
+.sy-notice { border: 1px solid currentColor; border-radius: .25rem; padding: .5rem .75rem; }
+.sy-badge { display: inline-block; padding: 0 .4rem; border: 1px solid currentColor; border-radius: .25rem; }
+.sy-notice-text { margin: .25rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sy-fields { margin: .25rem 0; }
+.sy-fields > div { display: flex; gap: .5rem; }
+.sy-fields dt { font-weight: 600; min-width: 8rem; }
+.sy-fields dd { margin: 0; overflow-wrap: anywhere; }
+.sy-root summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

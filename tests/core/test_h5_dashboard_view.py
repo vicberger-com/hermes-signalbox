@@ -7,36 +7,18 @@ is rendered from known rows and the resulting element tree is checked.
 
 from __future__ import annotations
 
-import glob
 import json
-import os
-import shutil
-import subprocess
-from pathlib import Path
 from typing import Any
 
-import pytest
+from sy_dashboard import BASE, INDEX, render
+from sy_dashboard import by_marker as _by
+from sy_dashboard import find_all as _all
+from sy_dashboard import text_of as _text
 
 from hermes_signalbox import labels
 
-ROOT = Path(__file__).resolve().parents[2]
-INDEX = ROOT / "dashboard" / "dist" / "index.js"
-HARNESS = ROOT / "tests" / "fixtures" / "dashboard_harness.js"
-MODULES = "/api/plugins/signalbox/modules"
+MODULES = BASE + "/modules"
 GIT_URL = "https://example.com/acme/ext.git"
-
-
-def _node() -> str:
-    found = os.environ.get("SIGNALBOX_NODE") or shutil.which("node")
-    if not found:  # a workstation where Node only ships inside the Hermes desktop app
-        local = os.environ.get("LOCALAPPDATA", "")
-        bundled = (
-            sorted(glob.glob(os.path.join(local, "hermes", "tools", "node-*", "node.exe"))) if local else []
-        )
-        found = bundled[-1] if bundled else None
-    if not found:
-        pytest.skip("Node.js is not installed")
-    return found
 
 
 def _row(mid: str, **over: Any) -> dict[str, Any]:
@@ -75,38 +57,7 @@ def _run(**scenario: Any) -> dict[str, Any]:
             {"loading": False, "data": scenario["labels"], "error": None},
         ],
     )
-    done = subprocess.run(  # noqa: S603 - a fixed harness file, run with the located node
-        [_node(), str(HARNESS), str(INDEX)],
-        input=json.dumps(scenario), capture_output=True, text=True, encoding="utf-8", timeout=60, check=False,
-    )  # fmt: skip
-    assert done.returncode == 0, done.stderr[-2000:]
-    out: dict[str, Any] = json.loads(done.stdout)
-    return out
-
-
-def _all(node: Any, test: Any) -> list[dict[str, Any]]:
-    found: list[dict[str, Any]] = []
-    if isinstance(node, list):
-        for child in node:
-            found += _all(child, test)
-    elif isinstance(node, dict):
-        if test(node):
-            found.append(node)
-        found += _all(node["children"], test)
-    return found
-
-
-def _text(node: Any) -> str:
-    if isinstance(node, str):
-        return node
-    if isinstance(node, list):
-        return "".join(_text(c) for c in node)
-    return _text(node["children"]) if isinstance(node, dict) else ""
-
-
-def _by(tree: Any, marker: str) -> dict[str, Any]:
-    [hit] = _all(tree, lambda n: n["props"].get("data-sy") == marker)
-    return hit
+    return render(**scenario)
 
 
 def test_h5_wp3_the_tab_still_registers_and_shows_every_column() -> None:
