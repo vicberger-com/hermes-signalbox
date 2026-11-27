@@ -123,15 +123,22 @@ async def module_lifecycle(module_id: str, verb: str) -> Any:
 async def report(kind: str) -> Any:
     if kind not in _KINDS:
         raise HTTPException(status_code=404, detail="unknown report")
-    return _call("report", "show", {"kind": kind})
+    from hermes_signalbox.hermes.dashboard import report_view
+
+    # H5 WP4 (#207): the report as the core built it, plus what the page lays out (sentences, labels, groups)
+    shown = _call("report", "show", {"kind": kind})
+    return {**shown, "view": report_view(shown)} if isinstance(shown, dict) else shown
 
 
 @router.get("/inbox")
 async def inbox(state: str = "open") -> Any:
     if state not in ("open", "acked", "all"):
         raise HTTPException(status_code=400, detail="invalid state")
-    return _call(
-        "module", "action", {"id": "inbox", "action": "list", "args": {"state": state, "limit": 200}}
+    from hermes_signalbox.hermes.dashboard import inbox_view
+
+    # H5 WP4 (#208): the items as stored, plus groups with labelled severity and detail fields
+    return inbox_view(
+        _call("module", "action", {"id": "inbox", "action": "list", "args": {"state": state, "limit": 200}})
     )
 
 

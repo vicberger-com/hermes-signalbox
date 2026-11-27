@@ -208,7 +208,8 @@ def test_dashboard_backend_proxy(core: Core, monkeypatch: pytest.MonkeyPatch, tm
     monkeypatch.setattr("hermes_signalbox.api.ApiClient.from_data_dir", lambda d: Client())
     assert any(m["id"] == "inbox" for m in asyncio.run(mod.modules()))
     assert asyncio.run(mod.report("health"))["kind"] == "health"
-    assert asyncio.run(mod.inbox("open")) == {"items": []}
+    # H5 WP4 (#208): the route adds the grouped view and the open count to the stored items
+    assert asyncio.run(mod.inbox("open")) == {"items": [], "groups": [], "open": 0}
     asyncio.run(mod.module_lifecycle("inbox", "deactivate"))
     for call in (
         mod.module_lifecycle("inbox", "remove"),
