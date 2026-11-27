@@ -37,6 +37,13 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   backend, behind the same write guard as activate and deactivate, audited as `module.mode_changed` with actor
   `api`. The restricted API profile Hermes runs now accepts `module mode`; grants, installs, updates, removal
   and config are still refused there. The Modules view gets the control in the next change.
+- **The dashboard's Modules view explains itself** (#206, #208, #210). Each row shows what the module does,
+  its state in plain words, version, source (with links to the repository, homepage and documentation) and
+  update state. The start mode is a selector. A module that cannot start has a disabled button with the
+  reason and the exact grant command; a refused action shows the core's message on its row instead of
+  doing nothing. Status and mode have tooltips that open on hover and on keyboard focus and close with
+  Esc, and a legend sits under the table. Only plain `https://` links are rendered, with the host shown
+  and `rel="noopener noreferrer"`.
 - **Chat replies are readable** (#205): `/signalbox <noun> <verb>` answers in Markdown, with a summary line,
   a table with each module's description and state in plain words, and the next step (for example the grant
   command). Add `json=true` for the previous JSON reply, unchanged.

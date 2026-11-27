@@ -6,3 +6,20 @@
 .sy-root button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .sy-sev-high, .sy-sev-critical { font-weight: 700; }
 .sy-pre { white-space: pre-wrap; overflow-x: auto; max-height: 30rem; }
+.sy-table th, .sy-table td { vertical-align: top; }
+.sy-name { font-weight: 600; display: block; }
+.sy-desc, .sy-help, .sy-reason { display: block; font-weight: 400; font-size: .875em; opacity: .85; max-width: 32rem; }
+.sy-button { cursor: pointer; padding: .25rem .75rem; border: 1px solid currentColor; border-radius: .25rem; background: transparent; color: inherit; }
+.sy-button:hover { text-decoration: underline; }
+.sy-button[aria-disabled="true"] { cursor: not-allowed; opacity: .55; text-decoration: none; }
+.sy-reason code { display: block; user-select: all; white-space: pre-wrap; }
+.sy-error { margin: .25rem 0 0; font-weight: 600; border-left: 3px solid currentColor; padding-left: .5rem; }
+.sy-link { display: block; text-decoration: underline; }
+.sy-term { position: relative; border-bottom: 1px dotted currentColor; cursor: help; }
+.sy-tip { display: none; position: absolute; z-index: 1; left: 0; top: 100%; min-width: 14rem; max-width: 24rem; padding: .5rem; border: 1px solid currentColor; background: Canvas; color: CanvasText; font-weight: 400; }
+.sy-term:hover > .sy-tip, .sy-term:focus > .sy-tip, .sy-tip:hover { display: block; }
+.sy-term > .sy-tip.sy-tip-off { display: none; }
+.sy-term:focus-visible, .sy-root select:focus-visible, .sy-root a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.sy-legend dl { margin: .25rem 0; }
+.sy-legend-group { font-weight: 600; }
+.sy-legend dd { margin-left: 1rem; }
