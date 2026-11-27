@@ -28,6 +28,13 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 - **Optional manifest links** (#210): `[module] homepage`, `docs` and `based_on = [{name, url, license}]`.
   Plain `https://` URLs only; a manifest with any other link (http, `javascript:`, credentials, spaces,
   quotes) fails to load.
+- **The dashboard's Reports and Inbox views are readable** (#207, #208). A report opens with its one-line
+  summary and what it is for, then a table (module health, refusals grouped with a count, changes as
+  sentences) with local times; the stored JSON is one click away under "Raw data" and is no longer cut off
+  in a scroll box. The Inbox shows when each notice arrived, how serious it is (icon, word and meaning),
+  labelled details, repeats merged with a count, an Open / Acknowledged / All filter and the open count on
+  its tab; a failed acknowledge is shown. Refresh is a separate button that says "Refreshing" while it
+  works and shows when the page was last updated, and the page has a "What is this page?" introduction.
 - **Report and Inbox data for the dashboard** (#207, #208): the dashboard backend's `GET /report/{kind}` adds
   `view` (a timeline of sentences for changes, grouped and labelled refusals for security, module rows with
   failures first for health, readable lines per source for usage), and `GET /inbox` adds `groups` (identical

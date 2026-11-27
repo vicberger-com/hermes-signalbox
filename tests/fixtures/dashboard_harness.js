@@ -1,6 +1,8 @@
-// Test harness for dashboard/dist/index.js (H5 WP3). Runs the real file under Node with stand-ins for the
-// Hermes plugin SDK and React, renders the Modules view from a scenario read on stdin, and prints what a
-// test needs as JSON. No dependencies; no network.
+// Test harness for dashboard/dist/index.js (H5 WP3, WP4). Runs the real file under Node with stand-ins for
+// the Hermes plugin SDK and React, renders one view (scenario.view: Modules, Inbox, Report or Page) from a
+// scenario read on stdin, and prints what a test needs as JSON. No dependencies; no network.
+// The stand-in React does not run effects or re-render: tests cover what a view shows for a given state
+// and what a click sends, not the timing of real loads.
 "use strict";
 const fs = require("fs");
 const vm = require("vm");
@@ -37,6 +39,7 @@ const window = {
   __HERMES_PLUGINS__: { register(name, component) { registered[name] = component; } },
 };
 vm.runInNewContext(fs.readFileSync(process.argv[2], "utf8"), { window, encodeURIComponent, JSON, String, Promise });
+if (!window.__SIGNALBOX_VIEW__) throw new Error("index.js does not expose window.__SIGNALBOX_VIEW__");
 const view = window.__SIGNALBOX_VIEW__;
 
 function resolve(node) {
@@ -69,10 +72,14 @@ function find(node, test, out) {
 }
 
 async function main() {
-  const out = { registered: Object.keys(registered), safe: {}, hosts: {}, models: [], clicks: [] };
+  const out = { registered: Object.keys(registered), safe: {}, hosts: {}, models: [], clicks: [], when: [] };
+  (scenario.when || []).forEach((pair) => { out.when.push(view.formatWhen(pair[0], pair[1])); });
   (scenario.urls || []).forEach((u) => { out.safe[u] = view.safeUrl(u); out.hosts[u] = view.hostOf(u); });
   (scenario.rows || []).forEach((row) => { out.models.push(view.rowModel(row, scenario.labels || {})); });
-  const tree = view.Modules({ tick: 0, refresh() { out.refreshed = (out.refreshed || 0) + 1; } });
+  const component = view[scenario.view || "Modules"];
+  if (typeof component !== "function") throw new Error("no such view: " + scenario.view);
+  const props = Object.assign({ tick: 0, refresh() { out.refreshed = (out.refreshed || 0) + 1; } }, scenario.props || {});
+  const tree = component(props);
   out.tree = resolve(tree);
   for (const click of scenario.clicks || []) {
     const before = [fetches.length, setCalls.length];

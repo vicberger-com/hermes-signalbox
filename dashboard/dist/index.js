@@ -15,16 +15,49 @@
     return SDK.fetchJSON(BASE + path, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   }
 
-  function useLoad(path, tick) {
-    var s = useState({ loading: true, data: null, error: null });
+  // One GET per (path, tick). The last good answer stays on screen while the next one loads, so Refresh
+  // does not blank the view. `at` is when the shown answer arrived; `settled` is called when a load ends.
+  function useLoad(path, tick, settled) {
+    var s = useState({ loading: true, data: null, error: null, at: null, path: path });
     useEffect(function () {
       var live = true;
-      api(path).then(function (d) { if (live) s[1]({ loading: false, data: d, error: null }); },
-                      function (e) { if (live) s[1]({ loading: false, data: null, error: String(e && e.message || e) }); });
+      s[1](function (was) {
+        return { loading: true, data: was.path === path ? was.data : null, error: null, at: was.at, path: path };
+      });
+      function done(data, error) {
+        if (!live) return;
+        s[1]({ loading: false, data: data, error: error, at: Date.now(), path: path });
+        if (settled) settled();
+      }
+      api(path).then(function (d) { done(d, null); }, function (e) { done(null, String(e && e.message || e)); });
       return function () { live = false; };
     }, [path, tick]);
+    if (s[0].path && s[0].path !== path) return { loading: true, data: null, error: null, at: null };
     return s[0];
   }
+
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+
+  function toMillis(value) {
+    if (typeof value === "number") return isFinite(value) && value > 0 ? (value < 1e11 ? value * 1000 : value) : NaN;
+    if (typeof value !== "string" || !value) return NaN;
+    return Date.parse(value.replace(/(\.\d{3})\d+/, "$1"));
+  }
+
+  // A stored time (ISO text, seconds or milliseconds) in this computer's time zone, with how long ago it was.
+  function formatWhen(value, now) {
+    var ms = toMillis(value);
+    if (isNaN(ms)) return typeof value === "string" ? value : "";
+    var d = new Date(ms);
+    var stamp = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    var ago = Math.floor(((now === undefined ? Date.now() : now) - ms) / 1000);
+    if (ago < -60) return stamp;
+    var rel = ago < 60 ? "just now" : ago < 3600 ? Math.floor(ago / 60) + " min ago" :
+      ago < 172800 ? Math.floor(ago / 3600) + " h ago" : Math.floor(ago / 86400) + " d ago";
+    return stamp + " (" + rel + ")";
+  }
+
+  function times(n) { return n > 1 ? n + " times" : "Once"; }
 
   function Status(props) {
     return h("p", { role: "status", "aria-live": "polite" }, props.text || "");
@@ -136,10 +169,10 @@
   }
 
   function Modules(props) {
-    var st = useLoad("/modules", props.tick);
+    var st = useLoad("/modules", props.tick, props.settled);
     var lb = useLoad("/labels", 0);
     var errors = useState({});
-    if (st.loading) return h(Status, { text: "Loading modules" });
+    if (st.loading && !st.data) return h(Status, { text: "Loading modules" });
     if (st.error) return h(Status, { text: "Could not load modules: " + st.error });
     var labels = lb.data || {};
 
@@ -202,56 +235,191 @@
       h(Legend, { labels: labels }));
   }
 
-  window.__SIGNALBOX_VIEW__ = { safeUrl: safeUrl, hostOf: hostOf, rowModel: rowModel, sourceLinks: sourceLinks, Modules: Modules };
+  // --- Inbox view (H5 WP4; #208) -------------------------------------------------------------------------
+  // Notices as the backend grouped them: when, how serious (icon, word and meaning, never colour alone),
+  // labelled detail fields, repeats counted. A failed acknowledge is shown, not swallowed.
+  var FILTERS = [["open", "Open"], ["acked", "Acknowledged"], ["all", "All"]];
+  var EMPTY = { open: "Nothing needs your attention.", acked: "No acknowledged notices.", all: "No notices yet." };
+  var ICONS = { critical: "\u25A0", high: "\u25B2", medium: "\u25C6", low: "\u25CB", info: "\u25CF" };
 
-  // --- Inbox view -----------------------------------------------------------------------------------------
   function Inbox(props) {
-    var st = useLoad("/inbox", props.tick);
-    if (st.loading) return h(Status, { text: "Loading inbox" });
-    if (st.error) return h(Status, { text: "Inbox unavailable: " + st.error });
-    var items = (st.data && st.data.items) || [];
+    var filter = useState("open");
+    var st = useLoad("/inbox?state=" + filter[0], props.tick, props.settled);
+    var error = useState("");
+    var groups = (st.data && st.data.groups) || [];
+
+    // Acknowledge every notice in a group. What worked is shown by reloading; what did not is said.
+    function send(paths) {
+      var ok = 0, failed = "", left = paths.length;
+      function end() {
+        left -= 1;
+        if (left) return;
+        error[1](failed);
+        if (ok) props.refresh();
+      }
+      paths.forEach(function (path) {
+        api(path, "POST").then(function () { ok += 1; end(); },
+          function (e) { failed = String((e && e.message) || e); end(); });
+      });
+    }
+
     return h("section", { "aria-labelledby": "sy-inbox-h" },
-      h("h2", { id: "sy-inbox-h" }, "Inbox (" + items.length + " open)"),
-      items.length ? h("button", { type: "button", onClick: function () { api("/inbox/ack_all", "POST").then(props.refresh, props.refresh); } }, "Acknowledge all") : null,
-      h("ul", null, items.map(function (it) {
-        return h("li", { key: it.id, className: "sy-sev-" + it.severity },
-          h("span", null, "[" + it.severity + "] " + (it.title || it.type) + " (" + it.module + ") " + (it.detail || "") + " "),
-          h("button", { type: "button", onClick: function () { api("/inbox/" + encodeURIComponent(it.id) + "/ack", "POST").then(props.refresh, props.refresh); } }, "Acknowledge"));
+      h("h2", { id: "sy-inbox-h" }, "Inbox"),
+      h("p", { className: "sy-help", "data-sy": "inbox-note" },
+        "Notices from Signalbox and its modules that need a person: a module failed, a limit was reached, something was refused. " +
+        "They are kept on this computer; nothing leaves this machine. They are written for you: the model cannot list or acknowledge them."),
+      h("div", { role: "group", "aria-label": "Which notices to show", className: "sy-bar" },
+        FILTERS.map(function (f) {
+          return h("button", { type: "button", key: f[0], className: "sy-button", "data-sy": "filter-" + f[0],
+            "aria-pressed": filter[0] === f[0] ? "true" : "false", onClick: function () { filter[1](f[0]); } }, f[1]);
+        }),
+        filter[0] === "open" && groups.length ? h("button", { type: "button", className: "sy-button", "data-sy": "ack-all",
+          onClick: function () { send(["/inbox/ack_all"]); } }, "Acknowledge all") : null),
+      error[0] ? h("p", { role: "alert", className: "sy-error", "data-sy": "inbox-error" }, "Could not acknowledge: " + error[0]) : null,
+      st.loading && !st.data ? h(Status, { text: "Loading inbox" }) :
+        st.error ? h(Status, { text: "Inbox unavailable: " + st.error }) :
+          !groups.length ? h("p", { className: "sy-empty" }, EMPTY[filter[0]]) :
+            h("ul", { className: "sy-notices" }, groups.map(function (g) {
+              var id = g.ids[0];
+              return h("li", { key: id, className: "sy-notice", "data-sy": "notice-" + id },
+                h("span", { className: "sy-badge sy-sev-" + g.severity },
+                  h("span", { "aria-hidden": "true" }, (ICONS[g.severity] || ICONS.info) + " "),
+                  h(Term, { marker: "sev-" + id, text: String(g.severity_label || g.severity), meaning: String(g.severity_meaning || "") })),
+                h("strong", { className: "sy-notice-title" }, " " + String(g.title || "")),
+                h("span", { className: "sy-desc" }, "From " + String(g.module || "Signalbox") + " \u00B7 " + formatWhen(g.at) +
+                  (g.count > 1 ? " \u00B7 " + times(g.count) : "") + (g.state === "acked" ? " \u00B7 Acknowledged" : "")),
+                g.text ? h("p", { className: "sy-notice-text" }, String(g.text)) : null,
+                g.fields && g.fields.length ? h("dl", { className: "sy-fields" }, g.fields.map(function (f, i) {
+                  return h("div", { key: i }, h("dt", null, String(f.label)), h("dd", null, String(f.value)));
+                })) : null,
+                g.state === "open" ? h("button", { type: "button", className: "sy-button", "data-sy": "ack-" + id,
+                  "aria-label": "Acknowledge: " + String(g.title || ""),
+                  onClick: function () {
+                    send(g.ids.map(function (one) { return "/inbox/" + encodeURIComponent(one) + "/ack"; }));
+                  } }, g.count > 1 ? "Acknowledge all " + g.count : "Acknowledge") : null);
+            })));
+  }
+
+  // --- Reports view (H5 WP4; #207) -----------------------------------------------------------------------
+  // The answer first (one-line summary), then what the report is for, then a readable table. The stored
+  // report is still there, collapsed, for anyone who wants the JSON.
+  var KINDS = [["health", "Health"], ["usage", "Usage"], ["security", "Security"], ["changes", "Changes"]];
+
+  function Table(props) {
+    return h("table", { className: "sy-table" },
+      h("caption", { className: "sy-caption" }, props.caption),
+      h("thead", null, h("tr", null, props.columns.map(function (c) { return h("th", { scope: "col", key: c }, c); }))),
+      h("tbody", null, props.rows.map(function (cells, i) {
+        return h("tr", { key: i }, cells.map(function (cell, j) {
+          return j ? h("td", { key: j }, cell) : h("th", { scope: "row", key: j }, cell);
+        }));
       })));
+  }
+
+  function reportBody(kind, view) {
+    var rows = view.rows || [];
+    if (kind === "health") {
+      if (!rows.length) return h("p", { className: "sy-empty" }, "No modules are installed.");
+      return h(Table, { caption: "Module health", columns: ["Module", "State", "Details", "Needs"],
+        rows: rows.map(function (r) { return [String(r.id), String(r.state), String(r.detail || ""), (r.needs || []).join(", ") || "Nothing"]; }) });
+    }
+    if (kind === "security") {
+      if (!rows.length) return h("p", { className: "sy-empty" }, "Nothing was refused in the recent records.");
+      return h(Table, { caption: "Recent refusals, newest first", columns: ["When", "Module", "What happened", "Permission", "Refused by", "How often"],
+        rows: rows.map(function (r) {
+          return [formatWhen(r.when), String(r.module || ""), String(r.what), String(r.permission || ""), String(r.who), times(r.count)];
+        }) });
+    }
+    if (kind === "changes") {
+      if (!rows.length) return h("p", { className: "sy-empty" }, "No changes in the recent records.");
+      return h(Table, { caption: "Recent changes, newest first", columns: ["When", "What changed", "How often"],
+        rows: rows.map(function (r) { return [formatWhen(r.when), String(r.what), times(r.count)]; }) });
+    }
+    var sections = view.sections || [];
+    if (!sections.length) return h("p", { className: "sy-empty" }, "No module is reporting usage yet. Start the meter or router module to see it here.");
+    return sections.map(function (sec) {
+      return h("section", { key: sec.name, className: "sy-usage" }, h("h3", null, String(sec.name)),
+        h("ul", null, (sec.lines || []).map(function (line, i) { return h("li", { key: i }, String(line)); })));
+    });
+  }
+
+  function ReportBody(props) {
+    var report = props.report && typeof props.report === "object" ? props.report : {};
+    var summary = report.summary || {};
+    var view = report.view || {};
+    var raw = {};
+    Object.keys(report).forEach(function (k) { if (k !== "view") raw[k] = report[k]; });
+    var lines = props.kind === "health" || props.kind === "usage" ? (summary.lines || []) : [];
+    return h("div", { className: "sy-report" },
+      h("p", { className: "sy-headline", "data-sy": "headline", role: view.audit_ok === false ? "alert" : null }, String(summary.headline || "")),
+      h("p", { className: "sy-help", "data-sy": "purpose" }, String(report.purpose || "")),
+      lines.length ? h("ul", { "data-sy": "attention", "aria-label": "What needs attention" },
+        lines.map(function (line, i) { return h("li", { key: i }, String(line)); })) : null,
+      reportBody(props.kind, view),
+      h("details", { className: "sy-raw", "data-sy": "raw" }, h("summary", null, "Raw data (JSON)"),
+        h("pre", { className: "sy-pre", tabIndex: 0 }, JSON.stringify(raw, null, 2))));
   }
 
   function Report(props) {
     var kind = useState("health");
-    var st = useLoad("/report/" + kind[0], props.tick);
+    var st = useLoad("/report/" + kind[0], props.tick, props.settled);
     return h("section", { "aria-labelledby": "sy-report-h" },
       h("h2", { id: "sy-report-h" }, "Reports"),
+      h("p", { className: "sy-help" }, "Read-only summaries of what Signalbox has recorded on this computer. Choosing one changes nothing."),
       h("label", null, "Report ",
-        h("select", { value: kind[0], onChange: function (e) { kind[1](e.target.value); } },
-          ["health", "usage", "security", "changes"].map(function (k) { return h("option", { key: k, value: k }, k); }))),
-      st.loading ? h(Status, { text: "Loading report" }) :
+        h("select", { "data-sy": "report-kind", value: kind[0], onChange: function (e) { kind[1](e.target.value); } },
+          KINDS.map(function (k) { return h("option", { key: k[0], value: k[0] }, k[1]); }))),
+      st.loading && !st.data ? h(Status, { text: "Loading report" }) :
         st.error ? h(Status, { text: "Report unavailable: " + st.error }) :
-          h("pre", { className: "sy-pre", tabIndex: 0 }, JSON.stringify(st.data, null, 2)));
+          h(ReportBody, { report: st.data, kind: kind[0] }));
   }
 
+  // --- Page ------------------------------------------------------------------------------------------------
   var VIEWS = [["modules", "Modules", Modules], ["inbox", "Inbox", Inbox], ["reports", "Reports", Report]];
 
   function Page() {
     var view = useState("modules");
     var tick = useState(0);
-    function refresh() { tick[1](tick[0] + 1); }
+    var sync = useState({ loading: true, at: null });
+    var count = useLoad("/inbox?state=open", tick[0]);
+    function reload() { sync[1]({ loading: true, at: sync[0].at }); tick[1](tick[0] + 1); }
+    function settled() { sync[1]({ loading: false, at: Date.now() }); }
+    var open = (count.data && count.data.open) || 0;
+    var at = sync[0].at ? new Date(sync[0].at) : null;
     var current = VIEWS.filter(function (v) { return v[0] === view[0]; })[0];
     return h("main", { className: "sy-root" },
       h("h1", null, "Signalbox"),
-      h("div", { role: "tablist", "aria-label": "Signalbox views", className: "sy-tabs" },
+      h("details", { className: "sy-intro", "data-sy": "intro" },
+        h("summary", null, "What is this page?"),
+        h("p", null, "Signalbox adds optional modules to Hermes: small add-ons that route requests, track usage, watch for problems and more. " +
+          "Each module can do only what you have permitted."),
+        h("ul", null,
+          h("li", null, h("strong", null, "Modules"), ": what is installed, whether it is running, and what it still needs."),
+          h("li", null, h("strong", null, "Inbox"), ": notices that need a person."),
+          h("li", null, h("strong", null, "Reports"), ": read-only summaries of health, usage, security and recent changes.")),
+        h("p", null, "Permissions, installs, updates and removal are done from a terminal with the ", h("code", null, PROG), " command, never from this page.")),
+      h("div", { role: "tablist", "aria-label": "Signalbox views", className: "sy-tabs", "data-sy": "tabs" },
         VIEWS.map(function (v) {
-          return h("button", { type: "button", role: "tab", key: v[0], id: "sy-tab-" + v[0],
+          var label = v[1] + (v[0] === "inbox" && open ? " (" + (open >= 200 ? "200+" : open) + " open)" : "");
+          return h("button", { type: "button", role: "tab", key: v[0], id: "sy-tab-" + v[0], "data-sy": "tab-" + v[0],
             "aria-selected": view[0] === v[0] ? "true" : "false", "aria-controls": "sy-panel",
-            onClick: function () { view[1](v[0]); } }, v[1]);
-        }),
-        h("button", { type: "button", onClick: refresh }, "Refresh")),
+            onClick: function () { view[1](v[0]); } }, label);
+        })),
+      h("div", { role: "toolbar", "aria-label": "Page actions", className: "sy-bar" },
+        h("button", { type: "button", className: "sy-button", "data-sy": "refresh",
+          "aria-disabled": sync[0].loading ? "true" : "false",
+          onClick: function () { if (!sync[0].loading) reload(); } }, sync[0].loading ? "Refreshing\u2026" : "Refresh"),
+        h("span", { role: "status", "aria-live": "polite", className: "sy-desc", "data-sy": "updated" },
+          at ? "Updated " + pad(at.getHours()) + ":" + pad(at.getMinutes()) + ":" + pad(at.getSeconds()) : "")),
       h("div", { role: "tabpanel", id: "sy-panel", "aria-labelledby": "sy-tab-" + view[0] },
-        h(current[2], { tick: tick[0], refresh: refresh })));
+        h(current[2], { tick: tick[0], refresh: reload, settled: settled })));
   }
+
+  // The pure decisions and the views, for the tests that run this file under Node.
+  window.__SIGNALBOX_VIEW__ = {
+    safeUrl: safeUrl, hostOf: hostOf, rowModel: rowModel, sourceLinks: sourceLinks, formatWhen: formatWhen,
+    Modules: Modules, Inbox: Inbox, Report: Report, Page: Page,
+  };
 
   window.__HERMES_PLUGINS__.register("signalbox", Page);
 })();
