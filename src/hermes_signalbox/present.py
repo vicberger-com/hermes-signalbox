@@ -8,6 +8,7 @@ Pure functions of the result: nothing here reads state, so the same result alway
 from __future__ import annotations
 
 import textwrap
+import unicodedata
 from collections.abc import Mapping, Sequence
 from datetime import datetime, tzinfo
 from typing import Any
@@ -16,6 +17,52 @@ from hermes_signalbox import labels, reports
 
 MARKDOWN, TEXT = "markdown", "text"
 _ORDER = {"active": 0, "failed": 1}
+# H5 review R-1. A result carries text that modules wrote (health detail, action output, notices, audit
+# detail). It is shown as words, never as formatting: these characters would start a Markdown link, image,
+# HTML tag, code span, heading, quote or emphasis in a chat reply.
+_MD_ESCAPES = str.maketrans({c: "\\" + c for c in "\\`[]<>#*"})
+_DROPPED = frozenset(
+    {"Cc", "Cf", "Co", "Cs", "Cn"}
+)  # control, format (bidi, zero width), private, unassigned
+_BREAKS = frozenset({"Zl", "Zp"})
+
+
+def _safe_text(text: str, md: bool) -> str:
+    """``text`` with nothing a terminal or a Markdown renderer would act on.
+
+    Both styles lose control and format characters (escape sequences, carriage returns, direction
+    overrides). Markdown also joins the lines with `` / `` and escapes the characters that start a
+    construct, so the value stays on the line the formatter gave it."""
+    if not (text.isascii() and text.isprintable()):
+        text = text.replace("\r\n", "\n").replace("\t", " ")
+        kept = []
+        for ch in text:
+            category = unicodedata.category(ch)
+            if ch == "\n" or category in _BREAKS:
+                kept.append("\n")
+            elif category not in _DROPPED:
+                kept.append(ch)
+        text = "".join(kept)
+    if not md:
+        return text
+    if "\n" in text:
+        text = " / ".join(part.strip() for part in text.split("\n") if part.strip())
+    return text.translate(_MD_ESCAPES)
+
+
+def _safe(value: Any, md: bool) -> Any:
+    """A copy of a result with every string (keys too) passed through ``_safe_text``."""
+    if isinstance(value, str):
+        return _safe_text(value, md)
+    if isinstance(value, Mapping):
+        return {_safe(k, md): _safe(v, md) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_safe(v, md) for v in value]
+    return value
+
+
+def _records(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(r, Mapping) for r in value)
 
 
 class _Doc:
@@ -326,9 +373,10 @@ def render(
     when ``None``); ``width`` is the terminal's width for the text style (a table that does not fit is written
     as one block per row; ``None`` never reshapes, and Markdown ignores it)."""
     doc = _Doc(style, width)
-    names = summaries or {}
+    result = _safe(result, doc.md)  # H5 review R-1: a copy; the caller's payload is not changed
+    names = _safe(dict(summaries or {}), doc.md)
     op = (noun, verb)
-    if op == ("module", "list") and isinstance(result, list):
+    if op == ("module", "list") and _records(result):
         _module_list(doc, result, names, prog)
     elif op == ("module", "health") and isinstance(result, Mapping) and "ok" in result:
         target = result.get("id") or subject or "The module"
@@ -337,7 +385,7 @@ def render(
             doc.para(doc.bold(f"{target} is healthy") + (f": {detail}" if detail and detail != "ok" else "."))
         else:
             doc.para(doc.bold(f"{target} reports a problem") + f": {detail or 'no detail given'}")
-    elif op == ("audit", "tail") and isinstance(result, list):
+    elif op == ("audit", "tail") and _records(result):
         if result:
             doc.para(doc.bold(f"Last {len(result)} audit records, newest first"))
             _audit_table(doc, result, tz)

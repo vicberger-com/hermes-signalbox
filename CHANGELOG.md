@@ -91,6 +91,18 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 - Stray build artifacts `bandit-report.json` and `pr_body.md` from the repository root.
 
+### Security
+
+- **Phase-end review of 1.1.0** ([record](docs/qa/19-h5-prework.md), section 8). Fixed before release:
+  - R-1: the new chat and terminal formats printed text written by modules (health detail, action output,
+    notices, audit detail, manifest descriptions) as it came. In a chat reply it is now shown as plain words:
+    line breaks become ` / ` and the characters that start a Markdown link, image, tag, code span, heading,
+    quote or emphasis are escaped. Both formats drop control and direction-override characters, so a module
+    cannot send terminal escape sequences. `json=true` and `--json` return the payload unchanged.
+  - R-2: the formatter raised on a list result that did not hold records; it now shows it as a plain list.
+  - R-3: the first-start copy of a 1.0.x data directory followed links. A directory that contains a symbolic
+    link or a Windows junction is now refused with the link named, and nothing is copied.
+
 ### Process
 
 - Pre-work Q&A question 12 (audience and presentation) and two gates: presentation, and an operator usability

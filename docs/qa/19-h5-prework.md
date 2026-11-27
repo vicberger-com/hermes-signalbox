@@ -110,7 +110,32 @@ Answer every question. Take the recommended option, mark it **default accepted**
 | Q-SY-H5-CLOSE-1 (1), (2): `module list` too wide for a terminal; chat rejected `--key value` | after WP5 | Fixed (operator decision 2026-11-26): text tables wider than the terminal are written as one block per row; the chat command reads `--key value`, `--key=value` and `--json` as their `key=value` forms |
 | #208 no glossary (label source) | WP2 | Fixed: `hermes_signalbox.labels` with a completeness test; the served route and the published glossary follow in WP3 and WP5 |
 
+| #221 item 2: an `auto` module missing a permission was skipped silently | after WP5 | Fixed in #232 (operator decision 2026-11-26): a start-up notice in the Hermes log, or on stderr for `serve`, names each module, what it needs and the grant command. Item 4 (first-run prompt) stays open on #221 |
+
 ## 7. Retro (fill in after phase close)
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+
+## 8. Phase-end security review (2026-11-26)
+
+Scope: `git diff v1.0.3..HEAD` for `src/`, `dashboard/` and the workflows. Method: the author read the changed
+files in three areas (dashboard and control surfaces; rename and data copy; human output and chat parsing)
+and ran probes for the output area: hostile text through `present.render` in both styles, 5,000 rows and a
+1 MB value for timing, unexpected payload shapes. The dashboard and data-copy areas were read, not probed by
+execution. **No independent reviewer took part**: the three delegated reviews this project normally runs
+were refused by the host's worker policy, so this is a self-review and weaker than earlier phases.
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| R-1 | Medium | The human formatter printed module-written text as it came: Markdown structure (headings, images that fetch a remote address, links, fences) in chat replies that 1.0.x returned as JSON, and escape sequences at a terminal | Fixed: `present._safe` on every result and summary; `tests/core/test_h5_review.py::test_h5_r1_*` |
+| R-2 | Low | `present.render` raised `AttributeError` on a list without records for `module list` and `audit tail` | Fixed: such a list takes the generic path; `test_h5_r2_*` |
+| R-3 | Low | The first-start data copy followed symbolic links and junctions out of the old directory | Fixed: refused with the link named; `test_h5_r3_*` |
+| R-4 | Low | At a terminal a module's text keeps its line breaks, so it can add lines that look like other fields (true in 1.0.x as well) | Accepted, documented: scripts read `--json`, which escapes them |
+| R-5 | Info | A bare `https://` address in module text is still made clickable by Markdown renderers; it shows its real target | Accepted |
+
+Read and found sound: the dashboard profile's allow-list is enforced in the core's server, the mode route
+checks the mode in both layers, manifest links pass one strict `https` pattern in the schema and in the page,
+the page builds elements without HTML strings, module ids and capability names cannot carry shell or
+Markdown characters into the suggested commands, and the copied state holds no absolute path into the old
+directory.

@@ -16,7 +16,8 @@ Three things a 1.0.x user may still have:
   lock held so no 1.0.x process hosts it meanwhile. The copy goes to a
   temporary sibling and is renamed into place only after its audit chain
   verifies, so a failure leaves no partial directory. The old directory is
-  left as it was, for rollback.
+  left as it was, for rollback. A directory that contains a link (symbolic
+  link or Windows junction) is refused: the copy would follow it.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import stat
 import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -36,6 +38,7 @@ LEGACY_PREFIX = "SWITCHYARD_"
 NEW_PREFIX = "SIGNALBOX_"
 # Runtime files of the process that owned the old directory; never copied.
 _RUNTIME_FILES = frozenset({"host.lock", "api.port", "api.token"})
+_REPARSE_POINT = 0x400  # FILE_ATTRIBUTE_REPARSE_POINT; ``stat`` names it on Windows only
 _log = logging.getLogger("signalbox.legacy")
 
 
@@ -55,6 +58,24 @@ def legacy_env(env: Mapping[str, str], name: str) -> tuple[str, str]:
         _log.warning("%s is deprecated since 1.1.0; rename it to %s", old, new)
         return value, old
     return "", new
+
+
+def _is_link(path: Path) -> bool:
+    """A symbolic link, or on Windows any reparse point (a directory junction needs no privilege)."""
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & _REPARSE_POINT)
+
+
+def _first_link(root: Path) -> Path | None:
+    """The first link inside ``root``, or ``None``. ``os.walk`` does not descend into links."""
+    for directory, folders, files in os.walk(root):
+        for name in sorted([*folders, *files]):
+            if _is_link(Path(directory) / name):
+                return Path(directory) / name
+    return None
 
 
 def _has_state(path: Path) -> bool:
@@ -117,6 +138,14 @@ def migrate_data_dir(new_dir: Path, candidates: list[Path]) -> Migration | None:
             return None
         if staging.exists():
             shutil.rmtree(staging)
+        # H5 review R-3: ``copytree`` follows links, so a link in the old directory would pull files from
+        # outside it into the new one (or never end, for a link to a parent). Refuse instead of guessing.
+        link = _first_link(source)
+        if link is not None:
+            raise ConfigError(
+                f"{source} contains a link ({link.relative_to(source)}); nothing was copied. Replace the "
+                f"link with the files it points to, or copy the directory to {new_dir} by hand"
+            )
         shutil.copytree(source, staging, ignore=lambda _d, names: [n for n in names if n in _RUNTIME_FILES])
         result = AuditLog.verify_directory(staging / "audit")
         if not result.ok:
