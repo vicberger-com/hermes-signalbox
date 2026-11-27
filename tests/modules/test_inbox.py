@@ -283,3 +283,18 @@ def test_review_fixes(core: Core) -> None:
     kept = ib(core, "list", state="all", limit=500)["items"]
     assert len(kept) == 5 and any(i["severity"] == "critical" for i in kept)
     inst.on_event.__globals__["KEEP"] = 1000
+
+
+def test_h5_r10_a_notice_is_from_whoever_published_it(core: Core) -> None:
+    """Independent review R-10: only the core may say which module an event is about."""
+    core.bus.publish("evil", "evil.alert", {"module": "supervisor", "severity": "critical"})
+    core.bus.publish("core", "module.failed", {"module": "router", "error": "x"})
+    by_type = {i["type"]: i for i in ib(core, "list", state="all")["items"]}
+    assert by_type["module.failed"]["module"] == "router"
+    if "evil.alert" in by_type:  # shown only if the inbox takes that event type at all
+        assert by_type["evil.alert"]["module"] == "evil"
+    inst = core.manager._entry("inbox").instance
+    inst.on_event(types.SimpleNamespace(type="module.failed", source="evil", data={"module": "supervisor"}))
+    newest = ib(core, "list", state="all")["items"]
+    assert "supervisor" not in {i["module"] for i in newest}
+    assert "evil" in {i["module"] for i in newest}

@@ -105,7 +105,10 @@ class InboxModule:
         severity = data.get("severity") if data.get("severity") in SEVERITIES else default
         if SEVERITIES.index(severity) < SEVERITIES.index(self.min_severity):
             return
-        module = _line(data.get("module") or getattr(event, "source", "") or "", 32)
+        # Independent review R-10: only the core says which module an event is about. Anyone else's
+        # notice is from whoever published it, whatever its data claims.
+        source = str(getattr(event, "source", "") or "")
+        module = _line((data.get("module") if source == "core" else "") or source, 32)
         if event_type == "core.notify":
             title, detail = _line(data.get("title", ""), 120), _line(data.get("detail", ""), 500)
         else:

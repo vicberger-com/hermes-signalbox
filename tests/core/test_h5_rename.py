@@ -210,7 +210,10 @@ def test_h5_hermes_data_dir_is_copied_on_first_start(tmp_path: Path) -> None:
         assert "core.migrated" in actions and "policy.granted" in actions  # history came along
         migrated = next(r for r in records if r["action"] == "core.migrated")
         assert migrated["detail"]["from"] == str(old)
-    assert _digest(old) == before  # the old directory is untouched, for rollback
+    marker = old / legacy.MARKER  # the one file added, so that the copy is not made twice
+    assert marker.is_file()
+    marker.unlink()
+    assert _digest(old) == before  # nothing else in the old directory changed: it still rolls back
     assert not (new / "api.token").exists() and not (new / "api.port").exists()  # runtime files stay behind
     assert not new.with_name(new.name + ".migrating").exists()
 

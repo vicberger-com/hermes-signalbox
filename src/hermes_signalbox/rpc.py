@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import re
 import time
 from collections.abc import Callable
 from typing import IO, Any
@@ -25,6 +26,15 @@ MAX_NESTING = 16
 _HEADER = 4
 
 Message = dict[str, Any]
+
+
+_TYPE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+
+
+def remote_type_name(value: Any) -> str:
+    """The error type a child process reported, if it is a plain class name; otherwise ``"Error"``. The
+    name is shown to the operator and written to the audit log, and the child chooses it (review R-6)."""
+    return value if isinstance(value, str) and _TYPE_NAME.fullmatch(value) else "Error"
 
 
 class ProtocolError(SignalboxError):
@@ -205,8 +215,9 @@ class Channel:
                 err: dict[str, Any] = msg["error"] if isinstance(msg["error"], dict) else {}
                 raw_data = err.get("data")
                 data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
-                remote_type = str(data.get("type", "Error"))[:64]
-                raise RemoteError(remote_type, str(err.get("message", ""))[:1000])
+                raise RemoteError(
+                    remote_type_name(data.get("type", "Error")), str(err.get("message", ""))[:1000]
+                )
             return msg.get("result")
 
     def serve_forever(self) -> None:

@@ -11,19 +11,35 @@ core (``paths.resolve_data_dir``). Up to v1.0.2 it used ``plugin_data_dir(<plugi
 
 from __future__ import annotations
 
+import functools
 import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, ParamSpec, TypeVar, cast
 
-from hermes_signalbox import labels
+from hermes_signalbox import labels, present
 from hermes_signalbox.errors import SignalboxError
 from hermes_signalbox.legacy import legacy_env
 from hermes_signalbox.paths import ENV_VAR, resolve_data_dir
 
 PLUGIN_ID = "signalbox"
 HEALTH_MAX = 120  # characters of the Health cell
+
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _cleaned(view: Callable[_P, _R]) -> Callable[_P, _R]:
+    """What a view function returns goes to the page, and holds text that modules wrote: it leaves
+    without control or format characters (direction overrides, escape sequences, zero-width)."""
+
+    @functools.wraps(view)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        return cast(_R, present.clean(view(*args, **kwargs)))
+
+    return wrapper
 
 
 def configured_data_dir(config: Mapping[str, Any]) -> Path | None:
@@ -103,6 +119,7 @@ def rows_with_health(
 _DETAILS = ("summary", "license", "source", "links", "based_on", "update")
 
 
+@_cleaned
 def module_rows(
     rows: Sequence[Mapping[str, Any]], show: Callable[[str], object], health: Callable[[str], object]
 ) -> list[dict[str, Any]]:
@@ -169,6 +186,7 @@ def _records(value: object) -> list[Mapping[str, Any]]:
     return [r for r in value if isinstance(r, Mapping)] if isinstance(value, list) else []
 
 
+@_cleaned
 def report_view(report: object) -> dict[str, Any]:
     """What the Reports view lays out for one ``report show`` result: sentences and labels instead of audit
     records and ids, repeats counted, newest first. Chain hashes and raw records stay in the report itself."""
@@ -250,6 +268,7 @@ def _fields(detail: str) -> list[dict[str, str]]:
     ]
 
 
+@_cleaned
 def inbox_view(result: object) -> dict[str, Any]:
     """The Inbox view for one ``inbox list`` result: the items as stored, plus ``groups`` (identical notices
     merged with a count, newest first, severity and detail fields labelled) and the number still open."""

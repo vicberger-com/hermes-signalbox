@@ -139,3 +139,34 @@ checks the mode in both layers, manifest links pass one strict `https` pattern i
 the page builds elements without HTML strings, module ids and capability names cannot carry shell or
 Markdown characters into the suggested commands, and the copied state holds no absolute path into the old
 directory.
+
+## 9. Independent re-review (2026-11-27)
+
+The review in section 8 was a self-review: the host refused the three delegated reviewers. The operator
+asked for it to be repeated independently before the tag. Three fresh sessions with file-reading tools only
+and no knowledge of the work each reviewed one area of the diff `v1.0.3..d58c82d` (dashboard and control
+surface; first-start copy and core; readable output) and were told to check the fixes R-1 to R-3 instead of
+trusting them. They read code and ran nothing; every finding below was reproduced by a test or a probe
+before it was accepted.
+
+| ID | Finding | Disposition |
+|---|---|---|
+| R-4 | R-1 was incomplete: `_`/`~` emphasis, line-start constructs, bare addresses as links in chat replies | Fixed |
+| R-5 | `RecursionError` in the formatter on deeply nested data | Fixed (cut off at 32 levels) |
+| R-6 | stderr failure line unfiltered; a subprocess module chose its error type name; a time out of range broke `audit tail` text | Fixed |
+| R-7 | First-start copy: source directory itself a link; copy repeated when the new state was lost; damaged `state.db` copied; OS error as a traceback; permission bits kept | Fixed |
+| R-8 | `--data-dir`, `--port` repeated: last value won | Fixed |
+| R-9 | Dashboard text not filtered for control and format characters | Fixed |
+| R-10 | Inbox notice could name another module as its source | Fixed |
+| R-11 | Start-mode route: no body limit or content-type check; list-valued id dropped the connection | Fixed |
+| A-1 | Hermes dashboard serves its session token to any loopback client; Signalbox's dashboard routes sit behind it | Not ours to fix. In SECURITY.md "Known limits". Reporting it to Hermes is the operator's decision |
+| B-3, B-4 | The copy imports `config.toml` and `modules/` from the old directory | Accepted: same trust as the new directory; in SECURITY.md |
+| C-7 | The untrusted-data note on tool results is advisory | Unchanged since 1.0; in SECURITY.md |
+| C-4 | Look-alike characters are not normalised | Accepted: normalising would damage ordinary non-English text |
+| A-4, A-6, B-6, B-7, B-12 | Audit noise from inbox reads and one actor for two API profiles; "Refused" shown for an unknown outcome; audit head not compared before the copy is committed; legacy secret names used without saying so; whether a migrated grant can cover a wider scope | Deferred to the next phase, in the follow-up issue |
+
+Claims that did not reproduce: `>` is escaped; 100,000 rows and a 10 MB string render in under a second.
+
+What this review still is not: the reviewers are fresh sessions of the same model family as the author, and
+none of them executed the code. An external review remains open (SECURITY.md).
+

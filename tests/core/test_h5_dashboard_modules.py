@@ -54,7 +54,11 @@ class _Router:
 class _Request:
     def __init__(self, body: Any = None, site: str | None = None) -> None:
         self._body = body
-        self.headers = types.SimpleNamespace(getlist=lambda name: [site] if site else [])
+        self.sent: dict[str, str] = {}
+        self.headers = types.SimpleNamespace(
+            getlist=lambda name: [site] if site else [],
+            get=lambda name, default=None: self.sent.get(name, default),
+        )
 
     async def json(self) -> Any:
         if isinstance(self._body, Exception):
@@ -185,3 +189,26 @@ def test_h5_wp4_the_report_route_adds_what_the_page_lays_out(api: Any, core: Cor
     ]
     changes = asyncio.run(api.report("changes"))
     assert changes["view"] == {"rows": []} and "changes" in changes  # the raw records are still there
+
+
+@pytest.mark.parametrize(
+    ("headers", "status"),
+    [
+        ({"content-length": str(64 * 1024 + 1)}, 413),
+        ({"content-length": "many"}, 400),
+        ({"content-type": "text/plain"}, 415),
+        ({"content-type": "application/json; charset=utf-8", "content-length": "17"}, None),
+    ],
+)
+def test_h5_r11_the_mode_route_refuses_an_oversized_or_non_json_body_before_reading_it(
+    api: Any, core: Core, headers: dict[str, str], status: int | None
+) -> None:
+    request = _Request({"mode": "disabled"})
+    request.sent = headers
+    if status is None:
+        assert asyncio.run(api.module_mode("aaa", request)) == {"mode": "disabled"}
+        return
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(api.module_mode("aaa", request))
+    assert refused.value.status_code == status
+    assert core.manager.info("aaa").mode != "disabled"

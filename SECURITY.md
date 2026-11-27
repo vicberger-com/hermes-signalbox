@@ -23,6 +23,23 @@ Signalbox is **Beta** (H1 D-14): 1.x has one operator so far and no external rev
 - Security fixes may change behaviour in a patch release when the old behaviour is the vulnerability; the
   CHANGELOG says so under `Security`.
 
+## Known limits
+
+- **One operator account.** Signalbox trusts the user account it runs as. A program running as that user can
+  already read and change the data directory.
+- **The Hermes dashboard on this computer.** The Hermes dashboard serves its session token to any program
+  that requests the page from 127.0.0.1, and Signalbox's dashboard routes sit behind that token. Another
+  local program, or another account on the same computer, can therefore start and stop modules, change
+  start modes and acknowledge inbox notices. It cannot grant a permission, install, update or remove a
+  module or change the configuration: the dashboard profile has no such route. This is a property of the
+  Hermes dashboard; Signalbox cannot close it. Do not run the dashboard on a computer you share. (Found by
+  reading the code in the independent review of 1.1.0; not exercised.)
+- **A 1.0.x data directory is imported whole** on the first start, including its `config.toml` and
+  `modules/`. Whoever could write that directory could write the new one.
+- **The model reads module output.** Tool results that carry module-written text are marked as untrusted
+  data, and chat replies show that text as words. Neither can stop a model from acting on what it reads.
+- **Look-alike characters** (for example mathematical digits) in module-written text are shown as written.
+
 ## Baseline
 
 - Security is the first priority and overrides utility, speed and size in every design decision.
