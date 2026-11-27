@@ -6,9 +6,11 @@ Common issues and their fixes. Each entry: **Symptom → Cause → Fix (copy-pas
 
 ## Module Stays "verified" — Won't Activate
 
-**Symptom**: `hermes -p default signalbox module list` shows `status: verified` with `missing_grants: []` but module never goes `active`.
+**Symptom**: `hermes -p default signalbox module list` shows the module as "Manual start" or "Ready", and it
+never becomes "Running".
 
-**Cause**: Module is in `manual` mode (offload, scanner, trimmer, updates). Auto modules activate on gateway restart; manual modules need explicit activation.
+**Cause**: The module's start mode is `manual` (offload, scanner, trimmer and updates ship that way). Modules
+in `auto` mode start when Hermes starts; manual ones start when you start them.
 
 **Fix**:
 ```bash
@@ -31,19 +33,19 @@ permissions it needs and the `module grant` command to run.
 
 ## "audit verify" Fails
 
-**Symptom**: `hermes -p default signalbox audit verify` returns non-zero exit code.
+**Symptom**: `hermes -p default signalbox audit verify` reports a problem and exits with a non-zero code.
 
-**Cause**: Tampered or corrupted audit log/anchor record.
+**Cause**: A record in the audit log, or the stored end-of-chain marker, was changed or damaged.
 
 **Fix**:
 ```bash
-# Inspect recent records
-hermes -p default signalbox audit tail -n 20
+# Read the most recent records
+hermes -p default signalbox audit tail --n 20
 
-# Check for verify_failed records
-hermes -p default signalbox audit tail -n 100 | grep verify_failed
+# Look for failed checks in the raw records
+hermes -p default signalbox --json audit tail --n 100 | grep verify_failed
 
-# After investigation, acknowledge
+# After you have looked into it, acknowledge the failure
 hermes -p default signalbox audit ack
 ```
 
@@ -51,19 +53,25 @@ hermes -p default signalbox audit ack
 
 ## Daemon Won't Start / "Address already in use"
 
-**Symptom**: `hermes-signalbox api serve` fails with port conflict.
+**Symptom**: `hermes-signalbox api serve` stops with a port conflict, or says another process hosts the
+modules.
 
-**Cause**: Stale `api.port` / `api.token` files from crashed daemon.
+**Cause**: Either another program uses the port set under `[api] port` in `config.toml`, or Hermes is already
+running Signalbox for this data directory. Leftover `api.port` and `api.token` files from a crashed daemon are
+not the cause: Signalbox removes them itself when nothing is running.
 
 **Fix**:
 ```bash
-# Find data dir
-hermes -p default signalbox config show | grep data_dir
+# See the data directory, the configured port and whether a process is hosting
+hermes -p default signalbox config show
+```
 
-# Remove stale files
-rm <data_dir>/api.port <data_dir>/api.token
+- If `hosting.here` or `hosting.pid` shows a running process, Hermes hosts the modules: do not start a second
+  daemon. Use the Hermes chat or the API inside Hermes (see "Manual Module Won't Activate from CLI").
+- Otherwise set `port = 0` under `[api]` in `config.toml` (0 picks a free port), or choose a free port, then
+  start the daemon again:
 
-# Restart daemon
+```bash
 hermes-signalbox api serve
 ```
 
@@ -71,89 +79,114 @@ hermes-signalbox api serve
 
 ## Two Data Directories Confusion
 
-**Symptom**: Grants/modules visible in CLI but not Hermes (or vice versa). Commands work in one context but not the other.
+**Symptom**: Grants or modules show up in one place and not the other; a command works in a Hermes chat but
+not at the terminal, or the reverse.
 
-**Cause**: Hermes plugin data dir ≠ `signalbox` CLI default data dir.
+**Cause**: Signalbox inside Hermes uses the Hermes plugin data directory. The standalone command
+`hermes-signalbox` uses its own default directory unless you tell it otherwise.
 
 **Fix**:
 ```bash
-# Option A: Use Hermes-hosted commands (recommended)
+# Option A (recommended): use the Hermes-hosted command, which always uses the Hermes directory
 hermes -p default signalbox module list
 
-# Option B: Set unified data dir for both
-export SIGNALBOX_DATA_DIR=$(hermes -p default signalbox config show | grep data_dir | cut -d' ' -f2)
-# Then use signalbox CLI normally
-signalbox module list
+# Option B: point the standalone command at the same directory.
+# Take the path from the "data_dir:" line of this output:
+hermes -p default signalbox config show
 ```
+
+Then set `SIGNALBOX_DATA_DIR` to that path (for example `export SIGNALBOX_DATA_DIR="/path/from/above"`) and
+run `hermes-signalbox module list`.
 
 ---
 
 ## Dashboard Tab Missing
 
-**Symptom**: No "Signalbox" tab in Hermes Desktop dashboard.
+**Symptom**: No "Signalbox" tab in the Hermes dashboard.
 
-**Cause**: Installed via pip or wrong plugin name; dashboard plugin not registered.
+**Cause**: One of three things: the local API is off (the default); Signalbox was installed with pip (Hermes
+shows a dashboard tab only for plugins installed into its plugins directory); or the plugin is not enabled.
 
 **Fix**:
-```bash
-# Must use hermes plugins install (not pip)
-hermes plugins install vicberger-com/hermes-signalbox --ref <SHA>
-hermes plugins enable signalbox
 
-# Restart Hermes Desktop completely
-```
+1. Add these two lines to `config.toml` in the data directory (`config show` prints the directory):
+
+   ```toml
+   [api]
+   enabled = true
+   ```
+
+2. Install with `hermes plugins install`, not pip, and enable the plugin:
+
+   ```bash
+   hermes plugins install vicberger-com/hermes-signalbox --ref <SHA>
+   hermes plugins enable signalbox
+   ```
+
+3. Restart Hermes completely.
 
 ---
 
-## Grant Fails "Capability Not Declared"
+## Grant Is Refused: "not requested in the manifest"
 
-**Symptom**: `hermes -p default signalbox module grant <module> --capability <cap>` errors with "capability not declared".
+**Symptom**: `hermes -p default signalbox module grant <module> --capability <cap>` answers
+`denied: cannot grant '<cap>' to '<module>': not requested in the manifest`.
 
-**Cause**: Typo in capability name, or module doesn't request that capability.
+**Cause**: A typing mistake in the permission name, or the module does not ask for that permission. Only
+permissions a module asks for can be granted.
 
 **Fix**:
 ```bash
-# Check what capabilities the module actually requests
+# See what the module asks for and what it still needs
 hermes -p default signalbox module show <module>
-# Look at "requested" field — only these can be granted
-
-# Grant only from the requested list
 ```
+
+Grant one permission per command. `--capability` given twice in one command is refused.
 
 ---
 
 ## Update Rejected "Wider Capabilities"
 
-**Symptom**: Module update fails with "wider capabilities not accepted".
+**Symptom**: A module update is refused because the new version asks for more than the installed one.
 
-**Cause**: New version adds capabilities/hosts/secrets beyond what was granted.
+**Cause**: The new version adds permissions, hosts, secrets or other contributions, or weakens isolation.
+Signalbox does not accept that without your explicit yes.
 
 **Fix**:
 ```bash
-# Preview the update first
+# See what the update would change, and the digest of the reviewed version
 hermes -p default signalbox module preview <id> --ref <sha>
 
-# If acceptable, apply with --accept-wider
-hermes -p default signalbox module update <id> --ref <sha> --accept-wider --digest <digest>
+# If you accept the wider access, apply exactly the version you reviewed
+hermes -p default signalbox module update <id> --ref <sha> --digest <digest> --accept-wider
 ```
 
 ---
 
 ## Manual Module Won't Activate from CLI
 
-**Symptom**: `hermes -p default signalbox module activate <module>` fails or does nothing.
+**Symptom**: `hermes -p default signalbox module activate <module>` answers
+`'module activate' needs the running daemon`.
 
-**Cause**: Hermes hosts modules; CLI `activate` needs the daemon running (separate process).
+**Cause**: Starting a module, checking its health and running its actions need the process that hosts the
+modules. When Hermes hosts them, the terminal command cannot reach that process unless the local API is on.
 
-**Fix**:
-```bash
-# Use Hermes chat instead (works when Hermes hosts modules)
-/signalbox module activate <module>
+**Fix** (either one):
 
-# Or start daemon, then use CLI
-hermes-signalbox api serve &
-hermes -p default signalbox module activate <module>
-```
+- In a Hermes chat of that profile:
+
+  ```bash
+  /signalbox module activate <module>
+  ```
+
+- Or turn on the API inside Hermes: add the two lines `[api]` and `enabled = true` to `config.toml` in the
+  data directory, restart Hermes, then run:
+
+  ```bash
+  hermes -p default signalbox module activate <module>
+  ```
+
+Do not start `hermes-signalbox api serve` on a data directory that Hermes is already hosting.
 
 ---
 
@@ -176,97 +209,115 @@ hermes -p default signalbox module list
 
 ## Health Check Fails
 
-**Symptom**: `hermes -p default signalbox module health <module>` returns error.
+**Symptom**: `hermes -p default signalbox module health <module>` reports a problem.
 
-**Cause**: Module's `health()` method raised exception (misconfig, missing dep, etc).
+**Cause**: The module's own health check failed: a missing permission, a setting that is wrong, or an outside
+service that is down.
 
 **Fix**:
 ```bash
-# Get detailed error
+# The reason the module gives
 hermes -p default signalbox module health <module>
 
-# Check module logs
-cat <data_dir>/logs/<module>.jsonl
-
-# Common: missing capability, config error, external service down
+# Its permissions and state
+hermes -p default signalbox module show <module>
 ```
+
+The module's log is `<data_dir>/logs/<module>.jsonl`.
 
 ---
 
 ## Router Not Routing to Free Models First
 
-**Symptom**: Paid models used when free available.
+**Symptom**: Paid models are used when a free one would do.
 
-**Cause**: Router rules misconfigured, or budget not set.
+**Cause**: A routing rule or a pinned model asks for it, or no daily limit for paid requests is set.
 
-**Fix**:
+**Fix** (in a Hermes chat, or at the terminal when the API inside Hermes is on):
 ```bash
-# Check router status and rules
-hermes -p default signalbox module run router status
-hermes -p default signalbox module run router explain <request>
+# Current pools, rules and budget
+hermes -p default signalbox module action router --action status
 
-# Set budget if missing
-hermes -p default signalbox module run router budget --set <amount>
+# Why a request of a given size would go where it goes
+hermes -p default signalbox module action router --action explain --args '{"tokens": 2000}'
+
+# Limit paid requests per day
+hermes -p default signalbox module action router --action budget --args '{"paid_requests_per_day": 20}'
 ```
+
+All router actions and their arguments: [router README](../src/hermes_signalbox/modules/router/README.md).
 
 ---
 
 ## Meter Not Tracking Usage
 
-**Symptom**: `meter summary` shows zero usage.
+**Symptom**: The usage summary shows nothing.
 
-**Cause**: Meter hooks not firing, or wrong provider config.
+**Cause**: The `meter` module is not running, or it lacks the `hermes.hooks` permission that lets it see
+requests.
 
 **Fix**:
 ```bash
-# Check meter status
+# State and permissions
 hermes -p default signalbox module show meter
 
-# Verify hooks registered
-hermes -p default signalbox module run meter summary --days 7
+# Usage of the last 7 days
+hermes -p default signalbox module action meter --action summary --args '{"days": 7}'
 
-# Reload prices if needed
-hermes -p default signalbox module run meter prices_reload
+# Read the price table again after editing it
+hermes -p default signalbox module action meter --action prices_reload
 ```
 
 ---
 
 ## Secrets Not Resolving
 
-**Symptom**: `secret://name` not replaced in outbound requests.
+**Symptom**: A `secret://name` reference is not replaced.
 
-**Cause**: Backend not configured, or secret name mismatch.
+**Cause**: No secret store is available, or no secret is stored under that name.
 
 **Fix**:
 ```bash
-# Check secrets status
+# State and permissions
 hermes -p default signalbox module show secrets
-hermes -p default signalbox module run secrets status
 
-# Configure backend (e.g., Vaultwarden)
-# Then add secret
-hermes -p default signalbox module run secrets add <name> <value>
+# Which stores are available and which names are known (values are never shown)
+hermes -p default signalbox module action secrets --action status
 ```
+
+Store the secret in your operating system's own store under the name Signalbox looks for; the
+[secrets README](../src/hermes_signalbox/modules/secrets/README.md) lists the name format for each store
+(Windows Credential Manager, macOS keychain, Secret Service, Vaultwarden). Never put a secret value on a
+command line or in a chat: Signalbox has no command that takes one.
 
 ---
 
 ## Offload Connector Not Working
 
-**Symptom**: Work not sent to n8n/JevK5/agent CLI.
+**Symptom**: Work is not sent to n8n, JevK5 or an agent command-line tool.
 
-**Cause**: Connector not allowed by name, or host not in allow-list.
+**Cause**: The connector is not in the allow list, the module lacks a permission, or it is not started.
 
 **Fix**:
 ```bash
-# Check offload config
+# State and permissions
 hermes -p default signalbox module show offload
-hermes -p default signalbox module run offload connectors
 
-# Allow connector by name
-hermes -p default signalbox module grant offload --capability net.outbound --capability process.spawn --capability ui.panel
-# Then activate
+# Connectors and whether each is enabled
+hermes -p default signalbox module action offload --action connectors
+```
+
+Connectors other than `jevk5` are off until you name them: add them to `allow` under `[modules.offload]` in
+`config.toml` (for example `allow = ["n8n"]`) and restart Hermes. Agent command-line connectors also need
+the optional `process.spawn` permission:
+
+```bash
+hermes -p default signalbox module grant offload --capability process.spawn
 hermes -p default signalbox module activate offload
 ```
+
+Read the [offload README](../src/hermes_signalbox/modules/offload/README.md) before allowing `codex`: it
+can read local files.
 
 ---
 
@@ -276,12 +327,11 @@ hermes -p default signalbox module activate offload
 |-----|----------|
 | Module logs | `<data_dir>/logs/<module>.jsonl` |
 | Audit log | `<data_dir>/audit/audit-*.jsonl` |
-| Daemon logs | `<data_dir>/logs/daemon.jsonl` (if running) |
-| Hermes gateway | `~/.local/share/hermes/logs/` |
+| Start-up notices and warnings | The Hermes log (logger `signalbox`), or the terminal running `hermes-signalbox api serve` |
 
 Find `<data_dir>`:
 ```bash
-hermes -p default signalbox config show | grep data_dir
+hermes -p default signalbox config show
 ```
 
 ---
@@ -292,5 +342,5 @@ hermes -p default signalbox config show | grep data_dir
 2. Run `hermes -p default signalbox audit verify` — if chain fails, that's the root
 3. File an issue at https://github.com/vicberger-com/hermes-signalbox/issues with:
    - `hermes -p default signalbox module list` output
-   - `hermes -p default signalbox audit tail -n 20` output
+   - `hermes -p default signalbox audit tail --n 20` output
    - Steps to reproduce

@@ -35,7 +35,6 @@ _OLD_TAG_LINK = "/src/switchyard/"
 # file -> text each such line contains. Anything else that says the old name fails the test.
 UPGRADE_LINES = {
     "docs/QUICKSTART.md": ("For v1.0.x, use `switchyard`",),
-    "docs/ROADMAP.md": ("v1.0.3 (Switchyard)",),
     "docs/USER-GUIDE.md": ("| `core.migrated` | Data copied from Switchyard |",),
     "src/hermes_signalbox/core.py": ("copy a Switchyard 1.0.x data directory",),
     "src/hermes_signalbox/labels.py": ('"core.migrated": ("Data copied from Switchyard"',),

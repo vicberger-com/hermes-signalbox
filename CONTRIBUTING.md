@@ -6,6 +6,11 @@ Applies to people and agents alike. Agents also follow [AGENTS.md](AGENTS.md).
 
 - Trunk-based. `main` is protected. Branch names: `feat/m3-router`, `fix/…`, `docs/…`, `chore/…`.
 - Conventional Commits (`feat(m3): …`, `fix(core): …`). One logical change per PR. Squash merge.
+  The prefix is a label, not an error or a command: the word is the kind of change (`feat` a new
+  capability, `fix` a correction, `docs`, `test`, `chore`, `ci`), the part in brackets is the phase or area
+  it belongs to (`h5` is maintenance phase H5, the work for v1.1.0), and a `!` marks a breaking change.
+  GitHub shows the title of the last commit that touched each file beside it in the file list, which is why
+  the same prefix appears on many rows.
 - A PR needs: linked issue or phase, filled template, green CI, no unresolved review comment.
 - Releases: semantic versions, annotated tags (signing is planned once a maintainer signing key exists), changelog
   entry (Keep a Changelog format), SBOM attached. The release workflow publishes only an annotated tag on `main`
