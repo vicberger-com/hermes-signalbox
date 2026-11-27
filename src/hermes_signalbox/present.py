@@ -91,6 +91,30 @@ def _needs(doc: _Doc, row: Mapping[str, Any]) -> str:
     return ", ".join(f"{labels.capability(c)} ({doc.code(c)})" for c in row.get("missing_grants") or ())
 
 
+def start_notice(skipped: Mapping[str, Sequence[str]], prog: str) -> list[str]:
+    """What the hosting process says at start-up about ``auto`` modules it could not start (#221): one
+    summary line, then one line per module with what it needs and the command that grants the first one.
+    Empty when nothing was skipped. Plain text: it goes to a log or a terminal."""
+    if not skipped:
+        return []
+    count = len(skipped)
+    lines = [
+        f"Signalbox: {count} module{'s' if count != 1 else ''} set to start with Hermes "
+        f"{'were' if count != 1 else 'was'} not started because "
+        f"{'they are' if count != 1 else 'it is'} missing permissions. "
+        "Grant them, or set a module's start mode to manual to stop this notice."
+    ]
+    for module_id in sorted(skipped):
+        missing = list(skipped[module_id])
+        needs = ", ".join(f"{labels.capability(c)} ({c})" for c in missing)
+        lines.append(
+            f"{module_id} needs {len(missing)} permission{'s' if len(missing) != 1 else ''}: {needs}. "
+            f"Grant {'each' if len(missing) != 1 else 'it'} with: {prog} module grant {module_id} "
+            f"--capability {missing[0]}"
+        )
+    return lines
+
+
 def _is_module_row(value: Any) -> bool:
     return isinstance(value, Mapping) and {"id", "status", "mode", "missing_grants"} <= set(value)
 

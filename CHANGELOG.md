@@ -54,6 +54,10 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
   are returned unchanged next to them. The views that use this follow in the next change.
 - **Label glossary for the dashboard** (#208): `GET /labels` in the dashboard backend serves the label tables.
   It is static and makes no call to the core.
+- **Start-up notice for modules waiting for permissions** (#221): a module set to start with Hermes that is
+  missing a permission used to be skipped with only an audit record. The hosting process now says so once per
+  start: a warning in the Hermes log (logger `signalbox`), or on stderr for `hermes-signalbox serve`, naming
+  each module, what it needs and the command that grants it. `module.auto_skipped` is still recorded.
 
 ### Changed
 
