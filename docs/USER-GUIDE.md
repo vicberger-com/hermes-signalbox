@@ -388,8 +388,8 @@ Next step: a module starts once it has every permission it needs. Grant one with
 In a Hermes chat, `/signalbox module list` gives the same content as Markdown. At a terminal, the rows between
 those two lines are a table when the window is wide enough, and one short block per module when it is not.
 
-For scripts, ask for the data instead: `--json` before the noun at a terminal
-(`hermes-signalbox --json module list`), or `json=true` in a chat (`/signalbox module list json=true`). Both
+For scripts, ask for the data instead: `--json` at a terminal, before the noun or at the end of the command
+(`hermes-signalbox module list --json`), or `json=true` in a chat (`/signalbox module list json=true`). Both
 return the operation's payload unchanged from earlier versions. The model's tools always receive that payload,
 never the text for people.
 

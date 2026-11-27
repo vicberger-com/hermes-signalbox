@@ -50,8 +50,8 @@ class _Once(argparse.Action):
         setattr(namespace, self.dest, values)
 
 
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="hermes-signalbox", description="Hermes Signalbox control plane.")
+def _parser(prog: str = "hermes-signalbox") -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog, description="Hermes Signalbox control plane.")
     parser.add_argument(
         "--data-dir", type=Path, default=None, help="data directory (default: platform location)"
     )
@@ -70,6 +70,11 @@ def _parser() -> argparse.ArgumentParser:
             )
         text = operation.description + ("" if operation.offline else " [daemon]")  # H1 D-7
         sub = groups[noun].add_parser(verb, help=text, description=text)
+        # The text output ends with "add --json": accept it after the operation too. SUPPRESS keeps a
+        # flag given before the operation from being reset to False here.
+        sub.add_argument(
+            "--json", action="store_true", default=argparse.SUPPRESS, help="print the result as JSON"
+        )
         for name, spec in operation.params.items():
             flag = "--" + name.replace("_", "-")
             if name == "id":
@@ -228,7 +233,7 @@ def _needs_host(operation: Operation, params: dict[str, Any], hosted: bool) -> s
 
 
 def main(argv: list[str] | None = None, *, prog: str = "hermes-signalbox") -> int:
-    parser = _parser()
+    parser = _parser(prog)
     args = parser.parse_args(argv)
     if args.noun is None:
         parser.print_help()

@@ -32,10 +32,12 @@ modules, grants and data carry over. Names do not: update anything you typed or 
 3. Restart the gateway (`hermes gateway restart`). On its first start Signalbox copies the old data directory
    (next section). Check with `hermes signalbox audit tail`: the newest records include `core.migrated`, with the
    old path under `from`.
-4. Rename `SWITCHYARD_DATA_DIR` and `SWITCHYARD_SECRET_*` in your environment or `.env` to the `SIGNALBOX_` names.
-5. Update anything that calls the old commands or tool names (scripts, saved prompts, scheduled tasks, the
+4. If you route Hermes delegation through the `workers` module, your Hermes `config.yaml` has
+   `delegation.backend: switchyard`. Change it: `hermes config set delegation.backend signalbox`.
+5. Rename `SWITCHYARD_DATA_DIR` and `SWITCHYARD_SECRET_*` in your environment or `.env` to the `SIGNALBOX_` names.
+6. Update anything that calls the old commands or tool names (scripts, saved prompts, scheduled tasks, the
    standalone service from USER-GUIDE section 10).
-6. When everything works, delete the old data directory if you no longer need it for a rollback.
+7. When everything works, delete the old data directory if you no longer need it for a rollback.
 
 ## How the data directory is copied
 

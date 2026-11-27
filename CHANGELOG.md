@@ -93,6 +93,11 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ### Fixed
 
+- **`--json` works at the end of a command** (usability review of the release candidate): the text output
+  ends with "Raw data: add --json.", and `module list --json` was refused; the flag was only accepted before
+  the noun. It is accepted in both places. Usage and error text now name the command that was typed
+  (`hermes signalbox`, not `hermes-signalbox`, when run through Hermes).
+- UPGRADING: added the step that changes `delegation.backend` in the Hermes configuration.
 - **An option given twice is refused** (repository review D-1): `module grant <id> --capability a --capability b`
   kept the last value and dropped the first without a word, at the terminal and in chat, so a pasted grant
   line gave one permission out of several. It now stops with "was given more than once; run one command for

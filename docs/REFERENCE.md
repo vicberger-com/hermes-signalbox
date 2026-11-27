@@ -3,7 +3,7 @@
 Written by hand against the code (operations table: `hermes_signalbox.ops.OPERATIONS`; a test checks that every
 operation is listed here). How to use them: [USER-GUIDE.md](USER-GUIDE.md).
 
-Global CLI options, before the noun: `--json` (print results as JSON) and `--data-dir PATH` (use this data
+CLI options: `--json` (print results as JSON; before the noun or after the operation) and, before the noun, `--data-dir PATH` (use this data
 directory; it wins over `SIGNALBOX_DATA_DIR`).
 
 Output formats (1.1): without `--json` the CLI prints text for a person: a summary line first, then a table
