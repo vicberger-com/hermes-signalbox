@@ -39,6 +39,10 @@ modules, grants and data carry over. Names do not: update anything you typed or 
 
 ## How the data directory is copied
 
+A data directory that contains a symbolic link or a Windows junction is not copied: Signalbox stops with a
+message naming the link. Replace the link with the files it points to and start again, or copy the directory
+by hand.
+
 On the first start of 1.1, when the new data directory has no state yet, Signalbox looks for exactly one old
 one next to it: `agent-plugin-switchyard-*` in Hermes, `switchyard` for the standalone default. If it finds one:
 
