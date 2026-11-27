@@ -26,6 +26,7 @@ Executed by a Hermes agent under [AGENTS.md](../AGENTS.md). Order is fixed: core
 | H3 | Maintenance after the evaluation of v1.0.1 plus the 1.1 stabilization ([evaluation](qa/16-h3-eval-prework.md), [Q&A](qa/17-h3-prework.md)) | H2 | v1.0.2 |
 | H4 | Maintenance after the v1.0.2 install acceptance: every finding of the first acceptance install ([Q&A](qa/18-h4-prework.md)) | H3 | v1.0.3 |
 | H5 | Rename to Signalbox and the v1.0.3 user-testing usability findings (#205-#208, #210); first phase under pre-work question 12 and the presentation and operator usability gates ([Q&A](qa/19-h5-prework.md)) | H4 | v1.1.0 |
+| H6 | Operator validation surfaces: a screen per module with configuration in effect, controls, status, results and log, and the command-line and chat equivalents ([ADR-0016](adr/0016-trust-but-validate.md), [gap analysis](qa/20-validation-gap.md)). Adds views, so it is a feature phase run under the maintenance rules for scope and review | H5 | v1.2.0 |
 
 ## Maintenance phases (after 1.0)
 
@@ -84,12 +85,13 @@ Run every step; do not skip to code.
 | Docs | Every public function, tool, command, config key and event documented |
 | Security behaviour | Denied-capability test, secret-never-in-output test, audit-chain test |
 | Presentation | Every user-facing output answers pre-work question 12: plain-language summary first, terms explained, JSON only on request |
+| Validation | Every function added or changed answers pre-work question 13 ([ADR-0016](adr/0016-trust-but-validate.md)): the operator can see its configuration in effect, its controls, its status, its results and its log, and the acceptance list names how each was observed |
 | Operator usability (release only) | Before a release counts as accepted, the operator uses each changed user-facing surface (chat, CLI, dashboard, reports, inbox) on a real install; every finding is fixed or recorded with a disposition |
 
 ## Definition of done for a module
 
 Works standalone and inside Hermes; can be enabled, disabled, updated and removed without restart of the core;
-has its own panel or settings section, log stream, health check and report section; holds no capability it does
+has its own screen showing its configuration in effect, controls, status, results and log ([ADR-0016](adr/0016-trust-but-validate.md); until M9 this read "its own panel or settings section, log stream, health check and report section", which every module registered and the dashboard did not display); holds no capability it does
 not use; ships tests, docs and SBOM entries; leaves no state behind on removal unless the user keeps it.
 
 ## P0 tasks

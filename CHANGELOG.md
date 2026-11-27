@@ -124,6 +124,12 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ### Process
 
+- **Trust but validate** ([ADR-0016](docs/adr/0016-trust-but-validate.md), operator statement of 2026-11-27): for
+  every function the operator can see whether it is safe, whether it was done, whether it was done right
+  and what should improve, and can correct it. Pre-work question 13 and a validation gate apply from the
+  next phase. The [gap analysis](docs/qa/20-validation-gap.md) records where 1.1.0 does not meet it: no
+  per-module screen, status panels registered and not displayed, module settings in effect not shown.
+  H6 (v1.2.0) builds the per-module screens.
 - Pre-work Q&A question 12 (audience and presentation) and two gates: presentation, and an operator usability
   review before a release counts as accepted. From v1.0.3 user testing (#205, #206, #207).
 

@@ -21,6 +21,8 @@
 
 ## Phase 2: Operational Improvements (Next Sprint)
 
+**First: operator validation surfaces (H6, v1.2.0).** A screen per module with its configuration in effect, controls, status, results and log, and the same at the command line and in chat ([ADR-0016](adr/0016-trust-but-validate.md), [gap analysis](qa/20-validation-gap.md)). Today every module registers a status panel and the dashboard displays none of them.
+
 **Goal**: Zero "module stuck verified" support requests; grants self-service
 
 | Enhancement | Description | Module(s) |

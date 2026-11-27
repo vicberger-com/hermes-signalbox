@@ -23,6 +23,14 @@ Install by owner/repository and commit
 **Priorities (in order, used to break every tie):** 1 security, 2 utility, 3 open source, 4 speed and capacity,
 5 size and code clarity.
 
+## Principle: trust but validate
+
+Signalbox does work for you; it does not ask you to take that on faith. For every function you should be
+able to see whether it is safe, whether it was done, whether it was done right and what could improve, and
+to correct it ([ADR-0016](docs/adr/0016-trust-but-validate.md)). Where the product does not yet meet this
+is listed in [docs/qa/20-validation-gap.md](docs/qa/20-validation-gap.md): today each module has a status
+panel and settings, and the dashboard does not yet show them.
+
 ## Read in this order
 
 | File | What it is |
