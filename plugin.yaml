@@ -2,7 +2,7 @@
 # `hermes_agent.plugins` entry point declared in pyproject.toml. Implementation: src/hermes_signalbox/hermes/__init__.py
 manifest_version: 2
 name: signalbox
-version: 1.0.3
+version: 1.1.0
 description: "Security-first, modular control plane for Hermes: modules, capability grants, audit, secrets by reference."
 author: Vic Berger
 license: Apache-2.0

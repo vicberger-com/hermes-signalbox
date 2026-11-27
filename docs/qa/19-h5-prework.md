@@ -116,6 +116,15 @@ Answer every question. Take the recommended option, mark it **default accepted**
 
 | Assumption that was wrong | Correction | Affects |
 |---|---|---|
+| A page of commands written from memory is close enough | QUICKSTART and TROUBLESHOOTING showed commands that do not exist and a grant line that gave one permission out of several. Every command in a user-facing page is now parsed by a test (`tests/test_repo_review_docs.py`) | Every later docs change; extend the test to USER-GUIDE and the wiki |
+| argparse refuses a repeated option | It keeps the last value silently. Options that take a value now refuse a second use | Any new option |
+| Moving from JSON to readable text changes only the look | JSON escaped whatever a module wrote; Markdown and terminal text act on it. The formatter now neutralises module-written text (review R-1) | Any new human-facing surface: decide where untrusted text is neutralised before building it |
+| A helper in a test file is a test | The rename guard existed and nothing called it until #230 | Acceptance ticks name the test function that was run |
+| The phase-end review can always be delegated | The host's worker policy refused the three reviewers; the review was a self-review with executed probes for one area only | Before the next phase: settle how independent reviewers run (Q-SY-H5-REPO-1) |
+| A self-review is a review | Three independent reviewers found eight more things, two of them gaps in the self-review's own fixes (section 9). A phase-end review is done by reviewers who did not write the code, and its fixes are re-checked by someone else | Every phase: arrange the reviewers before the review is due |
+| A module that registers a panel has a panel the operator can see | All twelve registered one; the page displayed none (ADR-0016). "Has" in a definition of done means observed on the surface | H6; pre-work question 13 |
+| The local suite is the same check as CI | CI also enforces the per-platform skip allow-list; a new POSIX-only test failed Windows CI with every test passing | Add a skip to the allow-list in the same change as the test |
+| Dashboard code tested under Node with stand-ins shows how the page behaves | The stand-in does not run effects or re-render, so load timing and appearance are unverified until a person looks | The operator's usability review stays a release gate |
 
 ## 8. Phase-end security review (2026-11-26)
 

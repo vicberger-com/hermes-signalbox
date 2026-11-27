@@ -1,7 +1,7 @@
 # Roadmap — Signalbox (Hermes Control Plane)
 
 **Status**: Planning  
-**Current**: v1.0.3 is the latest release (published under the former name). v1.1.0, the first release under the name Signalbox, is complete on `main` and not yet tagged.  
+**Current**: v1.1.0, the first release under the name Signalbox.  
 **Repository**: vicberger-com/hermes-signalbox
 
 ---
