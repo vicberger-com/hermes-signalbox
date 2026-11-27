@@ -31,6 +31,24 @@ ALLOWED = (
     "tests/core/test_h5_rename.py",
 )
 _OLD_TAG_LINK = "/src/switchyard/"
+# Single lines outside those places that must name the old product, because they are about upgrading from it:
+# file -> text each such line contains. Anything else that says the old name fails the test.
+UPGRADE_LINES = {
+    "docs/QUICKSTART.md": ("For v1.0.x, use `switchyard`",),
+    "docs/ROADMAP.md": ("v1.0.3 (Switchyard)",),
+    "docs/USER-GUIDE.md": ("| `core.migrated` | Data copied from Switchyard |",),
+    "src/hermes_signalbox/core.py": ("copy a Switchyard 1.0.x data directory",),
+    "src/hermes_signalbox/labels.py": ('"core.migrated": ("Data copied from Switchyard"',),
+    "src/hermes_signalbox/paths.py": (
+        "``SWITCHYARD_DATA_DIR``), configured",
+        "SWITCHYARD_DATA_DIR still read, deprecated",
+    ),
+    "src/hermes_signalbox/modules/secrets/backends.py": (
+        "secrets stored by Switchyard 1.0.x under its old name",
+        "SWITCHYARD_SECRET_* still read, deprecated",
+    ),
+    "tests/test_h5_guide.py": ('assert "hermes-switchyard" not in text',),
+}
 
 
 _SKIP_DIRS = {
@@ -92,10 +110,20 @@ def _tracked_hits() -> list[str]:
                 continue
             if rel == "README.md" and line.startswith("(Formerly Switchyard;"):
                 continue  # the one pointer for people searching the old name
+            if any(text in line for text in UPGRADE_LINES.get(rel, ())):
+                continue  # an upgrade note, listed above line by line
             if _OLD_TAG_LINK in line and "/blob/v1.0.0" in line:
                 continue  # links into the v1.0.0 tag, whose tree still has the old package directory
             hits.append(f"{rel}:{number}: {line.strip()[:120]}")
     return hits
+
+
+def test_h5_the_old_name_survives_only_where_the_upgrade_needs_it() -> None:
+    assert _tracked_hits() == []
+    for rel, texts in UPGRADE_LINES.items():  # an entry nothing uses any more must be removed
+        body = (ROOT / rel).read_text(encoding="utf-8")
+        for text in texts:
+            assert text in body, f"{rel}: stale allow-list entry {text!r}"
 
 
 def test_h5_package_metadata_uses_the_new_names() -> None:
