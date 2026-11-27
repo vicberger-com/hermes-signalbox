@@ -11,9 +11,9 @@ Get from zero to a working dashboard with module grants in ~5 minutes.
 ## 1. Install (pinned commit)
 
 ```bash
-# Get latest release SHA from https://github.com/vicberger-com/hermes-switchyard/releases
+# Get latest release SHA from https://github.com/vicberger-com/hermes-signalbox/releases
 export SHA=<40-char-commit-sha>
-hermes plugins install vicberger-com/hermes-switchyard --ref $SHA
+hermes plugins install vicberger-com/hermes-signalbox --ref $SHA
 hermes plugins enable signalbox
 ```
 
@@ -60,7 +60,8 @@ hermes -p default signalbox module activate trimmer
 hermes -p default signalbox module activate updates
 ```
 
-Or use the dashboard: **Signalbox tab → Modules → click "Activate"** on each.
+Or use the dashboard: **Signalbox tab → Modules**, then the **Start** button on each row. The button is
+disabled, with the reason beside it, until the module has the permissions it needs.
 
 ## 5. Open Dashboard
 
@@ -75,7 +76,7 @@ echo '[api] enabled = true' >> $(hermes -p default signalbox config show | grep 
 ## Verify It Works
 
 ```bash
-# All modules should show "active" (auto) or "verified" (manual, until activated)
+# Each module should show "Running", or "Manual start" for the ones you start yourself
 hermes -p default signalbox module list
 
 # Audit chain intact
