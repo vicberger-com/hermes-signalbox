@@ -127,6 +127,9 @@ hermes-signalbox module health router                 # [daemon]
 hermes-signalbox module mode router --mode auto       # start it with every hosting process
 ```
 
+Grants and start modes are stored in the data directory and survive restarts of Hermes and of the daemon; you
+grant once. A `manual` module never starts on its own, even with every grant: start it yourself.
+
 A grant only records consent; it never starts a module. In a running Hermes, a module whose last missing grant
 you just gave stays stopped until you start it (`/signalbox module activate <id>` in a chat, or the command
 line through the API, section 2) or until Hermes next loads the plugin, which starts `auto` modules whose grants

@@ -13,9 +13,9 @@
 - [x] **QUICKSTART.md** — 5-minute zero-to-dashboard path
 - [x] **TROUBLESHOOTING.md** — 15+ common issues with Symptom→Cause→Fix
 - [x] **README.md** — Links to QUICKSTART, TROUBLESHOOTING, grants table
-- [ ] **Module descriptions in dashboard** — Show one-line summary per module (issue #210)
-- [ ] **Hover tooltips** — Status/mode/actions in dashboard (issue #207)
-- [ ] **Module version display** — Show installed vs latest in dashboard
+- [x] **Module descriptions in dashboard** — One-line summary per module (v1.1.0, #210)
+- [x] **Tooltips and legend** — State and start mode explained on hover and keyboard focus; disabled buttons say why (v1.1.0, #206, #208)
+- [x] **Module version display** — Installed version, source and the last known update state (v1.1.0, #210). The page never checks for updates itself: that needs the `updates` module
 
 ---
 
@@ -28,7 +28,7 @@
 | **Grant wizard** | First-run interactive prompt: "Grant all required capabilities for all modules?" | Core |
 | **Auto-activate on grant** | When last missing grant given, auto-start `auto` modules (no restart needed) | Core |
 | **Unified data directory** | Default `SIGNALBOX_DATA_DIR` to Hermes plugin data dir when installed as plugin | Core |
-| **Dashboard module cards** | Show version, description, one-click grant/activate per module | Dashboard |
+| **Dashboard module cards** | Version, description, start/stop and start mode are done in v1.1.0. Still open: granting from the page (today a deliberate limit: grants stay at the terminal or in chat) | Dashboard |
 | **Live health endpoint** | `/signalbox module health <id>` in dashboard with auto-refresh | All |
 
 ---
@@ -84,10 +84,12 @@
 
 ## Related Issues
 
-- #205 — Module descriptions in dashboard
-- #207 — Dashboard accessibility (hover tooltips, clickable indicators)
-- #208 — Glossary for status/mode/action terms
-- #210 — Module version display
+- #205 — Readable chat replies and command-line text (closed, v1.1.0)
+- #206 — Modules view: silent failures, unexplained values (closed, v1.1.0)
+- #207 — Reports view readable; Refresh gives feedback (closed, v1.1.0)
+- #208 — Self-explaining page and glossary (closed, v1.1.0)
+- #210 — Module description, version, source and update state (closed, v1.1.0)
+- #221 — Grant requirements: documentation done; a start-up notice and first-run prompt are open
 - #212 — Rename to Signalbox (merged)
 
 ---
