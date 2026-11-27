@@ -26,6 +26,7 @@ _PANEL = re.compile(r"[a-z][a-z0-9_.-]{0,63}\Z")
 _ITEM = re.compile(r"[0-9a-f]{16}\Z")
 _KINDS = ("health", "usage", "security", "changes")
 _MODES = ("auto", "manual", "disabled")
+_MAX_BODY = 64 * 1024  # the page sends {"mode": "..."}
 
 
 def _data_dir() -> Path:
@@ -102,6 +103,15 @@ async def glossary() -> Any:
 async def module_mode(module_id: str, request: Request) -> Any:
     """Set a module's start mode (H5 WP3, #206); audited as ``module.mode_changed`` by the dashboard."""
     target = _check(_ID, module_id)
+    # Independent review R-11: refuse by the headers, before reading a body of unknown size.
+    kind, length = request.headers.get("content-type"), request.headers.get("content-length")
+    if kind is not None and not str(kind).lower().startswith("application/json"):
+        raise HTTPException(status_code=415, detail="expected application/json")
+    if length is not None:
+        if not str(length).isdigit():
+            raise HTTPException(status_code=400, detail="bad Content-Length")
+        if int(length) > _MAX_BODY:
+            raise HTTPException(status_code=413, detail="request body too large")
     try:
         body = await request.json()
     except Exception as exc:  # not JSON: the page always sends {"mode": ...}

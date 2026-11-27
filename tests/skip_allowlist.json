@@ -4,6 +4,7 @@
     "tests/core/test_1_1_api_server.py::test_h1_b17_posix_mode_is_user_only_before_the_write",
     "tests/core/test_audit.py::test_files_are_user_only",
     "tests/core/test_fsread.py::test_device_files_are_refused",
+    "tests/core/test_h5_review2.py::test_h5_r7_copied_files_are_private_to_the_owner",
     "tests/core/test_logs_panels.py::test_log_files_are_user_only",
     "tests/core/test_paths.py::test_ensure_is_user_only_on_posix",
     "tests/modules/test_secrets.py::test_wincred_is_locked_off_windows"

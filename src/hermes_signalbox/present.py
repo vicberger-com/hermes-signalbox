@@ -7,6 +7,7 @@ Pure functions of the result: nothing here reads state, so the same result alway
 
 from __future__ import annotations
 
+import re
 import textwrap
 import unicodedata
 from collections.abc import Mapping, Sequence
@@ -20,7 +21,18 @@ _ORDER = {"active": 0, "failed": 1}
 # H5 review R-1. A result carries text that modules wrote (health detail, action output, notices, audit
 # detail). It is shown as words, never as formatting: these characters would start a Markdown link, image,
 # HTML tag, code span, heading, quote or emphasis in a chat reply.
-_MD_ESCAPES = str.maketrans({c: "\\" + c for c in "\\`[]<>#*"})
+_MD_ESCAPES = str.maketrans({c: "\\" + c for c in "\\`[]<>#*~@"})
+# Independent review R-4. An underscore opens or closes emphasis only at the edge of a word, so the ones
+# inside identifiers (``missing_grants``) stay as they are and look-ups by key keep working.
+_MD_EDGE_UNDERSCORE = re.compile(r"(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])")
+# A bare address becomes a link in a chat reply; with the backslash it is shown as the words it is.
+_MD_ADDRESS = re.compile(r"://|(?<![A-Za-z0-9])[Ww]{3}\.")
+# Text that starts a line: a list item, a numbered item, or a rule (which also turns the line above it
+# into a heading).
+_MD_BULLET = re.compile(r"[-+](?=\s)|-+\s*$|=+\s*$")
+_MD_NUMBERED = re.compile(r"(\d{1,9})([.)])(?=\s|$)")
+_MAX_DEPTH = 32  # R-5: deeper than any real result; a module cannot make the formatter recurse without end
+_TOO_DEEP = "(nested too deeply to show)"
 _DROPPED = frozenset(
     {"Cc", "Cf", "Co", "Cs", "Cn"}
 )  # control, format (bidi, zero width), private, unassigned
@@ -47,17 +59,39 @@ def _safe_text(text: str, md: bool) -> str:
         return text
     if "\n" in text:
         text = " / ".join(part.strip() for part in text.split("\n") if part.strip())
-    return text.translate(_MD_ESCAPES)
+    text = text.translate(_MD_ESCAPES)
+    text = _MD_EDGE_UNDERSCORE.sub(r"\\_", text)
+    text = _MD_ADDRESS.sub(lambda m: m.group(0).replace(":", "\\:").replace(".", "\\."), text)
+    if text[:1] == " ":
+        text = text.lstrip(" ")  # four leading spaces would make a code block
+    if _MD_BULLET.match(text):
+        return "\\" + text
+    return _MD_NUMBERED.sub(r"\1\\\2", text, count=1) if text[:1].isdigit() else text
 
 
-def _safe(value: Any, md: bool) -> Any:
-    """A copy of a result with every string (keys too) passed through ``_safe_text``."""
+def plain(text: str) -> str:
+    """``text`` for a terminal, on one line: no control or format characters, line breaks as `` / ``."""
+    lines = _safe_text(text, False).split("\n")
+    return " / ".join(part.strip() for part in lines if part.strip())
+
+
+def clean(value: Any) -> Any:
+    """A copy of ``value`` for a surface that shows text as text (the dashboard): every string without
+    control or format characters, nothing escaped (independent review R-9)."""
+    return _safe(value, False)
+
+
+def _safe(value: Any, md: bool, depth: int = 0) -> Any:
+    """A copy of a result with every string (keys too) passed through ``_safe_text``, cut off at
+    ``_MAX_DEPTH`` levels so that nothing after it can recurse without end."""
     if isinstance(value, str):
         return _safe_text(value, md)
+    if isinstance(value, Mapping | list | tuple) and depth >= _MAX_DEPTH:
+        return _TOO_DEEP
     if isinstance(value, Mapping):
-        return {_safe(k, md): _safe(v, md) for k, v in value.items()}
+        return {_safe(k, md, depth + 1): _safe(v, md, depth + 1) for k, v in value.items()}
     if isinstance(value, list | tuple):
-        return [_safe(v, md) for v in value]
+        return [_safe(v, md, depth + 1) for v in value]
     return value
 
 
@@ -130,7 +164,7 @@ def _md_row(cells: Sequence[str]) -> str:
 def _when(ts: Any, tz: tzinfo | None) -> str:
     try:
         return datetime.fromisoformat(str(ts)).astimezone(tz).strftime("%Y-%m-%d %H:%M")
-    except ValueError:
+    except (ValueError, OverflowError):
         return str(ts)
 
 

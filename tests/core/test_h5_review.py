@@ -83,7 +83,7 @@ def test_h5_r1_module_text_cannot_shape_a_chat_reply(case: tuple[str, str, objec
         assert not line.lstrip().startswith(("#", "```", ">")), line  # no heading, fence or quote of its own
     # no image, link, tag or code span: each character that would start one is escaped
     assert "![x]" not in out and "[click]" not in out
-    assert r"!\[x\](https://evil.example/p.png)" in out
+    assert r"!\[x\](https\://evil.example/p.png)" in out
     assert re.search(r"(?<!\\)<img", out) is None
     assert "```" not in out
     assert "**bold**" not in out

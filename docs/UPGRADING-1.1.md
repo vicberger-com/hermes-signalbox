@@ -68,7 +68,7 @@ deprecated variable) is used as is: nothing is copied into it.
 
 ## Rolling back to 1.0.3
 
-The old directory is untouched by the copy, so reinstalling Switchyard 1.0.3 resumes where it stopped. It does not
+The copy changes nothing in the old directory except for adding one file, `migrated-to-signalbox.txt`, so reinstalling Switchyard 1.0.3 resumes where it stopped. That file is what stops a second copy: if the new directory is ever lost or reset, Signalbox starts empty instead of bringing the 1.0.x state (and grants you have revoked since) back. Delete the file only if you want the directory copied again. It does not
 see what happened under Signalbox, which wrote only to the new directory.
 
 Record: [ADR-0015](adr/0015-rename-to-signalbox.md).

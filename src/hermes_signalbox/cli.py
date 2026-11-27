@@ -53,14 +53,18 @@ class _Once(argparse.Action):
 def _parser(prog: str = "hermes-signalbox") -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=prog, description="Hermes Signalbox control plane.")
     parser.add_argument(
-        "--data-dir", type=Path, default=None, help="data directory (default: platform location)"
+        "--data-dir",
+        type=Path,
+        default=None,
+        help="data directory (default: platform location)",
+        action=_Once,
     )
     parser.add_argument("--json", action="store_true", help="print results as JSON")
     nouns = parser.add_subparsers(dest="noun")
     nouns.add_parser("version", help="print the version")
     api = nouns.add_parser("api", help="loopback control API").add_subparsers(dest="verb", required=True)
     serve = api.add_parser("serve", help="run the daemon and the loopback API until interrupted")
-    serve.add_argument("--port", type=int, default=None)
+    serve.add_argument("--port", type=int, default=None, action=_Once)
 
     groups: dict[str, Any] = {}
     for (noun, verb), operation in sorted(OPERATIONS.items()):
@@ -145,7 +149,15 @@ def _print(
 
 
 def _failure(result: Any) -> str | None:
-    """The message for a result that reports failure without raising (H1 D-8), else ``None``."""
+    """The message for a result that reports failure without raising (H1 D-8), else ``None``.
+
+    The message holds text a module wrote (its health detail, its error), and it goes to the terminal on
+    stderr, so it loses control characters like every other text output (independent review R-6)."""
+    text = _failure_text(result)
+    return None if text is None else present.plain(text)
+
+
+def _failure_text(result: Any) -> str | None:
     if not isinstance(result, dict):
         return None
     if result.get("status") == "failed":

@@ -16,7 +16,8 @@ Three things a 1.0.x user may still have:
   lock held so no 1.0.x process hosts it meanwhile. The copy goes to a
   temporary sibling and is renamed into place only after its audit chain
   verifies, so a failure leaves no partial directory. The old directory is
-  left as it was, for rollback. A directory that contains a link (symbolic
+  kept for rollback, with a marker file added so that it is copied once.
+  A directory that contains a link (symbolic
   link or Windows junction) is refused: the copy would follow it.
 """
 
@@ -25,19 +26,26 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import sqlite3
 import stat
+import sys
 import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from hermes_signalbox.errors import ConfigError
 
 LEGACY_NAME = "switchyard"
 LEGACY_PREFIX = "SWITCHYARD_"
 NEW_PREFIX = "SIGNALBOX_"
-# Runtime files of the process that owned the old directory; never copied.
-_RUNTIME_FILES = frozenset({"host.lock", "api.port", "api.token"})
+# Written into the old directory after its copy succeeded. A directory that carries it is not copied
+# again: without it, losing the new state (a reset, a reinstall) would bring the 1.0.x state back,
+# grants revoked since included (independent review R-7). Delete the file to copy again on purpose.
+MARKER = "migrated-to-signalbox.txt"
+# Runtime files of the process that owned the old directory, and the marker; never copied.
+_RUNTIME_FILES = frozenset({"host.lock", "api.port", "api.token", MARKER})
 _REPARSE_POINT = 0x400  # FILE_ATTRIBUTE_REPARSE_POINT; ``stat`` names it on Windows only
 _log = logging.getLogger("signalbox.legacy")
 
@@ -45,7 +53,7 @@ _log = logging.getLogger("signalbox.legacy")
 def legacy_env(env: Mapping[str, str], name: str) -> tuple[str, str]:
     """``(value, variable)`` for ``SIGNALBOX_<name>``, falling back to the deprecated ``SWITCHYARD_<name>``.
 
-    Returns ``("", new_variable)`` when neither is set. Reading the old name warns once per call site."""
+    Returns ``("", new_variable)`` when neither is set. Reading the old name warns each time it is read."""
     new, old = NEW_PREFIX + name, LEGACY_PREFIX + name
     value = env.get(new, "")
     if value:
@@ -91,11 +99,41 @@ def legacy_candidates(new_dir: Path, *, hermes: bool) -> list[Path]:
     parent = new_dir.parent
     if not parent.is_dir():
         return []
-    if hermes:
-        found = sorted(p for p in parent.glob(f"agent-plugin-{LEGACY_NAME}-*") if p.is_dir())
-    else:
-        found = [parent / LEGACY_NAME] if (parent / LEGACY_NAME).is_dir() else []
-    return [p for p in found if _has_state(p)]
+    named = sorted(parent.glob(f"agent-plugin-{LEGACY_NAME}-*")) if hermes else [parent / LEGACY_NAME]
+    found = []
+    for path in named:
+        if _is_link(path):  # checked first: looking inside a link already reads from where it points
+            _log.warning("%s is a link and is not used as a %s data directory", path, LEGACY_NAME)
+        elif path.is_dir() and _has_state(path) and not (path / MARKER).exists():
+            found.append(path)
+    return found
+
+
+def _state_problem(path: Path) -> str:
+    """Why the copied state file cannot be trusted, or ``""``. A copy taken while something was writing,
+    or a file that is not a database, is refused before it becomes the new state."""
+    try:
+        connection = sqlite3.connect(path)
+        try:
+            rows = connection.execute("PRAGMA integrity_check").fetchall()
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        return str(exc)
+    return "" if rows == [("ok",)] else "; ".join(str(r[0]) for r in rows[:3])
+
+
+def _make_private(root: Path) -> None:
+    """Copied files keep the permission bits they had. Narrow them to the owner (POSIX; on Windows the
+    profile directory's access list applies)."""
+    if sys.platform == "win32":
+        return
+    os.chmod(root, 0o700)
+    for directory, folders, files in os.walk(root):
+        for name in folders:
+            os.chmod(Path(directory) / name, 0o700)
+        for name in files:
+            os.chmod(Path(directory) / name, 0o600)
 
 
 @dataclass(frozen=True)
@@ -124,6 +162,17 @@ def migrate_data_dir(new_dir: Path, candidates: list[Path]) -> Migration | None:
             f"or set {NEW_PREFIX}DATA_DIR"
         )
     source = candidates[0]
+    if _is_link(source):
+        raise ConfigError(
+            f"{source} is a link; nothing was copied. Copy the directory it points to to {new_dir} by hand"
+        )
+    try:
+        return _copy(source, new_dir, AuditLog, HostLock)
+    except OSError as exc:  # a read-only or vanished directory, a special file: one clear line, no traceback
+        raise ConfigError(f"could not copy {source} ({exc}); nothing was copied") from exc
+
+
+def _copy(source: Path, new_dir: Path, AuditLog: Any, HostLock: Any) -> Migration | None:
     lock = HostLock(source / "host.lock")
     if not lock.acquire():
         if _has_state(new_dir):  # another Signalbox process finished the copy while we looked
@@ -154,11 +203,24 @@ def migrate_data_dir(new_dir: Path, candidates: list[Path]) -> Migration | None:
                 f"({result.reason} at record {result.first_bad_seq}); "
                 "nothing was copied"
             )
+        problem = _state_problem(staging / "state.db")
+        if problem:
+            raise ConfigError(f"state.db in {source} is damaged ({problem}); nothing was copied")
+        _make_private(staging)
         if new_dir.exists():
             if any(new_dir.iterdir()):
                 raise ConfigError(f"{new_dir} is not empty; nothing was copied")
             new_dir.rmdir()
         os.replace(staging, new_dir)
+        try:
+            (source / MARKER).write_text(
+                f"This directory was copied to {new_dir} when Signalbox 1.1 first started.\n"
+                "Signalbox does not read it again. It is kept so that you can go back to 1.0.x.\n"
+                "Delete this file only if you want Signalbox to copy this directory again.\n",
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            _log.warning("could not mark %s as copied: %s", source, exc)
         return Migration(source=source, target=new_dir, records=result.records)
     finally:
         lock.release()

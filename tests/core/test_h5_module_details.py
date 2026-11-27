@@ -166,10 +166,10 @@ def test_h5_wp3_update_state_in_plain_words() -> None:
 
 def test_h5_wp3_chat_and_cli_show_the_source_and_update_lines(core: Core) -> None:
     text = present.render("module", "show", core.run("module", "show", {"id": "ext"}, actor="cli"))
-    assert "- Source: git, https://example.com/acme/ext.git at `aaaaaaa` (channel main)" in text
+    assert r"- Source: git, https\://example.com/acme/ext.git at `aaaaaaa` (channel main)" in text
     assert "- Update: Not checked: start the updates module to check" in text
-    assert "- Homepage: https://example.com/acme/ext" in text
-    assert "- Based on: upstream (MIT, https://example.org/upstream)" in text
+    assert r"- Homepage: https\://example.com/acme/ext" in text  # an address in chat is words, not a link
+    assert r"- Based on: upstream (MIT, https\://example.org/upstream)" in text
     bundled = present.render("module", "show", core.run("module", "show", {"id": "bun"}, actor="cli"))
     assert "- Source: bundled with Signalbox" in bundled and "- Update: Updates with Signalbox" in bundled
 

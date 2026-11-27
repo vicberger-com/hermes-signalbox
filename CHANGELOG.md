@@ -112,6 +112,31 @@ Format: Keep a Changelog. Versions: Semantic Versioning.
 
 ### Security
 
+- **Independent re-review of 1.1.0** (2026-11-27, three reviewers with no part in writing the code; record in
+  [docs/qa/19-h5-prework.md](docs/qa/19-h5-prework.md) section 9). The first review (below) was a
+  self-review, and its fix for module-written text was incomplete. Each finding was reproduced before it
+  was fixed:
+  - **R-4** Module-written text could still shape a chat reply: `_word_` and `~~word~~`, text that starts a
+    line as a list, heading or code block, and bare web addresses that became links. All are now shown as
+    the words they are. A module's declared links are therefore plain text in chat; the dashboard shows
+    them as links, with the host visible.
+  - **R-5** A deeply nested result raised `RecursionError` in the formatter. It is cut off at 32 levels.
+  - **R-6** The failure line on stderr (`module health`, `module activate`) carried module-written text,
+    escape sequences included. A subprocess module could choose the error type name shown for it.
+  - **R-7** First-start copy of a 1.0.x data directory: an old directory that is itself a link was followed;
+    the copy ran again whenever the new state was missing, which brought back grants revoked since; a
+    damaged `state.db` was copied unchecked; an operating-system error escaped as a traceback; copied files
+    kept their permission bits (POSIX). The copy now happens once: a file `migrated-to-signalbox.txt` is
+    written into the old directory, and a directory that carries it is not copied again.
+  - **R-8** `--data-dir` and `api serve --port` given twice kept the last value silently.
+  - **R-9** The dashboard received module-written text with control and direction-override characters.
+  - **R-10** A module could post an inbox notice that named another module as its source.
+  - **R-11** The dashboard's start-mode route read a body of any size and content type; a list where a
+    module id belongs dropped the connection.
+  - Known and not fixed here (SECURITY.md, "Known limits"): the Hermes dashboard gives its session token to
+    any program on this computer that asks, so another local program or account can start and stop modules
+    and change start modes through it (never grant, install, update or remove); a 1.0.x data directory is
+    imported whole, with its `config.toml` and `modules/`.
 - **Phase-end review of 1.1.0** ([record](docs/qa/19-h5-prework.md), section 8). Fixed before release:
   - R-1: the new chat and terminal formats printed text written by modules (health detail, action output,
     notices, audit detail, manifest descriptions) as it came. In a chat reply it is now shown as plain words:

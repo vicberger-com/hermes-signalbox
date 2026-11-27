@@ -408,7 +408,11 @@ class ControlServer:
         if (noun, verb) not in DASHBOARD_OPS:
             return None
         if (noun, verb) == ("module", "action"):
-            return "api" if (params.get("id"), params.get("action")) in DASHBOARD_ACTIONS else "hermes"
+            target, action = params.get("id"), params.get("action")
+            mine = (
+                isinstance(target, str) and isinstance(action, str) and (target, action) in DASHBOARD_ACTIONS
+            )
+            return "api" if mine else "hermes"
         return "api"
 
     def proof(self, challenge: str) -> str:
