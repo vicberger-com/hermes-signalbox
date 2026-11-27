@@ -445,12 +445,34 @@ class HermesAdapter:
         if len(words) < 2:
             return self._help()
         noun, verb, rest = words[0], words[1], words[2:]
-        # H5 WP2 (#205): a chat reply is for a person. ``json=true`` asks for the payload as it was before.
-        as_json = any(w.lower() in ("json=true", "json=1", "json=yes") for w in rest)
-        rest = [w for w in rest if not w.lower().startswith("json=")]
         operation = OPERATIONS.get((noun, verb))
         if operation is None:
             return f"error: unknown operation '{noun} {verb}'"
+        # People type what the command line taught them: ``--kind health`` is read as ``kind=health``.
+        normal: list[str] = []
+        index = 0
+        while index < len(rest):
+            word = rest[index]
+            index += 1
+            if not word.startswith("--") or len(word) < 3:
+                normal.append(word)
+                continue
+            flag, equals, value = word[2:].partition("=")
+            key = flag.replace("-", "_")
+            known = operation.params.get(key)
+            if equals:
+                normal.append(f"{key}={value}")
+            elif key == "json" or (known is not None and known.kind is bool):
+                normal.append(f"{key}=true")  # a yes/no flag never takes the word after it
+            elif index < len(rest) and not rest[index].startswith("--"):
+                normal.append(f"{key}={rest[index]}")
+                index += 1
+            else:
+                return f"error: --{flag} needs a value (--{flag} VALUE or {key}=VALUE)"
+        rest = normal
+        # H5 WP2 (#205): a chat reply is for a person. ``json=true`` asks for the payload as it was before.
+        as_json = any(w.lower() in ("json=true", "json=1", "json=yes") for w in rest)
+        rest = [w for w in rest if not w.lower().startswith("json=")]
         params: dict[str, Any] = {}
         extra: dict[str, Any] = {}  # key=value pairs that are not operation parameters go to an ``args`` dict
         for word in rest:

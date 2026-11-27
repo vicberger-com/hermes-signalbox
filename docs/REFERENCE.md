@@ -9,6 +9,8 @@ directory; it wins over `SIGNALBOX_DATA_DIR`).
 Output formats (1.1): without `--json` the CLI prints text for a person: a summary line first, then a table
 or a short list with plain-language labels, local times and a next step where one exists. A `/signalbox` chat
 reply is the same content as Markdown; add `json=true` for the payload (`/signalbox module list json=true`).
+A chat takes arguments as `key=value` and also in the command-line form (`--kind health`, `--kind=health`,
+`--json`). At a terminal, a table wider than the window is written as one block per row.
 `--json`, `json=true` and the model tools return the operation's payload unchanged, so scripts should read
 those and never the text form. The labels come from one table (`hermes_signalbox.labels`): every capability,
 status, mode, severity, actor and core audit action has a label and a one-sentence meaning.

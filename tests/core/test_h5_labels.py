@@ -320,3 +320,99 @@ def test_h5_wp2_cli_text_uses_the_formatter_and_json_flag_is_unchanged(
     assert main(["--data-dir", str(data), "--json", "module", "list"]) == 0
     [row] = json.loads(capsys.readouterr().out)
     assert set(row) == set(_row("x"))
+
+
+# Q-SY-H5-CLOSE-1 (1): a table that does not fit the terminal is written as one block per row ------------
+
+_LONG = {
+    "router": "Picks the model for each Hermes request from the registry: free first, paid only by rule and "
+    "budget, failover with cool-down.",
+    "workers": "Worker roles and teams for Hermes delegation: each role routes to its own model pool or "
+    "Hermes profile.",
+}
+
+
+def _wide_rows() -> list[dict[str, Any]]:
+    return [
+        _row("router", missing=("hermes.hooks", "ui.panel")),
+        _row("workers", missing=("hermes.delegation", "hermes.hooks", "schedule", "ui.panel")),
+    ]
+
+
+def test_h5_close_a_wide_table_becomes_blocks_that_fit_the_terminal() -> None:
+    text = present.render("module", "list", _wide_rows(), summaries=_LONG, style="text", width=80)
+    table = text.split("\n\n", 1)[1].split("\n\nNext step:")[0]
+    assert max(len(line) for line in table.splitlines()) <= 80
+    assert table.splitlines()[0] == "router"
+    for label in (
+        "  What it does: Picks the model",
+        "  State: Ready, needs permissions",
+        "  Needs: Watch and steer",
+    ):
+        assert label in table, label
+    squeezed = " ".join(table.split())
+    assert "failover with cool-down." in squeezed and "Run sub-agents (hermes.delegation)" in squeezed
+    assert "Show a dashboard panel (ui.panel)" in squeezed  # nothing is cut off
+
+
+def test_h5_close_a_table_that_fits_stays_a_table_and_no_width_means_no_wrapping() -> None:
+    rows = [_row("router", missing=("hermes.hooks",)), _row("meter", "active")]
+    narrow = present.render("module", "list", rows, summaries=_SUMMARIES, style="text", width=200)
+    assert narrow == present.render("module", "list", rows, summaries=_SUMMARIES, style="text")
+    assert narrow.split("\n\n")[1].splitlines()[0].split() == [
+        "Module",
+        "What",
+        "it",
+        "does",
+        "State",
+        "Needs",
+    ]
+    unlimited = present.render("module", "list", _wide_rows(), summaries=_LONG, style="text")
+    assert unlimited.split("\n\n")[1].splitlines()[0].startswith("Module ")
+    chat = present.render("module", "list", _wide_rows(), summaries=_LONG, width=40)
+    assert "| router |" in chat  # Markdown is never reshaped: the chat lays the table out itself
+
+
+def test_h5_close_the_cli_fits_its_output_to_the_terminal(
+    data: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("COLUMNS", "44")
+    assert main(["--data-dir", str(data), "module", "list"]) == 0
+    out = capsys.readouterr().out
+    table = out.split("\n\n", 1)[1].split("\n\nNext step:")[0]
+    assert (
+        max(len(line) for line in table.splitlines()) <= 44 and "  Needs: Run on a timer (schedule)" in table
+    )
+    monkeypatch.setenv("COLUMNS", "200")
+    assert main(["--data-dir", str(data), "module", "list"]) == 0
+    assert capsys.readouterr().out.split("\n\n")[1].startswith("Module ")
+
+
+# Q-SY-H5-CLOSE-1 (2): the chat command also takes command-line style arguments -----------------------------
+
+
+def test_h5_close_chat_accepts_command_line_style_arguments(data: Path) -> None:
+    with Core(data_dir=data, hosting=True) as core:
+        adapter = _adapter(core)
+        plain = adapter.command("report show kind=health")
+        assert plain.startswith("**Health report:")
+        assert adapter.command("report show --kind health") == plain
+        assert adapter.command("report show --kind=health") == plain
+        assert adapter.command("module list --json") == adapter.command("module list json=true")
+        assert not adapter.command("module grant ext --capability schedule").startswith("error")
+        assert "schedule" in json.loads(adapter.command("module show ext json=true"))["granted"]
+
+
+def test_h5_close_chat_flags_keep_their_meaning_and_say_what_is_missing(data: Path) -> None:
+    with Core(data_dir=data, hosting=True) as core:
+        adapter = _adapter(core)
+        assert (
+            adapter.command("report show --kind")
+            == "error: --kind needs a value (--kind VALUE or kind=VALUE)"
+        )
+        # a yes/no flag never swallows the word after it
+        kept = adapter.command("module remove --keep-data ext")
+        assert not kept.startswith("error: expected") and "ext" not in [
+            m["id"] for m in core.run("module", "list", {}, actor="cli")
+        ]
+        assert adapter.command("module list --nonsense x").startswith("error:")

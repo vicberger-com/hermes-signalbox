@@ -227,8 +227,8 @@ hermes-signalbox module activate inbox                # [daemon]
 ```
 
 Reports (`--kind` is `health`, `usage`, `security` or `changes`; all need the daemon). When Hermes hosts the
-modules, run them in a chat instead: `/signalbox report show kind=health` (a chat takes `key=value`, not
-`--key value`). In the usage report, a module that
+modules, run them in a chat instead: `/signalbox report show kind=health` (a chat takes `key=value`; the
+command-line form `--kind health` works there too). In the usage report, a module that
 cannot report shows `unavailable: not installed`, `not active` or `action failed`.
 
 ```bash
@@ -385,7 +385,8 @@ new install begins and ends with:
 Next step: a module starts once it has every permission it needs. Grant one with hermes-signalbox module grant activation --capability hermes.config.write.
 ```
 
-In a Hermes chat, `/signalbox module list` gives the same content as Markdown.
+In a Hermes chat, `/signalbox module list` gives the same content as Markdown. At a terminal, the rows between
+those two lines are a table when the window is wide enough, and one short block per module when it is not.
 
 For scripts, ask for the data instead: `--json` before the noun at a terminal
 (`hermes-signalbox --json module list`), or `json=true` in a chat (`/signalbox module list json=true`). Both

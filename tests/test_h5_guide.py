@@ -106,7 +106,7 @@ def test_h5_wp5_reference_and_module_docs_describe_the_dashboard_as_it_is() -> N
 
 
 def test_h5_wp5_chat_examples_use_key_value_arguments() -> None:
-    # the slash command answers "expected key=value" to a command-line flag, so no chat example may show one
+    # the guide teaches one form for a chat (key=value); the command-line form is accepted but not shown
     docs = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md")), *sorted(MODULES.glob("*/README.md"))]
     for path in docs:
         for example in re.findall(r"`(/signalbox [^`]*)`", path.read_text(encoding="utf-8")):

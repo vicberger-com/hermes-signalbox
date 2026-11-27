@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import signal
 import sys
 import time
@@ -112,6 +113,7 @@ def _print(
         summaries=summaries,
         prog=prog,
         subject=subject,
+        width=shutil.get_terminal_size((100, 24)).columns,
     )
     if result is not None:
         print(text)
