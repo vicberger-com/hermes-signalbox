@@ -102,6 +102,8 @@ Answer every question. Take the recommended option, mark it **default accepted**
 |---|---|---|
 | #205 chat replies and CLI text are raw data | WP2 | Fixed: Markdown chat replies and text CLI output from one formatter; `json=true` and `--json` return the payload unchanged |
 | #207 reports have no summary (core part) | WP2 | Fixed: `purpose` and a deterministic `summary` per report kind; the dashboard views follow in WP4 |
+| #206 Modules view: silent failures, unexplained values, mode not settable | WP3 | Fixed in #224 (mode route, labels route), #225 (row data) and the Modules view PR: disabled-with-reason buttons, inline errors, mode selector, tooltips, legend |
+| #210 Modules view: description, version, source, update state, links | WP3 | Fixed (adapted): shown from `module show` data that never contacts the network. Not built: the plugin-release line and a "Check now" button (a check still needs the `updates` module or `module check_updates`); `based_on` for the bundled modules is filled with the docs package (WP5) |
 | #208 no glossary (label source) | WP2 | Fixed: `hermes_signalbox.labels` with a completeness test; the served route and the published glossary follow in WP3 and WP5 |
 
 ## 7. Retro (fill in after phase close)
